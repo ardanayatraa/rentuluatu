@@ -1,8 +1,14 @@
 <template>
   <div class="min-h-screen bg-primary flex items-center justify-center">
-    <div class="bg-white rounded-2xl shadow-2xl p-10 w-full max-w-xs text-center">
-      <h1 class="text-4xl font-black text-primary italic font-headline mb-1">WAVY</h1>
-      <p class="text-slate-400 text-xs mb-8">Motor Rental Management</p>
+    <div class="bg-white rounded-2xl shadow-2xl p-10 w-full max-w-sm text-center">
+
+      <!-- Logo + Nama PT -->
+      <div class="flex flex-col items-center mb-8">
+        <img src="../assets/logo.png" alt="Wavy Logo" class="w-16 h-16 rounded-xl object-cover mb-4 shadow-md" />
+        <h1 class="text-2xl font-black text-primary italic font-headline leading-tight">The Wavy Rental Uluwatu</h1>
+        <p class="text-xs text-slate-400 font-medium mt-1">PT. Artha Bali Wisata</p>
+        <div class="w-8 h-0.5 bg-primary/20 rounded mt-3"></div>
+      </div>
 
       <form @submit.prevent="handleLogin" class="space-y-4">
         <div>
@@ -28,10 +34,10 @@
         </button>
       </form>
     </div>
-    
+
     <div class="absolute bottom-6 w-full text-center">
       <p class="text-[10px] text-blue-200/50 uppercase tracking-widest font-bold">
-        Developed and Designed by <span class="text-white">Ardana Yatra</span>
+        Developed by <span class="text-white">Madarya Studio</span>
       </p>
     </div>
   </div>

@@ -155,11 +155,60 @@ function initSchema() {
     )
   `)
   
-  // Migrate: add payout_id mapping to rentals
-  try { db.run("ALTER TABLE rentals ADD COLUMN payout_id INTEGER REFERENCES payouts(id)") } catch (_) {}
+  // Migrate: add invoice_number to rentals
+  try { db.run("ALTER TABLE rentals ADD COLUMN invoice_number TEXT") } catch (_) {}
+  // Generate invoice untuk rental lama yang belum punya
+  try {
+    const noInvoice = get("SELECT COUNT(*) as c FROM rentals WHERE invoice_number IS NULL")
+    if (noInvoice && noInvoice.c > 0) {
+      const rentals = all("SELECT id, date_time FROM rentals WHERE invoice_number IS NULL ORDER BY date_time ASC")
+      for (const r of rentals) {
+        const dt = new Date(r.date_time)
+        const yr = dt.getFullYear()
+        const mo = String(dt.getMonth() + 1).padStart(2, '0')
+        const existing = get("SELECT COUNT(*) as c FROM rentals WHERE invoice_number LIKE ?", [`WVY-${yr}-${mo}-%`])
+        const seq = String((existing?.c || 0) + 1).padStart(4, '0')
+        db.run("UPDATE rentals SET invoice_number = ? WHERE id = ?", [`WVY-${yr}-${mo}-${seq}`, r.id])
+      }
+    }
+  } catch (_) {}
   // Legacy migration (tandai semua rental lama sebagai "lunas / tidak ngutang" menggunakan payout_id dummy '0')
   try { db.run("UPDATE rentals SET payout_id = 0 WHERE payout_id IS NULL AND owner_gets > 0") } catch (_) {}
-  
+  // Migrate: add invoice_number to rentals
+  try { db.run("ALTER TABLE rentals ADD COLUMN invoice_number TEXT") } catch (_) {}
+  // Generate invoice untuk rental lama yang belum punya
+  try {
+    const noInvoice = get("SELECT COUNT(*) as c FROM rentals WHERE invoice_number IS NULL")
+    if (noInvoice && noInvoice.c > 0) {
+      const oldRentals = all("SELECT id, date_time FROM rentals WHERE invoice_number IS NULL ORDER BY id ASC")
+      const counters = {}
+      for (const r of oldRentals) {
+        const dt = new Date(r.date_time)
+        const yr = dt.getFullYear()
+        const mo = String(dt.getMonth() + 1).padStart(2, '0')
+        const key = `${yr}-${mo}`
+        counters[key] = (counters[key] || 0) + 1
+        const seq = String(counters[key]).padStart(4, '0')
+        db.run("UPDATE rentals SET invoice_number = ? WHERE id = ?", [`WVY-${yr}-${mo}-${seq}`, r.id])
+      }
+    }
+  } catch (_) {}
+
+  // Tabel potongan pengeluaran motor saat payout
+  db.run(`
+    CREATE TABLE IF NOT EXISTS payout_deductions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      payout_id INTEGER NOT NULL REFERENCES payouts(id),
+      expense_id INTEGER NOT NULL REFERENCES expenses(id),
+      amount REAL NOT NULL,
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    )
+  `)
+  // Migrate: tambah kolom gross_amount dan deduction_amount ke payouts
+  try { db.run("ALTER TABLE payouts ADD COLUMN gross_amount REAL DEFAULT 0") } catch (_) {}
+  try { db.run("ALTER TABLE payouts ADD COLUMN deduction_amount REAL DEFAULT 0") } catch (_) {}
+  // Migrate: tandai expenses yang sudah dipotong dari payout
+  try { db.run("ALTER TABLE expenses ADD COLUMN payout_id INTEGER REFERENCES payouts(id)") } catch (_) {}
   db.run(`
     CREATE TABLE IF NOT EXISTS expenses (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

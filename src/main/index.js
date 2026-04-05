@@ -115,6 +115,7 @@ function createWindow() {
     minHeight: 600,
     show: false,
     autoHideMenuBar: true,
+    icon: join(__dirname, '../../resources/icon.png'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),
       sandbox: false,
@@ -126,6 +127,10 @@ function createWindow() {
   mainWindow.on('ready-to-show', () => mainWindow.show())
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
+    // Izinkan window kosong untuk print PDF
+    if (!details.url || details.url === 'about:blank') {
+      return { action: 'allow' }
+    }
     shell.openExternal(details.url)
     return { action: 'deny' }
   })

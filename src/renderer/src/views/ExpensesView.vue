@@ -34,8 +34,7 @@
         <thead>
           <tr class="bg-slate-50 text-slate-400 text-xs uppercase font-bold">
             <th class="px-6 py-4">Tanggal</th>
-            <th class="px-6 py-4">Tipe</th>
-            <th class="px-6 py-4">Motor</th>
+            <th class="px-6 py-4">Sumber</th>
             <th class="px-6 py-4">Kategori</th>
             <th class="px-6 py-4">Deskripsi</th>
             <th class="px-6 py-4">Bayar</th>
@@ -47,9 +46,12 @@
           <tr v-for="e in expenses" :key="e.id" class="text-sm hover:bg-slate-50 transition-colors">
             <td class="px-6 py-4 text-slate-500">{{ formatDate(e.date) }}</td>
             <td class="px-6 py-4">
-              <span :class="e.type === 'motor' ? 'badge-warning' : 'badge-neutral'">{{ e.type }}</span>
+              <template v-if="e.type === 'motor' && e.motor_model">
+                <p class="font-medium text-slate-700">{{ e.motor_model }}</p>
+                <p class="text-xs font-mono text-slate-400">{{ e.plate_number }}</p>
+              </template>
+              <span v-else class="badge-neutral text-xs">Operasional Umum</span>
             </td>
-            <td class="px-6 py-4 text-slate-500">{{ e.motor_model ? `${e.motor_model} · ${e.plate_number}` : '-' }}</td>
             <td class="px-6 py-4 font-medium capitalize">{{ e.category }}</td>
             <td class="px-6 py-4 text-slate-500">{{ e.description || '-' }}</td>
             <td class="px-6 py-4">
@@ -63,7 +65,7 @@
             </td>
           </tr>
           <tr v-if="!expenses.length">
-            <td colspan="8" class="px-6 py-12 text-center text-slate-400">Belum ada data pengeluaran</td>
+            <td colspan="7" class="px-6 py-12 text-center text-slate-400">Belum ada data pengeluaran</td>
           </tr>
         </tbody>
       </table>
@@ -162,6 +164,7 @@
           <label class="block text-xs font-bold text-slate-500 mb-1">Deskripsi</label>
           <input v-model="form.description" type="text" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
         </div>
+        <p v-if="formError" class="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{{ formError }}</p>
         <div class="flex justify-end gap-3 pt-2">
           <button type="button" @click="showModal = false" class="btn-secondary">Batal</button>
           <button type="submit" class="btn-primary">Simpan</button>
@@ -181,6 +184,7 @@ const showModal = ref(false)
 const filters = ref({ startDate: '', endDate: '', type: '' })
 const form = ref({ type: 'umum', motor_id: '', category: 'air', amount: 0, payment_method: 'tunai', date: today(), description: '' })
 const customCategory = ref('')
+const formError = ref('')
 
 // Motor search
 const motorSearch = ref('')
@@ -221,6 +225,7 @@ const totalExpenses = computed(() => expenses.value.reduce((sum, e) => sum + e.a
 function openAdd() {
   form.value = { type: 'umum', motor_id: '', category: 'air', amount: 0, payment_method: 'tunai', date: today(), description: '' }
   customCategory.value = ''
+  formError.value = ''
   selectedMotor.value = null
   motorSearch.value = ''
   showModal.value = true
@@ -232,16 +237,16 @@ async function loadExpenses() {
 
 async function submitExpense() {
   const data = { ...form.value }
-  // Jika kategori "Lainnya", pakai nilai dari input custom
   if (data.category === '__lainnya') {
     data.category = customCategory.value || 'lainnya'
   }
+  formError.value = ''
   try {
     await window.api.createExpense(data)
     showModal.value = false
     await loadExpenses()
   } catch (err) {
-    alert(err.message.replace('Error invoking remote method \'expense:create\': Error: ', ''))
+    formError.value = err.message.replace("Error invoking remote method 'expense:create': Error: ", '')
   }
 }
 

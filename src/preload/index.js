@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld('api', {
   deleteOwner: (id) => invoke('owner:delete', id),
   getOwnerCommission: (data) => invoke('owner:get-commission-summary', data),
   payoutOwner: (data) => invoke('owner:payout', data),
+  getPayoutPreview: (data) => invoke('owner:payout-preview', data),
+  getPayoutHistory: (data) => invoke('owner:get-payout-history', data),
   getRentals: (filters) => invoke('rental:get-all', filters),
   getRental: (id) => invoke('rental:get-by-id', id),
   createRental: (data) => invoke('rental:create', data),
@@ -36,6 +38,14 @@ contextBridge.exposeInMainWorld('api', {
   getReportSummary: (data) => invoke('report:summary', data),
   getMotorRanking: (data) => invoke('report:motor-ranking', data),
   getDailyReport: (data) => invoke('report:daily', data),
+  getMotorIncomeReport: (data) => invoke('report:motor-income', data),
+  getMotorExpensesReport: (data) => invoke('report:motor-expenses', data),
+  getTransactionsReport: (data) => invoke('report:transactions', data),
+  getOwnerCommissionReport: (data) => invoke('report:owner-commission', data),
+  getOwnerSummaryReport: (data) => invoke('report:owner-summary', data),
+  getFinancialReport: (data) => invoke('report:financial', data),
+  getProfitLossReport: (data) => invoke('report:profit-loss', data),
+  getAnnualRecap: (data) => invoke('report:annual-recap', data),
   // Dashboard
   getDashboardSummary: (data) => invoke('dashboard:summary', data),
   getDailyIncome: (data) => invoke('dashboard:daily-income', data),
@@ -44,5 +54,20 @@ contextBridge.exposeInMainWorld('api', {
   getTopMotors: (data) => invoke('dashboard:top-motors', data),
   getExpenseCategories: (data) => invoke('dashboard:expense-categories', data),
   // System
-  resetAllData: () => invoke('db:reset-all')
+  resetAllData: () => invoke('db:reset-all'),
+  // Backup & Restore
+  backupGdriveStatus: () => invoke('backup:gdrive-status'),
+  backupGdriveConnect: () => invoke('backup:gdrive-connect'),
+  backupGdriveDisconnect: () => invoke('backup:gdrive-disconnect'),
+  backupCreateLocal: () => invoke('backup:create-local'),
+  backupListLocal: () => invoke('backup:list-local'),
+  backupRestoreLocal: (data) => invoke('backup:restore-local', data),
+  backupGdriveUpload: () => invoke('backup:gdrive-upload'),
+  backupGdriveList: () => invoke('backup:gdrive-list'),
+  backupGdriveRestore: (data) => invoke('backup:gdrive-restore', data),
+  backupGdriveDelete: (data) => invoke('backup:gdrive-delete', data),
+  backupSetPassphrase: (data) => invoke('backup:set-passphrase', data),
+  // Export
+  savePdf: (data) => invoke('export:save-pdf', data),
+  saveExcel: (data) => invoke('export:save-excel', data)
 })

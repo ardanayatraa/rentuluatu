@@ -77,7 +77,7 @@
             <input v-model="form.plate_number" type="text" placeholder="DK 1234 AB"
               class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono" required />
           </div>
-          <div>
+          <div class="col-span-2">
             <label class="block text-xs font-bold text-slate-500 mb-1">Tipe</label>
             <select v-model="form.type" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required>
               <option value="pribadi">Pribadi (Wavy 20% / Owner 80%)</option>
@@ -86,27 +86,39 @@
           </div>
           <div class="col-span-2">
             <div class="flex justify-between items-end mb-1">
-              <label class="block text-xs font-bold text-slate-500">Pemilik</label>
-              <button type="button" @click="isCreatingOwner = !isCreatingOwner" class="text-xs text-primary font-bold hover:underline">
-                {{ isCreatingOwner ? 'Pilih Pemilik Sedia Ada' : '+ Pemilik Baru' }}
+              <label class="block text-xs font-bold text-slate-500">Mitra / Pemilik</label>
+              <button type="button" @click="isCreatingOwner = !isCreatingOwner"
+                class="text-xs text-primary font-bold hover:underline flex items-center gap-1">
+                <span class="material-symbols-outlined text-sm">{{ isCreatingOwner ? 'person_search' : 'person_add' }}</span>
+                {{ isCreatingOwner ? 'Pilih Mitra Ada' : '+ Mitra Baru' }}
               </button>
             </div>
-            
-            <!-- Jika pilih pemilik lama -->
-            <select v-if="!isCreatingOwner" v-model="form.owner_id" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
-              <option value="">— Tidak ada —</option>
-              <option v-for="o in owners" :key="o.id" :value="o.id">{{ o.name }}</option>
-            </select>
-            
-            <!-- Jika tambah pemilik baru -->
-            <div v-else class="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200">
+
+            <!-- Pilih mitra dengan search -->
+            <div v-if="!isCreatingOwner">
+              <SearchSelect
+                v-model="form.owner_id"
+                :options="ownerOptions"
+                placeholder="Tidak ada / Pilih Mitra..."
+              />
+              <p v-if="form.owner_id" class="text-xs text-slate-400 mt-1">
+                {{ owners.find(o => o.id == form.owner_id)?.phone || '' }}
+              </p>
+            </div>
+
+            <!-- Form mitra baru -->
+            <div v-else class="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200 mt-1">
               <div class="col-span-2">
-                <input v-model="ownerForm.name" type="text" placeholder="Nama Pemilik Baru" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required />
+                <input v-model="ownerForm.name" type="text" placeholder="Nama Mitra *"
+                  class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required />
               </div>
-              <input v-model="ownerForm.phone" type="text" placeholder="Nomor HP / WA" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-              <input v-model="ownerForm.bank_name" type="text" placeholder="Bank (misal: BCA)" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+              <input v-model="ownerForm.phone" type="text" placeholder="No. HP / WA"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+              <input v-model="ownerForm.bank_name" type="text" placeholder="Bank (BCA, BNI...)"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
               <div class="col-span-2">
-                <input v-model="ownerForm.bank_account" type="text" placeholder="No. Rekening" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+                <input v-model="ownerForm.bank_account" type="text" placeholder="No. Rekening"
+                  class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
               </div>
             </div>
           </div>
@@ -122,6 +134,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import SearchSelect from '../components/SearchSelect.vue'
 
 const motors = ref([])
 const owners = ref([])
@@ -131,9 +144,10 @@ const search = ref('')
 const filterType = ref('')
 const form = ref({ model: '', plate_number: '', type: 'pribadi', owner_id: '' })
 
-// Inline Owner Creation
 const isCreatingOwner = ref(false)
 const ownerForm = ref({ name: '', phone: '', bank_name: '', bank_account: '' })
+
+const ownerOptions = computed(() => owners.value.map(o => ({ value: o.id, label: o.name, sub: o.phone || '' })))
 
 const filteredMotors = computed(() => motors.value.filter(m => {
   if (filterType.value && m.type !== filterType.value) return false

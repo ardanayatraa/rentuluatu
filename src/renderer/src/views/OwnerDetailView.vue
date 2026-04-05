@@ -8,12 +8,19 @@
         </button>
         <div>
           <h2 class="page-title flex items-center gap-2">
-            Profil Pemilik Motor
+            Profil Mitra
             <span :class="owner.is_active ? 'badge-success' : 'badge-neutral'" class="text-[10px] ml-2">{{ owner.is_active ? 'Aktif' : 'Nonaktif' }}</span>
           </h2>
-          <p class="text-slate-500 text-sm mt-1">Detail pemasok armada & riwayat pembagian hasil</p>
+          <p class="text-slate-500 text-sm mt-1">Detail mitra armada & riwayat pembagian hasil</p>
         </div>
       </div>
+    </div>
+
+    <!-- Toast sukses -->
+    <div v-if="payoutSuccessMsg"
+      class="mb-4 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 flex items-center gap-2">
+      <span class="material-symbols-outlined text-emerald-500">check_circle</span>
+      {{ payoutSuccessMsg }}
     </div>
 
     <!-- Info & Summary Cards -->
@@ -61,7 +68,7 @@
         <div class="p-4 border-b border-slate-100 bg-slate-50">
           <h3 class="font-bold text-slate-700 text-sm flex items-center gap-2">
             <span class="material-symbols-outlined">two_wheeler</span>
-            Armada Titipan ({{ motors.length }})
+            Armada Mitra ({{ motors.length }})
           </h3>
         </div>
         <div class="divide-y divide-slate-100">
@@ -144,37 +151,193 @@
 
     </div>
 
-    <!-- Modal Payout -->
-    <n-modal v-model:show="showPayoutModal" preset="card" title="Bayar Komisi Vendor" class="max-w-sm" :auto-focus="false" :trap-focus="false">
-      <form @submit.prevent="submitPayout" class="space-y-4">
-        <div class="bg-orange-50 text-orange-600 p-4 rounded-xl border border-orange-100 mb-4 text-center">
-          <p class="text-xs uppercase font-bold tracking-wider mb-1">Total Hutang Komisi</p>
-          <p class="text-2xl font-black font-headline">{{ formatRp(unpaidTotal) }}</p>
+    <!-- Riwayat Payout (Tracing) -->
+    <div class="mt-6 card p-0 overflow-hidden">
+      <div class="p-4 border-b border-slate-100 flex items-center justify-between">
+        <h3 class="font-bold text-slate-700 text-sm flex items-center gap-2">
+          <span class="material-symbols-outlined">receipt_long</span>
+          Riwayat Pencairan Komisi
+        </h3>
+        <span class="text-xs text-slate-400">{{ payoutHistory.length }} pencairan</span>
+      </div>
+
+      <!-- Biaya belum dipotong -->
+      <div v-if="unpaidExpenses.length" class="px-4 py-3 bg-amber-50 border-b border-amber-100">
+        <p class="text-xs font-bold text-amber-700 mb-2 flex items-center gap-1">
+          <span class="material-symbols-outlined text-sm">warning</span>
+          Biaya motor belum masuk ke pencairan manapun (akan dipotong di pencairan berikutnya)
+        </p>
+        <div class="space-y-1">
+          <div v-for="e in unpaidExpenses" :key="e.id"
+            class="flex justify-between text-xs bg-white rounded px-3 py-1.5 border border-amber-100">
+            <span class="text-slate-600">
+              <span class="font-semibold">{{ e.model }}</span>
+              <span class="text-slate-400"> {{ e.plate_number }}</span>
+              · {{ e.category }}{{ e.description ? ' — ' + e.description : '' }}
+              <span class="text-slate-400"> · {{ formatDate(e.date) }}</span>
+            </span>
+            <span class="font-semibold text-amber-600 ml-3">- {{ formatRp(e.amount) }}</span>
+          </div>
         </div>
-        
-        <div>
-          <label class="block text-xs font-bold text-slate-500 mb-1">Nominal yg Dibayar</label>
-          <input type="number" :value="unpaidTotal" readonly class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-slate-50 font-bold text-slate-500" />
-          <p class="text-[10px] text-slate-400 mt-1">Pembayaran harus melunasi seluruh total mengendap.</p>
+      </div>
+      <div v-if="!payoutHistory.length" class="py-10 text-center text-slate-400 text-sm">Belum ada riwayat pencairan</div>
+      <div v-for="(p, idx) in payoutHistory" :key="p.id" class="border-b border-slate-100 last:border-0">
+
+        <!-- Header payout — klik untuk expand -->
+        <div class="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-slate-50 select-none"
+          @click="openIdx = openIdx === idx ? -1 : idx">
+          <div class="flex items-center gap-3">
+            <span class="material-symbols-outlined text-emerald-500 text-xl">check_circle</span>
+            <div>
+              <p class="text-sm font-bold text-slate-700">Pencairan {{ formatDate(p.date) }}</p>
+              <p class="text-xs text-slate-400">
+                via {{ p.cash_account_name }}
+                <template v-if="p.rentals.length">
+                  · Periode {{ formatShortDate(p.rentals[p.rentals.length-1].date_time) }} – {{ formatShortDate(p.rentals[0].date_time) }}
+                </template>
+              </p>
+            </div>
+          </div>
+          <div class="flex items-center gap-4">
+            <div class="text-right">
+              <p class="font-black text-emerald-600 text-base">{{ formatRp(p.amount) }}</p>
+              <p v-if="p.deduction_amount > 0" class="text-xs text-slate-400">
+                Kotor {{ formatRp(p.gross_amount) }} − Potongan {{ formatRp(p.deduction_amount) }}
+              </p>
+              <p v-else class="text-xs text-slate-400">Tanpa potongan</p>
+            </div>
+            <span class="material-symbols-outlined text-slate-400 transition-transform"
+              :style="openIdx === idx ? 'transform:rotate(180deg)' : ''">expand_more</span>
+          </div>
+        </div>
+
+        <!-- Detail expand -->
+        <div v-if="openIdx === idx" class="bg-slate-50 border-t border-slate-100 px-6 py-4">
+
+          <!-- Summary bar -->
+          <div class="flex gap-3 mb-4 text-xs">
+            <template v-if="p.deduction_amount > 0">
+              <div class="flex-1 bg-white rounded-lg border border-slate-200 px-3 py-2">
+                <p class="text-slate-400 font-bold uppercase tracking-wider mb-0.5">Komisi Kotor</p>
+                <p class="font-black text-slate-700">{{ formatRp(p.grossAmount || p.amount) }}</p>
+              </div>
+              <div class="flex-1 bg-white rounded-lg border border-red-100 px-3 py-2">
+                <p class="text-red-400 font-bold uppercase tracking-wider mb-0.5">Total Potongan</p>
+                <p class="font-black text-red-600">- {{ formatRp(p.deduction_amount) }}</p>
+              </div>
+            </template>
+            <div class="flex-1 bg-emerald-50 rounded-lg border border-emerald-200 px-3 py-2">
+              <p class="text-emerald-600 font-bold uppercase tracking-wider mb-0.5">Dibayarkan</p>
+              <p class="font-black text-emerald-700">{{ formatRp(p.amount) }}</p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-6 text-xs">
+            <!-- Asal komisi — hanya tampil kalau ada data -->
+            <div v-if="p.rentals.length">
+              <p class="font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+                <span class="material-symbols-outlined text-sm">two_wheeler</span>
+                Asal Komisi ({{ p.rentals.length }} sewa)
+              </p>
+              <div class="space-y-1">
+                <div v-for="r in p.rentals" :key="r.date_time + r.model"
+                  class="flex justify-between py-1.5 px-2 rounded bg-white border border-slate-100">
+                  <span class="text-slate-600">{{ r.model }} <span class="text-slate-400">{{ r.plate_number }}</span><br>
+                    <span class="text-slate-400">{{ formatShortDate(r.date_time) }} · {{ r.period_days }} hari</span>
+                  </span>
+                  <span class="font-semibold text-emerald-600 whitespace-nowrap ml-2">{{ formatRp(r.owner_gets) }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Biaya dipotong -->
+            <div>
+              <p class="font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+                <span class="material-symbols-outlined text-sm">remove_circle</span>
+                Biaya Dipotong
+              </p>
+              <div v-if="p.deductions.length" class="space-y-1">
+                <div v-for="d in p.deductions" :key="d.category + d.amount"
+                  class="flex justify-between py-1.5 px-2 rounded bg-white border border-red-50">
+                  <span class="text-slate-600">
+                    {{ d.model }} <span class="text-slate-400">{{ d.plate_number }}</span><br>
+                    <span class="text-slate-400">{{ d.category }}{{ d.description ? ' — ' + d.description : '' }} · {{ formatShortDate(d.date) }}</span>
+                  </span>
+                  <span class="font-semibold text-red-500 whitespace-nowrap ml-2">- {{ formatRp(d.amount) }}</span>
+                </div>
+              </div>
+              <div v-else-if="p.deduction_amount > 0" class="py-3 px-2 bg-white rounded border border-slate-100">
+                <p class="text-xs text-slate-500">Total potongan biaya: <span class="font-semibold text-red-500">- {{ formatRp(p.deduction_amount) }}</span></p>
+                <p v-if="p.tx_description" class="text-[10px] text-slate-400 mt-1 italic">{{ p.tx_description }}</p>
+                <p v-else class="text-[10px] text-slate-400 mt-0.5">Detail tidak tersedia (pencairan lama)</p>
+              </div>
+              <div v-else class="py-3 px-2 text-slate-400 italic bg-white rounded border border-slate-100 text-xs">
+                Tidak ada biaya yang dipotong
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Modal Payout -->
+    <n-modal v-model:show="showPayoutModal" preset="card" title="Bayar Komisi Mitra" class="max-w-lg" :auto-focus="false" :trap-focus="false">
+      <div v-if="payoutPreview" class="space-y-4">
+
+        <!-- Breakdown -->
+        <div class="rounded-xl border border-slate-200 overflow-hidden">
+          <div class="bg-slate-50 px-4 py-2 text-xs font-bold text-slate-500 uppercase tracking-wider">Rincian Perhitungan</div>
+          <div class="divide-y divide-slate-100">
+            <div class="flex justify-between px-4 py-3">
+              <span class="text-sm text-slate-600">Komisi Kotor ({{ payoutPreview.rentals.length }} rental)</span>
+              <span class="font-bold text-slate-800">{{ formatRp(payoutPreview.grossCommission) }}</span>
+            </div>
+            <div v-if="payoutPreview.expenses.length" class="px-4 py-3">
+              <div class="flex justify-between mb-2">
+                <span class="text-sm text-red-600">Potongan Pengeluaran Motor</span>
+                <span class="font-bold text-red-600">- {{ formatRp(payoutPreview.totalDeductions) }}</span>
+              </div>
+              <div class="space-y-1 pl-3 border-l-2 border-red-100">
+                <div v-for="e in payoutPreview.expenses" :key="e.id" class="flex justify-between text-xs text-slate-500">
+                  <span>{{ e.model }} · {{ e.category }}{{ e.description ? ' — ' + e.description : '' }}</span>
+                  <span class="text-red-500 font-semibold">- {{ formatRp(e.amount) }}</span>
+                </div>
+              </div>
+            </div>
+            <div class="flex justify-between px-4 py-3 bg-emerald-50">
+              <span class="text-sm font-bold text-emerald-700">Yang Dibayarkan (Bersih)</span>
+              <span class="text-lg font-black text-emerald-700">{{ formatRp(payoutPreview.netAmount) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="payoutPreview.netAmount === 0" class="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg p-3">
+          Komisi habis dipotong pengeluaran. Tidak ada yang perlu dibayarkan.
         </div>
 
         <div>
-          <label class="block text-xs font-bold text-slate-500 mb-1">Pilih Sumber Dana (Kas)</label>
-          <select v-model="payoutForm.cash_account_id" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required>
+          <label class="block text-xs font-bold text-slate-500 mb-1">Sumber Dana (Kas)</label>
+          <select v-model="payoutForm.cash_account_id" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" :required="payoutPreview.netAmount > 0">
             <option value="">— Pilih Kas —</option>
             <option v-for="c in cashAccounts" :key="c.id" :value="c.id">
               {{ c.name }} (Saldo: {{ formatRp(c.balance) }})
             </option>
           </select>
         </div>
-        
+
+        <p v-if="payoutError" class="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{{ payoutError }}</p>
         <div class="flex justify-end gap-3 pt-2">
           <button type="button" @click="showPayoutModal = false" class="btn-secondary">Batal</button>
-          <button type="submit" class="btn-primary flex items-center gap-2 px-5 font-bold">
-            <span class="material-symbols-outlined">payments</span> Bayar Lunas
+          <button @click="submitPayout"
+            :disabled="payoutPreview.netAmount > 0 && !payoutForm.cash_account_id"
+            :class="['btn-primary flex items-center gap-2 px-5 font-bold', (payoutPreview.netAmount > 0 && !payoutForm.cash_account_id) ? 'opacity-50 cursor-not-allowed' : '']">
+            <span class="material-symbols-outlined">payments</span>
+            {{ payoutPreview.netAmount > 0 ? 'Bayar ' + formatRp(payoutPreview.netAmount) : 'Tandai Lunas (Rp 0)' }}
           </button>
         </div>
-      </form>
+      </div>
+      <div v-else class="py-8 text-center text-slate-400">Memuat preview...</div>
     </n-modal>
 
   </div>
@@ -183,7 +346,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { formatRp, today } from '../utils/format'
+import { formatRp, formatDate, today } from '../utils/format'
 
 const route = useRoute()
 const router = useRouter()
@@ -193,25 +356,28 @@ const owner = ref(null)
 const motors = ref([])
 const historyData = ref([])
 const cashAccounts = ref([])
+const payoutHistory = ref([])
+const unpaidExpenses = ref([])
+const payoutPreview = ref(null)
+const openIdx = ref(-1)
+const payoutError = ref('')
+const payoutSuccessMsg = ref('')
 
 const historyFilter = ref({ startDate: '', endDate: '' })
 const showPayoutModal = ref(false)
 const payoutForm = ref({ cash_account_id: '' })
 
-// Paginasi
 const currentPage = ref(1)
 const itemsPerPage = 10
-
 const totalPages = computed(() => Math.ceil(historyData.value.length / itemsPerPage))
-
 const paginatedHistory = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage
   return historyData.value.slice(start, start + itemsPerPage)
 })
 
-const unpaidTotal = computed(() => {
-  return historyData.value.filter(h => !h.is_paid).reduce((sum, h) => sum + h.owner_gets, 0)
-})
+const unpaidTotal = computed(() =>
+  historyData.value.filter(h => !h.is_paid).reduce((sum, h) => sum + h.owner_gets, 0)
+)
 
 function formatShortDate(dateStr) {
   const d = new Date(dateStr)
@@ -229,39 +395,53 @@ async function loadData() {
   motors.value = res.motors
   cashAccounts.value = await window.api.getCashAccounts()
   await loadHistory()
+  await loadPayoutHistory()
 }
 
 async function loadHistory() {
   historyData.value = await window.api.getOwnerCommission({
-    ownerId: ownerId,
+    ownerId,
     startDate: historyFilter.value.startDate || null,
     endDate: historyFilter.value.endDate || null
   })
-  currentPage.value = 1 // Reset pagination upon fetching new data
+  currentPage.value = 1
 }
 
-function openPayout() {
-  payoutForm.value = { cash_account_id: '' }
+async function loadPayoutHistory() {
+  const raw = await window.api.getPayoutHistory({ ownerId })
+  payoutHistory.value = raw.payouts || raw
+  unpaidExpenses.value = raw.unpaidExpenses || []
+}
+
+async function openPayout() {
+  payoutPreview.value = null
+  payoutError.value = ''
   showPayoutModal.value = true
+  payoutForm.value = { cash_account_id: '' }
+  payoutPreview.value = await window.api.getPayoutPreview({ ownerId })
 }
 
 async function submitPayout() {
   try {
+    const preview = payoutPreview.value
     await window.api.payoutOwner({
       owner_id: ownerId,
-      amount: unpaidTotal.value,
+      owner_name: owner.value.name,
+      net_amount: preview.netAmount,
+      gross_amount: preview.grossCommission,
+      deduction_amount: preview.totalDeductions,
+      expense_ids: preview.expenses.map(e => e.id),
       cash_account_id: payoutForm.value.cash_account_id,
       date: today()
     })
     showPayoutModal.value = false
-    await loadData() // reload balance and history
-    alert('Pembayaran komisi berhasil dicatat dan lunas!')
+    payoutSuccessMsg.value = 'Pembayaran komisi berhasil dicatat!'
+    setTimeout(() => { payoutSuccessMsg.value = '' }, 4000)
+    await loadData()
   } catch (err) {
-    alert(err.message.replace('Error invoking remote method \'owner:payout\': Error: ', ''))
+    payoutError.value = err.message.replace("Error invoking remote method 'owner:payout': Error: ", '')
   }
 }
 
-onMounted(() => {
-  loadData()
-})
+onMounted(() => loadData())
 </script>

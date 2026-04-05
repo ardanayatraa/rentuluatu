@@ -1,0 +1,11 @@
+WAVY MOTOR RENTAL MANAGEMENT SYSTEM
+====================================
+
+Aplikasi ini dikembangkan untuk keperluan manajemen rental motor.
+
+Dengan menginstal aplikasi ini, Anda menyetujui bahwa:
+- Aplikasi ini hanya untuk penggunaan internal bisnis Anda
+- Data yang tersimpan adalah tanggung jawab pengguna
+- Backup data secara berkala sangat dianjurkan
+
+© 2026 Wavy Rental. All rights reserved.

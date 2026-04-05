@@ -8,6 +8,8 @@ import { registerAuthHandlers } from './auth'
 import { registerReportHandlers } from './reports'
 import { registerDashboardHandlers } from './dashboard'
 import { registerResetHandlers } from './reset'
+import { registerBackupHandlers } from './backup'
+import './export'
 
 export function registerAllHandlers() {
   registerAuthHandlers()
@@ -20,4 +22,5 @@ export function registerAllHandlers() {
   registerReportHandlers()
   registerDashboardHandlers()
   registerResetHandlers()
+  registerBackupHandlers()
 }

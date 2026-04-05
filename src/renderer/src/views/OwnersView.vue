@@ -2,8 +2,8 @@
   <div>
     <div class="mb-8 flex justify-between items-end">
       <div>
-        <h2 class="page-title">Pemilik Motor</h2>
-        <p class="text-slate-500 text-sm mt-1">Data vendor / pemilik motor titipan</p>
+        <h2 class="page-title">Mitra</h2>
+        <p class="text-slate-500 text-sm mt-1">Data mitra / pemilik motor titipan</p>
       </div>
       <button @click="openAdd" class="btn-primary">
         <span class="material-symbols-outlined">add</span>

@@ -3,28 +3,31 @@
     <!-- Sidebar -->
     <aside class="w-64 flex-shrink-0 bg-primary flex flex-col py-8 z-50 shadow-xl">
       <!-- Logo -->
-      <div class="px-6 mb-10 flex items-center gap-3">
-        <div class="w-10 h-10 bg-white/10 rounded-lg flex items-center justify-center">
-          <span class="text-white font-black text-lg font-headline italic">W</span>
-        </div>
-        <div>
-          <h1 class="text-2xl font-black text-white italic leading-none font-headline">WAVY</h1>
-          <p class="text-[10px] text-blue-200/60 uppercase tracking-widest font-bold">Motor Rental</p>
+      <div class="px-6 mb-8 flex items-center gap-3">
+        <img src="../assets/logo.png" alt="Wavy Logo" class="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
+        <div class="min-w-0">
+          <h1 class="text-sm font-black text-white leading-tight font-headline">The Wavy Rental</h1>
+          <p class="text-[9px] text-blue-200/50 font-bold truncate">PT. Artha Bali Wisata</p>
         </div>
       </div>
 
       <!-- Nav -->
-      <nav class="flex-1 space-y-1 px-4">
-        <router-link
-          v-for="item in navItems"
-          :key="item.to"
-          :to="item.to"
-          class="sidebar-link"
-          active-class="active"
-        >
-          <span class="material-symbols-outlined">{{ item.icon }}</span>
-          <span class="text-sm font-medium">{{ item.label }}</span>
-        </router-link>
+      <nav class="flex-1 px-4 overflow-y-auto space-y-5">
+        <div v-for="group in navGroups" :key="group.label">
+          <p class="text-[9px] font-bold uppercase tracking-[0.15em] text-blue-200/30 px-2 mb-1">{{ group.label }}</p>
+          <div class="space-y-0.5">
+            <router-link
+              v-for="item in group.items"
+              :key="item.to"
+              :to="item.to"
+              class="sidebar-link"
+              active-class="active"
+            >
+              <span class="material-symbols-outlined text-[18px]">{{ item.icon }}</span>
+              <span class="text-sm font-medium">{{ item.label }}</span>
+            </router-link>
+          </div>
+        </div>
       </nav>
 
       <!-- Footer -->
@@ -72,7 +75,7 @@
             <li>
               <div>
                 <strong class="text-slate-700">Sistem Payout Komisi</strong>
-                <p class="text-xs text-slate-500 mt-0.5">Pembayaran klaim komisi ke vendor terintegrasi langsung dengan pemotongan saldo kas perusahaan.</p>
+                <p class="text-xs text-slate-500 mt-0.5">Pembayaran klaim komisi ke mitra terintegrasi langsung dengan pemotongan saldo kas perusahaan.</p>
               </div>
             </li>
             <li>
@@ -113,15 +116,40 @@ const auth = useAuthStore()
 const router = useRouter()
 const showChangelog = ref(false)
 
-const navItems = [
-  { to: '/dashboard', icon: 'dashboard', label: 'Dashboard' },
-  { to: '/daily-record', icon: 'receipt_long', label: 'Daily Record' },
-  { to: '/motors', icon: 'two_wheeler', label: 'Manajemen Motor' },
-  { to: '/owners', icon: 'person_pin', label: 'Pemilik Motor' },
-  { to: '/kas', icon: 'account_balance_wallet', label: 'Manajemen Kas' },
-  { to: '/expenses', icon: 'payments', label: 'Pengeluaran' },
-  { to: '/reports', icon: 'assessment', label: 'Laporan' },
-  { to: '/settings', icon: 'settings', label: 'Pengaturan' }
+const navGroups = [
+  {
+    label: 'Utama',
+    items: [
+      { to: '/dashboard', icon: 'dashboard', label: 'Dashboard' },
+    ]
+  },
+  {
+    label: 'Operasional',
+    items: [
+      { to: '/daily-record', icon: 'receipt_long', label: 'Transaksi Sewa' },
+      { to: '/expenses', icon: 'payments', label: 'Pengeluaran' },
+      { to: '/kas', icon: 'account_balance_wallet', label: 'Kas & Keuangan' },
+    ]
+  },
+  {
+    label: 'Armada',
+    items: [
+      { to: '/motors', icon: 'two_wheeler', label: 'Motor' },
+      { to: '/owners', icon: 'handshake', label: 'Mitra' },
+    ]
+  },
+  {
+    label: 'Analitik',
+    items: [
+      { to: '/reports', icon: 'bar_chart', label: 'Laporan' },
+    ]
+  },
+  {
+    label: 'Sistem',
+    items: [
+      { to: '/settings', icon: 'settings', label: 'Pengaturan' },
+    ]
+  }
 ]
 
 function handleLogout() {

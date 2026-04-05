@@ -42,16 +42,23 @@ export function registerRentalHandlers() {
     const { sisa, wavy_gets, owner_gets } = calcCommission(
       motor.type, data.total_price, data.vendor_fee || 0
     )
-
     const pricePerDay = data.period_days > 0 ? data.total_price / data.period_days : data.total_price
+
+    // Generate invoice number: WVY-YYYY-MM-XXXX
+    const dt = new Date(data.date_time)
+    const yr = dt.getFullYear()
+    const mo = String(dt.getMonth() + 1).padStart(2, '0')
+    const existing = dbOps.get("SELECT COUNT(*) as c FROM rentals WHERE invoice_number LIKE ?", [`WVY-${yr}-${mo}-%`])
+    const seq = String((existing?.c || 0) + 1).padStart(4, '0')
+    const invoiceNumber = `WVY-${yr}-${mo}-${seq}`
 
     dbOps.run(`
       INSERT INTO rentals (date_time, customer_name, hotel, motor_id, period_days,
-        payment_method, total_price, price_per_day, vendor_fee, sisa, wavy_gets, owner_gets, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        payment_method, total_price, price_per_day, vendor_fee, sisa, wavy_gets, owner_gets, status, invoice_number)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [data.date_time, data.customer_name, data.hotel || null, data.motor_id,
         data.period_days, data.payment_method, data.total_price, pricePerDay,
-        data.vendor_fee || 0, sisa, wavy_gets, owner_gets, data.status || 'completed'])
+        data.vendor_fee || 0, sisa, wavy_gets, owner_gets, data.status || 'completed', invoiceNumber])
 
     const { id: rentalId } = dbOps.get('SELECT last_insert_rowid() as id')
 
@@ -64,7 +71,7 @@ export function registerRentalHandlers() {
       dbOps.run('UPDATE cash_accounts SET balance = balance + ? WHERE id = ?', [data.total_price, cashAccount.id])
     }
 
-    return { id: rentalId }
+    return { id: rentalId, invoice_number: invoiceNumber }
   })
 
   ipcMain.handle('rental:update', (_, { id, ...data }) => {

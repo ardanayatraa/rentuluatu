@@ -1,5 +1,5 @@
 appId: com.wavy.rental
-productName: Wavy
+productName: Wavy - CashFlow Monitoring
 directories:
   buildResources: build
 files:
@@ -14,11 +14,16 @@ asarUnpack:
   - node_modules/sql.js/dist/sql-wasm.wasm
 win:
   executableName: wavy
+  forceCodeSigning: false
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
+  runAfterFinish: true
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  license: build/license.txt
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:

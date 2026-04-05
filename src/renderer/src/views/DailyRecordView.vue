@@ -32,6 +32,7 @@
       <table class="w-full text-left">
         <thead>
           <tr class="bg-slate-50 text-slate-400 text-xs uppercase font-bold">
+            <th class="px-6 py-4">No. Invoice</th>
             <th class="px-6 py-4">Tanggal</th>
             <th class="px-6 py-4">Pelanggan</th>
             <th class="px-6 py-4">Hotel</th>
@@ -47,6 +48,7 @@
         </thead>
         <tbody class="divide-y divide-slate-50">
           <tr v-for="r in rentals" :key="r.id" class="hover:bg-slate-50 transition-colors text-sm">
+            <td class="px-6 py-4 font-mono text-xs text-slate-500">{{ r.invoice_number || '-' }}</td>
             <td class="px-6 py-4 text-slate-500">{{ formatDate(r.date_time) }}</td>
             <td class="px-6 py-4 font-medium">{{ r.customer_name }}</td>
             <td class="px-6 py-4 text-slate-500">{{ r.hotel || '-' }}</td>
@@ -139,7 +141,7 @@
             <input v-model.number="form.total_price" type="number" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required />
           </div>
           <div>
-            <label class="block text-xs font-bold text-slate-500 mb-1">Vendor Fee (Rp)</label>
+            <label class="block text-xs font-bold text-slate-500 mb-1">Komisi Hotel (Rp)</label>
             <input v-model.number="form.vendor_fee" type="number" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
           </div>
           <div class="col-span-2">
@@ -169,7 +171,7 @@
             <span class="font-bold">{{ formatRp(form.total_price) }}</span>
           </div>
           <div class="flex justify-between">
-            <span class="text-slate-500">Vendor Fee</span>
+            <span class="text-slate-500">Komisi Hotel</span>
             <span class="text-red-500">- {{ formatRp(form.vendor_fee || 0) }}</span>
           </div>
           <div class="flex justify-between border-t border-slate-200 pt-1.5">
@@ -227,6 +229,7 @@
           <span class="text-slate-500">Jumlah Refund</span>
           <span class="font-black text-red-600">{{ formatRp(calcRefundAmount()) }}</span>
         </div>
+        <p v-if="refundError" class="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{{ refundError }}</p>
         <div class="flex justify-end gap-3">
           <button @click="showRefundModal = false" class="btn-secondary">Batal</button>
           <button @click="submitRefund" class="btn-primary !bg-red-600 hover:!bg-red-700">Proses Refund</button>
@@ -261,6 +264,7 @@ const form = ref({
   payment_method: 'tunai'
 })
 const refundForm = ref({ remaining_days: 1, percentage: 100, custom_amount: 0, reason: '' })
+const refundError = ref('')
 
 // Filter motor by search (model atau plat)
 const filteredMotors = computed(() => {
@@ -338,10 +342,12 @@ async function submitRental() {
 function openRefund(rental) {
   selectedRental.value = rental
   refundForm.value = { remaining_days: 1, percentage: 100, custom_amount: 0, reason: '' }
+  refundError.value = ''
   showRefundModal.value = true
 }
 
 async function submitRefund() {
+  refundError.value = ''
   try {
     await window.api.createRefund({
       rental_id: selectedRental.value.id,
@@ -353,7 +359,7 @@ async function submitRefund() {
     showRefundModal.value = false
     await loadRentals()
   } catch (err) {
-    alert(err.message.replace('Error invoking remote method \'refund:create\': Error: ', ''))
+    refundError.value = err.message.replace("Error invoking remote method 'refund:create': Error: ", '')
   }
 }
 
