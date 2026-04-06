@@ -144,8 +144,13 @@ export function registerReportHandlers() {
 
   // Laporan per pemilik motor
   ipcMain.handle('report:owner-summary', (_, { startDate, endDate, ownerId }) => {
-    let ownerFilter = ownerId ? 'AND o.id = ?' : ''
-    const params = ownerId ? [startDate, endDate, startDate.split('T')[0], endDate.split('T')[0], ownerId] : [startDate, endDate, startDate.split('T')[0], endDate.split('T')[0]]
+    const sd = startDate.split('T')[0]
+    const ed = endDate.split('T')[0]
+    const ownerFilter = ownerId ? 'AND o.id = ?' : ''
+    // FIX: bind params harus sesuai urutan placeholder di query
+    // subquery pakai sd/ed (date only), JOIN rentals pakai startDate/endDate (datetime)
+    const params = [sd, ed, sd, ed, startDate, endDate]
+    if (ownerId) params.push(ownerId)
 
     return dbOps.all(`
       SELECT o.id, o.name, o.phone, o.bank_name, o.bank_account,
@@ -170,7 +175,7 @@ export function registerReportHandlers() {
       WHERE o.is_active = 1 ${ownerFilter}
       GROUP BY o.id
       ORDER BY gross_commission DESC
-    `, [...params, startDate, endDate, ...(ownerId ? [ownerId] : [])])
+    `, params)
   })
 
   // Laporan Laba Rugi

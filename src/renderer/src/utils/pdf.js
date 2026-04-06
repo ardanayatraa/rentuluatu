@@ -110,8 +110,8 @@ function printWindow(html) {
     </style>
   </head><body>
     <div class="print-bar">
-      <button class="btn-save" onclick="window.print()">⬇ Simpan PDF</button>
-      <button class="btn-close" onclick="window.close()">✕ Tutup</button>
+      <button class="btn-save" onclick="window.print()">Simpan PDF</button>
+      <button class="btn-close" onclick="window.close()">Tutup</button>
       <span>Gunakan "Save as PDF" di dialog print</span>
     </div>
     ${html}
@@ -398,3 +398,25 @@ export function buildOwnerReportHtml({ rows, period }) {
   ${footerHtml()}`
 }
 export function printOwnerReport(args) { printWindow(buildOwnerReportHtml(args)) }
+
+// ─── 9. Ranking Motor ──────────────────────────────────────────────────────
+export function buildRankingHtml({ rows, period }) {
+  const rowsHtml = rows.map((m, i) => `<tr>
+    <td style="font-weight:700;color:#94a3b8">${i + 1}</td>
+    <td>${m.model} <span style="color:#94a3b8">${m.plate_number}</span></td>
+    <td><span class="badge">${m.type}</span></td>
+    <td class="right">${m.total_rentals}x</td>
+    <td class="right">${m.total_days} hari</td>
+    <td class="right" style="font-weight:700">${rp(m.total_wavy)}</td>
+    <td class="right">${rp(m.total_owner)}</td>
+  </tr>`).join('')
+  return `${headerHtml('Ranking Motor', period)}
+  <table><thead><tr>
+    <th>#</th><th>Motor</th><th>Tipe</th>
+    <th class="right">Total Rental</th><th class="right">Total Hari</th>
+    <th class="right">Wavy Gets</th><th class="right">Owner Gets</th>
+  </tr></thead><tbody>
+    ${rowsHtml || '<tr><td colspan="7" style="text-align:center;padding:20px;color:#888">Tidak ada data</td></tr>'}
+  </tbody></table>
+  ${footerHtml()}`
+}

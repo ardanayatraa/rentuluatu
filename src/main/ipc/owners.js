@@ -1,14 +1,15 @@
 import { ipcMain } from 'electron'
-import { dbOps } from '../db'
+import { dbOps, saveDb } from '../db'
 
 export function registerOwnerHandlers() {
-  ipcMain.handle('owner:get-all', () => {
+  ipcMain.handle('owner:get-all', (_, { activeOnly = false } = {}) => {
+    const where = activeOnly ? 'WHERE o.is_active = 1' : ''
     return dbOps.all(`
       SELECT o.*, 
         (SELECT COALESCE(SUM(r.owner_gets), 0) FROM rentals r 
          JOIN motors m ON r.motor_id = m.id 
          WHERE m.owner_id = o.id AND r.payout_id IS NULL AND r.status != 'refunded') as unpaid_commission
-      FROM owners o ORDER BY name ASC
+      FROM owners o ${where} ORDER BY name ASC
     `)
   })
 
@@ -19,11 +20,12 @@ export function registerOwnerHandlers() {
   })
 
   ipcMain.handle('owner:create', (_, data) => {
-    dbOps.run(
+    dbOps.runRaw(
       'INSERT INTO owners (name, phone, bank_account, bank_name) VALUES (?, ?, ?, ?)',
       [data.name, data.phone, data.bank_account, data.bank_name]
     )
     const row = dbOps.get('SELECT last_insert_rowid() as id')
+    saveDb()
     return { id: row.id }
   })
 
@@ -36,8 +38,24 @@ export function registerOwnerHandlers() {
   })
 
   ipcMain.handle('owner:delete', (_, id) => {
-    dbOps.run('UPDATE owners SET is_active = 0 WHERE id = ?', [id])
-    return { success: true }
+    // Cek apakah owner punya motor atau riwayat payout
+    const hasMotors = dbOps.get('SELECT id FROM motors WHERE owner_id = ? LIMIT 1', [id])
+    const hasPayouts = dbOps.get('SELECT id FROM payouts WHERE owner_id = ? LIMIT 1', [id])
+    const hasRentals = dbOps.get(`
+      SELECT r.id FROM rentals r
+      JOIN motors m ON r.motor_id = m.id
+      WHERE m.owner_id = ? LIMIT 1
+    `, [id])
+
+    if (hasMotors || hasPayouts || hasRentals) {
+      // Ada data terkait → soft delete saja
+      dbOps.run('UPDATE owners SET is_active = 0 WHERE id = ?', [id])
+      return { success: true, softDeleted: true }
+    }
+
+    // Tidak ada data terkait → hard delete
+    dbOps.run('DELETE FROM owners WHERE id = ?', [id])
+    return { success: true, softDeleted: false }
   })
 
   ipcMain.handle('owner:get-payout-history', (_, { ownerId }) => {
@@ -137,47 +155,70 @@ export function registerOwnerHandlers() {
   ipcMain.handle('owner:payout', (_, data) => {
     const cashAccount = dbOps.get('SELECT * FROM cash_accounts WHERE id = ?', [data.cash_account_id])
     if (!cashAccount) throw new Error('Akun kas tidak ditemukan')
-    if (cashAccount.balance < data.net_amount) {
+
+    // FIX: Recalculate server-side — jangan percaya net_amount dari client
+    const validRentals = dbOps.all(`
+      SELECT id, owner_gets FROM rentals
+      WHERE payout_id IS NULL AND status != 'refunded' AND owner_gets > 0
+      AND motor_id IN (SELECT id FROM motors WHERE owner_id = ?)
+    `, [data.owner_id])
+
+    const validExpenses = data.expense_ids && data.expense_ids.length > 0
+      ? dbOps.all(
+          `SELECT id, amount FROM expenses WHERE id IN (${data.expense_ids.map(() => '?').join(',')}) AND payout_id IS NULL`,
+          data.expense_ids
+        )
+      : []
+
+    const serverGross = validRentals.reduce((s, r) => s + (r.owner_gets || 0), 0)
+    const serverDeductions = validExpenses.reduce((s, e) => s + (e.amount || 0), 0)
+    const serverNetAmount = Math.max(0, serverGross - serverDeductions)
+
+    // Toleransi Rp 1 untuk floating point
+    if (Math.abs(serverNetAmount - data.net_amount) > 1) {
+      throw new Error(`Jumlah payout tidak sesuai. Server menghitung Rp ${serverNetAmount.toLocaleString('id-ID')}`)
+    }
+
+    if (serverNetAmount > 0 && cashAccount.balance < serverNetAmount) {
       throw new Error(`Saldo Kas ${cashAccount.name} tidak cukup! (Sisa: Rp ${cashAccount.balance.toLocaleString('id-ID')})`)
     }
 
     // Simpan payout dengan gross dan deduction
-    dbOps.run(
+    dbOps.runRaw(
       'INSERT INTO payouts (owner_id, amount, gross_amount, deduction_amount, cash_account_id, date) VALUES (?, ?, ?, ?, ?, ?)',
-      [data.owner_id, data.net_amount, data.gross_amount, data.deduction_amount, data.cash_account_id, data.date]
+      [data.owner_id, serverNetAmount, serverGross, serverDeductions, data.cash_account_id, data.date]
     )
     const { id: payoutId } = dbOps.get('SELECT last_insert_rowid() as id')
+    saveDb()
 
-    // Tandai rentals sebagai lunas
-    dbOps.run(`
-      UPDATE rentals SET payout_id = ?
-      WHERE payout_id IS NULL AND status != 'refunded' AND owner_gets > 0
-      AND motor_id IN (SELECT id FROM motors WHERE owner_id = ?)
-    `, [payoutId, data.owner_id])
-
-    // Catat potongan pengeluaran dan tandai expense sebagai sudah dipotong
-    if (data.expense_ids && data.expense_ids.length > 0) {
-      for (const expId of data.expense_ids) {
-        const exp = dbOps.get('SELECT * FROM expenses WHERE id = ?', [expId])
-        if (exp) {
-          dbOps.run(
-            'INSERT INTO payout_deductions (payout_id, expense_id, amount) VALUES (?, ?, ?)',
-            [payoutId, expId, exp.amount]
-          )
-          dbOps.run('UPDATE expenses SET payout_id = ? WHERE id = ?', [payoutId, expId])
-        }
-      }
+    // Tandai rentals sebagai lunas (hanya yang sudah divalidasi)
+    if (validRentals.length > 0) {
+      const rentalIds = validRentals.map(r => r.id)
+      const placeholders = rentalIds.map(() => '?').join(',')
+      dbOps.run(
+        `UPDATE rentals SET payout_id = ? WHERE id IN (${placeholders})`,
+        [payoutId, ...rentalIds]
+      )
     }
 
-    // Catat cash transaction (jumlah bersih yang keluar)
-    dbOps.run(`
-      INSERT INTO cash_transactions (cash_account_id, type, amount, reference_type, reference_id, description, date)
-      VALUES (?, 'out', ?, 'owner_payout', ?, ?, ?)
-    `, [data.cash_account_id, data.net_amount, payoutId,
-        `Komisi ${data.owner_name || 'Vendor'} (Kotor: ${data.gross_amount.toLocaleString('id-ID')} - Potongan: ${data.deduction_amount.toLocaleString('id-ID')})`,
-        data.date])
+    // Catat potongan pengeluaran dan tandai expense sebagai sudah dipotong
+    for (const exp of validExpenses) {
+      dbOps.run(
+        'INSERT INTO payout_deductions (payout_id, expense_id, amount) VALUES (?, ?, ?)',
+        [payoutId, exp.id, exp.amount]
+      )
+      dbOps.run('UPDATE expenses SET payout_id = ? WHERE id = ?', [payoutId, exp.id])
+    }
 
-    dbOps.run('UPDATE cash_accounts SET balance = balance - ? WHERE id = ?', [data.net_amount, data.cash_account_id])
+    if (serverNetAmount > 0) {
+      dbOps.run(`
+        INSERT INTO cash_transactions (cash_account_id, type, amount, reference_type, reference_id, description, date)
+        VALUES (?, 'out', ?, 'owner_payout', ?, ?, ?)
+      `, [data.cash_account_id, serverNetAmount, payoutId,
+          `Komisi ${data.owner_name || 'Vendor'} (Kotor: ${serverGross.toLocaleString('id-ID')} - Potongan: ${serverDeductions.toLocaleString('id-ID')})`,
+          data.date])
+      dbOps.run('UPDATE cash_accounts SET balance = balance - ? WHERE id = ?', [serverNetAmount, data.cash_account_id])
+    }
 
     return { success: true, payoutId }
   })

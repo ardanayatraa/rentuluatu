@@ -9,6 +9,11 @@ export function registerCashHandlers() {
   ipcMain.handle('cash:set-opening-balance', (_, { accountId, amount }) => {
     const account = dbOps.get('SELECT * FROM cash_accounts WHERE id = ?', [accountId])
     if (!account) throw new Error('Akun tidak ditemukan')
+    // FIX: Hapus transaksi opening_balance lama agar tidak double
+    dbOps.run(
+      "DELETE FROM cash_transactions WHERE cash_account_id = ? AND reference_type = 'opening_balance'",
+      [accountId]
+    )
     dbOps.run('UPDATE cash_accounts SET balance = ? WHERE id = ?', [amount, accountId])
     const today = new Date().toISOString().split('T')[0]
     dbOps.run(`

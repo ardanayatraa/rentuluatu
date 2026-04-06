@@ -237,9 +237,16 @@ async function loadExpenses() {
 
 async function submitExpense() {
   const data = { ...form.value }
-  if (data.category === '__lainnya') {
-    data.category = customCategory.value || 'lainnya'
+  if (data.type === 'motor' && !data.motor_id) {
+    formError.value = 'Pilih motor terlebih dahulu'
+    return
   }
+  if (data.category === '__lainnya') {
+    if (!customCategory.value.trim()) { formError.value = 'Nama kategori tidak boleh kosong'; return }
+    data.category = customCategory.value.trim()
+  }
+  // Kirim motor_id null jika tipe umum
+  if (data.type === 'umum') data.motor_id = null
   formError.value = ''
   try {
     await window.api.createExpense(data)

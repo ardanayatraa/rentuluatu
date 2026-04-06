@@ -52,7 +52,7 @@
             </td>
           </tr>
           <tr v-if="!owners.length">
-            <td colspan="6" class="px-6 py-12 text-center text-slate-400">Belum ada data pemilik</td>
+            <td colspan="7" class="px-6 py-12 text-center text-slate-400">Belum ada data pemilik</td>
           </tr>
         </tbody>
       </table>
@@ -131,7 +131,11 @@ function openDetail(id) {
 }
 
 async function deleteOwner(id) {
-  await window.api.deleteOwner(id)
+  if (!confirm('Yakin ingin menghapus pemilik ini?\n\nJika pemilik memiliki motor atau riwayat transaksi, data akan dinonaktifkan (tidak dihapus permanen).')) return
+  const result = await window.api.deleteOwner(id)
+  if (result.softDeleted) {
+    alert('Pemilik dinonaktifkan karena memiliki data terkait (motor/transaksi).')
+  }
   owners.value = await window.api.getOwners()
 }
 

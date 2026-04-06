@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { dbOps } from '../db'
+import { dbOps, saveDb } from '../db'
 
 export function registerExpenseHandlers() {
   ipcMain.handle('expense:get-all', (_, filters = {}) => {
@@ -23,11 +23,12 @@ export function registerExpenseHandlers() {
       }
     }
 
-    dbOps.run(
+    dbOps.runRaw(
       'INSERT INTO expenses (type, motor_id, category, amount, payment_method, description, date) VALUES (?, ?, ?, ?, ?, ?, ?)',
       [data.type, data.motor_id || null, data.category, data.amount, data.payment_method, data.description, data.date]
     )
     const { id: expenseId } = dbOps.get('SELECT last_insert_rowid() as id')
+    saveDb()
 
     if (cashAccount) {
       dbOps.run(`

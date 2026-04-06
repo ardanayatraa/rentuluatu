@@ -1,21 +1,15 @@
 import { ipcMain } from 'electron'
-import { dbOps } from '../db'
-
-function calcCommission(motorType, totalPrice, vendorFee) {
-  const sisa = totalPrice - vendorFee
-  const wavyPct = motorType === 'pribadi' ? 0.20 : 0.30
-  return {
-    sisa,
-    wavy_gets: sisa * wavyPct,
-    owner_gets: sisa * (1 - wavyPct)
-  }
-}
+import { dbOps, saveDb } from '../db'
+import { calcCommission } from '../lib/finance'
 
 export function registerRentalHandlers() {
   ipcMain.handle('rental:get-all', (_, filters = {}) => {
     let query = `
-      SELECT r.*, m.model, m.plate_number, m.type as motor_type
-      FROM rentals r JOIN motors m ON r.motor_id = m.id WHERE 1=1
+      SELECT r.*, m.model, m.plate_number, m.type as motor_type, h.name as vendor_name
+      FROM rentals r 
+      JOIN motors m ON r.motor_id = m.id 
+      LEFT JOIN hotels h ON r.hotel_id = h.id 
+      WHERE 1=1
     `
     const params = []
     if (filters.startDate) { query += ' AND r.date_time >= ?'; params.push(filters.startDate) }
@@ -39,8 +33,13 @@ export function registerRentalHandlers() {
     const motor = dbOps.get('SELECT * FROM motors WHERE id = ?', [data.motor_id])
     if (!motor) throw new Error('Motor tidak ditemukan')
 
+    // FIX #3: Validasi vendor_fee tidak boleh melebihi total_price
+    const vendorFee = data.vendor_fee || 0
+    if (vendorFee < 0) throw new Error('Vendor fee tidak boleh negatif')
+    if (vendorFee > data.total_price) throw new Error('Vendor fee tidak boleh melebihi total harga sewa')
+
     const { sisa, wavy_gets, owner_gets } = calcCommission(
-      motor.type, data.total_price, data.vendor_fee || 0
+      motor.type, data.total_price, vendorFee
     )
     const pricePerDay = data.period_days > 0 ? data.total_price / data.period_days : data.total_price
 
@@ -52,15 +51,16 @@ export function registerRentalHandlers() {
     const seq = String((existing?.c || 0) + 1).padStart(4, '0')
     const invoiceNumber = `WVY-${yr}-${mo}-${seq}`
 
-    dbOps.run(`
-      INSERT INTO rentals (date_time, customer_name, hotel, motor_id, period_days,
+    dbOps.runRaw(`
+      INSERT INTO rentals (date_time, customer_name, hotel, hotel_id, motor_id, period_days,
         payment_method, total_price, price_per_day, vendor_fee, sisa, wavy_gets, owner_gets, status, invoice_number)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [data.date_time, data.customer_name, data.hotel || null, data.motor_id,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [data.date_time, data.customer_name, data.hotel || null, data.hotel_id || null, data.motor_id,
         data.period_days, data.payment_method, data.total_price, pricePerDay,
-        data.vendor_fee || 0, sisa, wavy_gets, owner_gets, data.status || 'completed', invoiceNumber])
+        vendorFee, sisa, wavy_gets, owner_gets, data.status || 'completed', invoiceNumber])
 
     const { id: rentalId } = dbOps.get('SELECT last_insert_rowid() as id')
+    saveDb()
 
     const cashAccount = dbOps.get('SELECT * FROM cash_accounts WHERE type = ?', [data.payment_method])
     if (cashAccount) {
@@ -76,16 +76,21 @@ export function registerRentalHandlers() {
 
   ipcMain.handle('rental:update', (_, { id, ...data }) => {
     const motor = dbOps.get('SELECT * FROM motors WHERE id = ?', [data.motor_id])
+    // FIX #3: Validasi vendor_fee saat update juga
+    const vendorFee = data.vendor_fee || 0
+    if (vendorFee < 0) throw new Error('Vendor fee tidak boleh negatif')
+    if (vendorFee > data.total_price) throw new Error('Vendor fee tidak boleh melebihi total harga sewa')
+
     const { sisa, wavy_gets, owner_gets } = calcCommission(
-      motor.type, data.total_price, data.vendor_fee || 0
+      motor.type, data.total_price, vendorFee
     )
     const pricePerDay = data.period_days > 0 ? data.total_price / data.period_days : data.total_price
     dbOps.run(`
-      UPDATE rentals SET date_time=?, customer_name=?, hotel=?, motor_id=?, period_days=?,
+      UPDATE rentals SET date_time=?, customer_name=?, hotel=?, hotel_id=?, motor_id=?, period_days=?,
         payment_method=?, total_price=?, price_per_day=?, vendor_fee=?, sisa=?, wavy_gets=?, owner_gets=?
       WHERE id=?
-    `, [data.date_time, data.customer_name, data.hotel, data.motor_id, data.period_days,
-        data.payment_method, data.total_price, pricePerDay, data.vendor_fee || 0, sisa, wavy_gets, owner_gets, id])
+    `, [data.date_time, data.customer_name, data.hotel || null, data.hotel_id || null, data.motor_id, data.period_days,
+        data.payment_method, data.total_price, pricePerDay, vendorFee, sisa, wavy_gets, owner_gets, id])
     return { success: true }
   })
 

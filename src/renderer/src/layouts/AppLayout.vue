@@ -43,7 +43,7 @@
         </div>
         <div class="text-center">
           <button @click="showChangelog = true" class="text-[10px] text-blue-200/40 hover:text-blue-200 transition-colors font-bold tracking-widest uppercase border-none bg-transparent">
-            Wavy Rental v1.0.0
+            Wavy Rental v{{ appVersion }}
           </button>
         </div>
       </div>
@@ -115,6 +115,7 @@ import { useRouter } from 'vue-router'
 const auth = useAuthStore()
 const router = useRouter()
 const showChangelog = ref(false)
+const appVersion = import.meta.env.VITE_APP_VERSION || '1.0.0'
 
 const navGroups = [
   {
@@ -135,7 +136,8 @@ const navGroups = [
     label: 'Armada',
     items: [
       { to: '/motors', icon: 'two_wheeler', label: 'Motor' },
-      { to: '/owners', icon: 'handshake', label: 'Mitra' },
+      { to: '/owners', icon: 'handshake', label: 'Mitra Owner' },
+      { to: '/hotels', icon: 'domain', label: 'Hotel / Vendor' },
     ]
   },
   {

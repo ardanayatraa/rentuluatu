@@ -20,10 +20,10 @@
             </div>
           </div>
           <div class="space-y-2 text-xs border-t border-slate-100 pt-3">
-            <div class="flex justify-between"><span class="text-slate-400">Versi</span><span class="font-semibold text-slate-700">1.0.0</span></div>
-            <div class="flex justify-between"><span class="text-slate-400">Platform</span><span class="font-semibold text-slate-700">Desktop (Offline)</span></div>
-            <div class="flex justify-between"><span class="text-slate-400">Database</span><span class="font-semibold text-slate-700">SQLite Lokal</span></div>
-            <div class="flex justify-between"><span class="text-slate-400">Login</span><span class="font-semibold text-slate-700">{{ auth.user?.username }}</span></div>
+            <div class="flex justify-between"><span class="text-slate-400">Versi Aplikasi</span><span class="font-semibold text-slate-700">{{ appVersion }}</span></div>
+            <div class="flex justify-between"><span class="text-slate-400">Sistem</span><span class="font-semibold text-slate-700">Wavy Desktop</span></div>
+            <div class="flex justify-between"><span class="text-slate-400">Status Data</span><span class="font-semibold text-slate-700">Tersimpan Aman</span></div>
+            <div class="flex justify-between"><span class="text-slate-400">Operator</span><span class="font-semibold text-slate-700">{{ auth.user?.username }}</span></div>
           </div>
         </div>
 
@@ -102,7 +102,9 @@
                 <span class="material-symbols-outlined text-slate-500 text-sm">cloud</span>
                 <span class="text-xs font-bold text-slate-700">Google Drive</span>
               </div>
-              <span v-if="gdriveConnected" class="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">● Terhubung</span>
+              <span v-if="gdriveConnected" class="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <span class="material-symbols-outlined text-[10px]">check_circle</span> Terhubung
+              </span>
               <span v-else class="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Belum</span>
             </div>
             <div v-if="!gdriveConfigured" class="text-[10px] text-amber-600 mb-2">Credentials belum dikonfigurasi.</div>
@@ -149,7 +151,9 @@
             <div>
               <p class="text-xs font-semibold text-slate-700 flex items-center gap-1">
                 {{ b.name }}
-                <span v-if="b.encrypted" class="text-[10px] bg-emerald-100 text-emerald-700 font-bold px-1 rounded">🔒</span>
+                <span v-if="b.encrypted" class="text-[10px] bg-emerald-100 text-emerald-700 font-bold px-1 rounded flex items-center gap-0.5">
+                  <span class="material-symbols-outlined text-[10px]">lock</span> Enkripsi
+                </span>
               </p>
               <p class="text-[10px] text-slate-400">{{ formatFileDate(b.modifiedTime) }} · {{ formatSize(b.size) }}</p>
             </div>
@@ -167,7 +171,9 @@
             <div>
               <p class="text-xs font-semibold text-slate-700 flex items-center gap-1">
                 {{ b.name }}
-                <span v-if="b.name.endsWith('.wavy')" class="text-[10px] bg-emerald-100 text-emerald-700 font-bold px-1 rounded">🔒</span>
+                <span v-if="b.name.endsWith('.wavy')" class="text-[10px] bg-emerald-100 text-emerald-700 font-bold px-1 rounded flex items-center gap-0.5">
+                  <span class="material-symbols-outlined text-[10px]">lock</span> Enkripsi
+                </span>
               </p>
               <p class="text-[10px] text-slate-400">{{ formatFileDate(b.modifiedTime) }} · {{ formatSize(b.size) }}</p>
             </div>
@@ -212,6 +218,7 @@ import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
 const isDev = import.meta.env.DEV
+const appVersion = import.meta.env.VITE_APP_VERSION || '1.0.0'
 
 const pwForm = ref({ oldPassword: '', newPassword: '', confirmPassword: '' })
 const pwMessage = ref('')

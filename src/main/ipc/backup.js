@@ -202,7 +202,7 @@ export function registerBackupHandlers() {
 
           if (error) {
             res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-            res.end('<html><body style="font-family:sans-serif;text-align:center;padding:40px"><h2>❌ Login dibatalkan</h2><p>Silakan tutup tab ini dan coba lagi.</p></body></html>')
+            res.end('<html><body style="font-family:sans-serif;text-align:center;padding:40px"><h2>Login dibatalkan</h2><p>Silakan tutup tab ini dan coba lagi.</p></body></html>')
             server.close()
             reject(new Error('Login dibatalkan: ' + error))
             return
@@ -214,7 +214,7 @@ export function registerBackupHandlers() {
             saveToken(tokens)
 
             res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-            res.end('<html><body style="font-family:sans-serif;text-align:center;padding:40px;background:#f0fdf4"><h2 style="color:#16a34a">✅ Berhasil terhubung!</h2><p>Google Drive sudah terhubung ke Wavy Rental.</p><p style="color:#64748b">Silakan tutup tab ini dan kembali ke aplikasi.</p></body></html>')
+            res.end('<html><body style="font-family:sans-serif;text-align:center;padding:40px;background:#f0fdf4"><h2 style="color:#16a34a">Berhasil terhubung!</h2><p>Google Drive sudah terhubung ke Wavy Rental.</p><p style="color:#64748b">Silakan tutup tab ini dan kembali ke aplikasi.</p></body></html>')
             server.close()
             resolve({ success: true })
           }

@@ -123,6 +123,7 @@
             </div>
           </div>
         </div>
+        <p v-if="motorError" class="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{{ motorError }}</p>
         <div class="flex justify-end gap-3 pt-2">
           <button type="button" @click="showModal = false" class="btn-secondary">Batal</button>
           <button type="submit" class="btn-primary">Simpan</button>
@@ -149,6 +150,8 @@ const ownerForm = ref({ name: '', phone: '', bank_name: '', bank_account: '' })
 
 const ownerOptions = computed(() => owners.value.map(o => ({ value: o.id, label: o.name, sub: o.phone || '' })))
 
+const motorError = ref('')
+
 const filteredMotors = computed(() => motors.value.filter(m => {
   if (filterType.value && m.type !== filterType.value) return false
   if (search.value) {
@@ -163,6 +166,7 @@ function openAdd() {
   form.value = { model: '', plate_number: '', type: 'pribadi', owner_id: '' }
   isCreatingOwner.value = false
   ownerForm.value = { name: '', phone: '', bank_name: '', bank_account: '' }
+  motorError.value = ''
   showModal.value = true
 }
 
@@ -171,39 +175,61 @@ function openEdit(m) {
   form.value = { model: m.model, plate_number: m.plate_number, type: m.type, owner_id: m.owner_id || '' }
   isCreatingOwner.value = false
   ownerForm.value = { name: '', phone: '', bank_name: '', bank_account: '' }
+  motorError.value = ''
   showModal.value = true
 }
 
 async function submitMotor() {
-  let finalOwnerId = form.value.owner_id
+  motorError.value = ''
 
-  // Jika bikin owner baru, save owner dulu
-  if (isCreatingOwner.value && ownerForm.value.name) {
-    const newOwner = await window.api.createOwner({ ...ownerForm.value })
-    finalOwnerId = newOwner.id
-    // Update data master
-    owners.value = await window.api.getOwners()
+  // Validasi: jika mode buat mitra baru, nama wajib diisi
+  if (isCreatingOwner.value && !ownerForm.value.name.trim()) {
+    motorError.value = 'Nama mitra tidak boleh kosong'
+    return
   }
 
-  const payload = { ...form.value, owner_id: finalOwnerId }
+  let finalOwnerId = form.value.owner_id || null
 
-  if (editId.value) {
-    await window.api.updateMotor({ id: editId.value, ...payload })
-  } else {
-    await window.api.createMotor(payload)
+  // Buat owner baru dulu, lalu assign ID-nya ke motor
+  if (isCreatingOwner.value && ownerForm.value.name.trim()) {
+    try {
+      const newOwner = await window.api.createOwner({ ...ownerForm.value })
+      finalOwnerId = Number(newOwner.id)
+      owners.value = await window.api.getOwners({ activeOnly: true })
+    } catch (err) {
+      motorError.value = 'Gagal membuat mitra: ' + err.message
+      return
+    }
   }
-  
-  showModal.value = false
-  motors.value = await window.api.getMotors()
+
+  const payload = { ...form.value, owner_id: finalOwnerId ? Number(finalOwnerId) : null }
+
+  try {
+    if (editId.value) {
+      await window.api.updateMotor({ id: editId.value, ...payload })
+    } else {
+      await window.api.createMotor(payload)
+    }
+    showModal.value = false
+    motors.value = await window.api.getMotors()
+  } catch (err) {
+    motorError.value = err.message.replace("Error invoking remote method 'motor:create': Error: ", '')
+      .replace("Error invoking remote method 'motor:update': Error: ", '')
+  }
 }
 
 async function deleteMotor(id) {
-  await window.api.deleteMotor(id)
-  motors.value = await window.api.getMotors()
+  if (!confirm('Yakin ingin menghapus motor ini?')) return
+  try {
+    await window.api.deleteMotor(id)
+    motors.value = await window.api.getMotors()
+  } catch (err) {
+    alert(err.message.replace("Error invoking remote method 'motor:delete': Error: ", ''))
+  }
 }
 
 onMounted(async () => {
   motors.value = await window.api.getMotors()
-  owners.value = await window.api.getOwners()
+  owners.value = await window.api.getOwners({ activeOnly: true })
 })
 </script>

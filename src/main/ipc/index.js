@@ -1,5 +1,6 @@
 import { registerMotorHandlers } from './motors'
 import { registerOwnerHandlers } from './owners'
+import { registerHotelHandlers } from './hotels'
 import { registerRentalHandlers } from './rentals'
 import { registerExpenseHandlers } from './expenses'
 import { registerCashHandlers } from './cash'
@@ -15,6 +16,7 @@ export function registerAllHandlers() {
   registerAuthHandlers()
   registerMotorHandlers()
   registerOwnerHandlers()
+  registerHotelHandlers()
   registerRentalHandlers()
   registerExpenseHandlers()
   registerCashHandlers()

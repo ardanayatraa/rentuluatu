@@ -40,14 +40,18 @@ export function registerDashboardHandlers() {
 
     const totalIncome = income.total + manualIncome.total
     const totalExpenses = expenses.total + manualExpense.total
-    const totalWavyGets = wavyGets.total + manualIncome.total
+    // FIX: wavy_gets hanya dari rental, bukan ditambah manual income
+    // manual income adalah pemasukan Wavy tapi bukan komisi rental
+    const totalWavyGets = wavyGets.total
+    // FIX: profit = (wavy_gets dari rental + manual income) - (expenses + manual expense)
+    const wavyTotal = wavyGets.total + manualIncome.total
 
     return {
       income: totalIncome,
       expenses: totalExpenses,
       wavy_gets: totalWavyGets,
       owner_gets: ownerGets.total,
-      profit: totalWavyGets - totalExpenses,
+      profit: wavyTotal - totalExpenses,
       rental_count: rentalCount.total,
       refund_count: refundCount.total
     }
@@ -76,8 +80,8 @@ export function registerDashboardHandlers() {
     rentals.forEach(r => map.set(r.date, { ...r }))
     manuals.forEach(m => {
       const ex = map.get(m.date) || { date: m.date, income: 0, wavy_gets: 0, owner_gets: 0, count: 0 }
+      // FIX: manual income tambah ke income saja, bukan wavy_gets
       ex.income += m.amount
-      ex.wavy_gets += m.amount
       map.set(m.date, ex)
     })
     return Array.from(map.values()).sort((a,b) => a.date.localeCompare(b.date))

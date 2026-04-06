@@ -39,7 +39,8 @@
             <th class="px-6 py-4">Motor</th>
             <th class="px-6 py-4">Periode</th>
             <th class="px-6 py-4">Bayar</th>
-            <th class="px-6 py-4 text-right">Total Harga</th>
+            <th class="px-6 py-4 text-right">Price</th>
+            <th class="px-6 py-4 text-right">Vendor Fee</th>
             <th class="px-6 py-4 text-right">Wavy Gets</th>
             <th class="px-6 py-4 text-right">Owner Gets</th>
             <th class="px-6 py-4 text-right">Status</th>
@@ -49,7 +50,10 @@
         <tbody class="divide-y divide-slate-50">
           <tr v-for="r in rentals" :key="r.id" class="hover:bg-slate-50 transition-colors text-sm">
             <td class="px-6 py-4 font-mono text-xs text-slate-500">{{ r.invoice_number || '-' }}</td>
-            <td class="px-6 py-4 text-slate-500">{{ formatDate(r.date_time) }}</td>
+            <td class="px-6 py-4 text-slate-500">
+              <span class="block text-xs font-medium text-slate-700">{{ formatTime(r.date_time) }}</span>
+              <span class="text-xs">{{ formatDate(r.date_time) }}</span>
+            </td>
             <td class="px-6 py-4 font-medium">{{ r.customer_name }}</td>
             <td class="px-6 py-4 text-slate-500">{{ r.hotel || '-' }}</td>
             <td class="px-6 py-4">
@@ -61,6 +65,7 @@
               <span :class="r.payment_method === 'tunai' ? 'badge-neutral' : 'badge-success'">{{ r.payment_method }}</span>
             </td>
             <td class="px-6 py-4 text-right font-semibold">{{ formatRp(r.total_price) }}</td>
+            <td class="px-6 py-4 text-right text-amber-600">{{ r.vendor_fee > 0 ? formatRp(r.vendor_fee) : '-' }}</td>
             <td class="px-6 py-4 text-right font-bold text-primary">{{ formatRp(r.wavy_gets) }}</td>
             <td class="px-6 py-4 text-right text-slate-600">{{ formatRp(r.owner_gets) }}</td>
             <td class="px-6 py-4 text-right">
@@ -74,7 +79,7 @@
             </td>
           </tr>
           <tr v-if="!rentals.length">
-            <td colspan="11" class="px-6 py-12 text-center text-slate-400">Belum ada data rental</td>
+            <td colspan="12" class="px-6 py-12 text-center text-slate-400">Belum ada data rental</td>
           </tr>
         </tbody>
       </table>
@@ -128,20 +133,51 @@
               <span class="text-slate-500 capitalize">{{ selectedMotor.type }} · {{ selectedMotor.type === 'pribadi' ? '20/80' : '30/70' }}</span>
             </div>
           </div>
-          <div>
-            <label class="block text-xs font-bold text-slate-500 mb-1">Hotel</label>
-            <input v-model="form.hotel" type="text" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+          <div class="col-span-2">
+            <label class="block text-xs font-bold text-slate-500 mb-1">Hotel / Vendor</label>
+            <div class="relative">
+              <input
+                v-model="form.hotel"
+                type="text"
+                placeholder="Ketik untuk mengisi teks biasa atau mencari nama vendor..."
+                class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm pr-8"
+                @input="form.hotel_id = null; form.vendor_fee = 0"
+                @focus="showVendorDropdown = true"
+                @blur="onVendorBlur"
+              />
+              <span class="material-symbols-outlined absolute right-2 top-2 text-slate-400 text-base">domain</span>
+            </div>
+            <!-- Dropdown vendor -->
+            <div v-if="showVendorDropdown && filteredVendors.length"
+              class="border border-slate-200 rounded-lg mt-1 max-h-40 overflow-y-auto bg-white shadow-lg z-50 relative">
+              <div
+                v-for="h in filteredVendors" :key="h.id"
+                @mousedown.prevent="selectVendor(h)"
+                class="px-3 py-2.5 hover:bg-slate-50 cursor-pointer text-sm font-medium"
+              >
+                {{ h.name }}
+              </div>
+            </div>
+            <!-- Selected Vendor Info -->
+            <div v-if="form.hotel_id" class="mt-2 text-xs font-bold text-primary flex items-center gap-1">
+              <span class="material-symbols-outlined text-[14px]">check_circle</span>
+              Terhubung ke relasi Vendor yang terdaftar
+            </div>
+            <div v-else-if="form.hotel && form.vendor_fee > 0" class="mt-2 bg-amber-50 text-amber-600 rounded-lg border border-amber-200 px-3 py-2 text-xs flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-sm">warning</span>
+              Nama ini belum ada di master data Vendor. Komisi tidak akan masuk ke rekening Payout manapun.
+            </div>
           </div>
           <div>
             <label class="block text-xs font-bold text-slate-500 mb-1">Periode (hari)</label>
             <input v-model.number="form.period_days" type="number" min="1" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required />
           </div>
           <div>
-            <label class="block text-xs font-bold text-slate-500 mb-1">Total Harga (Rp) <span class="font-normal text-slate-400">— harga final</span></label>
+            <label class="block text-xs font-bold text-slate-500 mb-1">Price (Harga Kotor)</label>
             <input v-model.number="form.total_price" type="number" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required />
           </div>
-          <div>
-            <label class="block text-xs font-bold text-slate-500 mb-1">Komisi Hotel (Rp)</label>
+          <div v-if="form.hotel_id">
+            <label class="block text-xs font-bold text-slate-500 mb-1">Vendor Fee</label>
             <input v-model.number="form.vendor_fee" type="number" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
           </div>
           <div class="col-span-2">
@@ -167,15 +203,15 @@
         <div v-if="selectedMotor && form.total_price"
           class="bg-slate-50 rounded-lg p-4 text-sm space-y-1.5 border border-slate-200">
           <div class="flex justify-between">
-            <span class="text-slate-500">Total Harga</span>
+            <span class="text-slate-500">Price (Kotor)</span>
             <span class="font-bold">{{ formatRp(form.total_price) }}</span>
           </div>
           <div class="flex justify-between">
-            <span class="text-slate-500">Komisi Hotel</span>
+            <span class="text-slate-500">Vendor Fee</span>
             <span class="text-red-500">- {{ formatRp(form.vendor_fee || 0) }}</span>
           </div>
           <div class="flex justify-between border-t border-slate-200 pt-1.5">
-            <span class="text-slate-500">Sisa</span>
+            <span class="text-slate-500 font-bold">Final Price</span>
             <span class="font-bold">{{ formatRp(form.total_price - (form.vendor_fee || 0)) }}</span>
           </div>
           <div class="flex justify-between text-primary">
@@ -243,20 +279,28 @@
 import { ref, computed, onMounted } from 'vue'
 import { formatRp, formatDate, nowDateTime } from '../utils/format'
 
+function formatTime(dateStr) {
+  if (!dateStr) return '-'
+  return new Date(dateStr).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+}
+
 const rentals = ref([])
 const allMotors = ref([])
+const allVendors = ref([])
 const showModal = ref(false)
 const showRefundModal = ref(false)
 const selectedRental = ref(null)
 const selectedMotor = ref(null)
 const motorSearch = ref('')
 const showMotorDropdown = ref(false)
+const showVendorDropdown = ref(false)
 
 const filters = ref({ startDate: '', endDate: '', status: '' })
 const form = ref({
   date_time: nowDateTime(),
   customer_name: '',
   hotel: '',
+  hotel_id: null,
   motor_id: '',
   period_days: 1,
   total_price: 0,
@@ -288,6 +332,23 @@ function onMotorBlur() {
   setTimeout(() => { showMotorDropdown.value = false }, 150)
 }
 
+const filteredVendors = computed(() => {
+  if (!form.value.hotel || form.value.hotel_id) return allVendors.value.slice(0, 10)
+  const q = form.value.hotel.toLowerCase()
+  return allVendors.value.filter(v => v.name.toLowerCase().includes(q)).slice(0, 10)
+})
+
+function selectVendor(v) {
+  form.value.hotel_id = v.id
+  form.value.hotel = v.name
+  showVendorDropdown.value = false
+}
+
+function onVendorBlur() {
+  // Jika search tidak kosong tapi belum ngeklik, abaikan atau reset ID
+  setTimeout(() => { showVendorDropdown.value = false }, 150)
+}
+
 function openAdd() {
   selectedMotor.value = null
   motorSearch.value = ''
@@ -295,6 +356,7 @@ function openAdd() {
     date_time: nowDateTime(),
     customer_name: '',
     hotel: '',
+    hotel_id: null,
     motor_id: '',
     period_days: 1,
     total_price: 0,
@@ -334,6 +396,9 @@ async function loadRentals() {
 }
 
 async function submitRental() {
+  const vendorFee = form.value.vendor_fee || 0
+  if (vendorFee < 0) return alert('Vendor fee tidak boleh negatif')
+  if (vendorFee > form.value.total_price) return alert('Vendor fee tidak boleh melebihi total harga sewa')
   await window.api.createRental({ ...form.value, status: 'completed' })
   showModal.value = false
   await loadRentals()
@@ -366,5 +431,6 @@ async function submitRefund() {
 onMounted(async () => {
   await loadRentals()
   allMotors.value = await window.api.getMotors()
+  allVendors.value = await window.api.getHotels()
 })
 </script>

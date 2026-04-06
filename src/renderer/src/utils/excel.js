@@ -234,3 +234,26 @@ export async function saveOwnerReportExcel({ rows, period }) {
       currencyKeys: ['total_omzet','gross_commission','total_expenses','net_commission'] }]
   })
 }
+
+export async function saveRankingExcel({ rows, period }) {
+  const columns = [
+    { header: '#', key: 'rank', width: 6 },
+    { header: 'Motor', key: 'model', width: 22 },
+    { header: 'Plat', key: 'plate', width: 14 },
+    { header: 'Tipe', key: 'type', width: 12 },
+    { header: 'Total Rental', key: 'total_rentals', width: 14 },
+    { header: 'Total Hari', key: 'total_days', width: 14 },
+    { header: 'Wavy Gets', key: 'total_wavy', width: 20 },
+    { header: 'Owner Gets', key: 'total_owner', width: 20 }
+  ]
+  const dataRows = rows.map((m, i) => ({
+    rank: i + 1, model: m.model, plate: m.plate_number, type: m.type,
+    total_rentals: m.total_rentals, total_days: m.total_days,
+    total_wavy: Number(m.total_wavy), total_owner: Number(m.total_owner)
+  }))
+  return window.api.saveExcel({
+    defaultName: `Ranking_Motor_${period.replace(/\s/g,'_')}.xlsx`,
+    sheets: [{ name: 'Ranking Motor', columns, rows: dataRows,
+      currencyKeys: ['total_wavy', 'total_owner'] }]
+  })
+}

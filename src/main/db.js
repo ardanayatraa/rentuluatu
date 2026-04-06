@@ -6,8 +6,13 @@ import initSqlJs from 'sql.js'
 let db
 let dbPath
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Versi schema — naikkan angka ini setiap kali ada perubahan struktur database.
+// Sistem akan otomatis jalankan migrasi yang belum pernah dijalankan.
+// ─────────────────────────────────────────────────────────────────────────────
+const SCHEMA_VERSION = 6
+
 export async function initDb() {
-  // sql.js needs the WASM file path
   const wasmPath = join(
     app.isPackaged
       ? join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm')
@@ -25,7 +30,9 @@ export async function initDb() {
     db = new SQL.Database()
   }
 
-  initSchema()
+  createBaseSchema()
+  runMigrations()
+  seedDefaults()
   saveDb()
   return db
 }
@@ -45,6 +52,11 @@ export function saveDb() {
 function run(sql, params = []) {
   db.run(sql, params)
   saveDb()
+}
+
+// runRaw: jalankan query tanpa langsung saveDb — dipakai saat butuh last_insert_rowid()
+function runRaw(sql, params = []) {
+  db.run(sql, params)
 }
 
 function get(sql, params = []) {
@@ -70,9 +82,20 @@ function all(sql, params = []) {
   return rows
 }
 
-export const dbOps = { run, get, all }
+export const dbOps = { run, runRaw, get, all }
 
-function initSchema() {
+// ─────────────────────────────────────────────────────────────────────────────
+// BASE SCHEMA — hanya CREATE TABLE IF NOT EXISTS, tidak ada ALTER di sini.
+// Ini adalah definisi tabel lengkap (versi terbaru).
+// Untuk install baru, semua tabel langsung terbentuk sempurna.
+// ─────────────────────────────────────────────────────────────────────────────
+function createBaseSchema() {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS schema_version (
+      version INTEGER NOT NULL,
+      applied_at TEXT DEFAULT (datetime('now','localtime'))
+    )
+  `)
   db.run(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -100,6 +123,7 @@ function initSchema() {
       plate_number TEXT NOT NULL UNIQUE,
       type TEXT NOT NULL,
       owner_id INTEGER REFERENCES owners(id),
+      is_active INTEGER DEFAULT 1,
       created_at TEXT DEFAULT (datetime('now','localtime'))
     )
   `)
@@ -113,26 +137,49 @@ function initSchema() {
     )
   `)
   db.run(`
+    CREATE TABLE IF NOT EXISTS hotels (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      phone TEXT,
+      bank_account TEXT,
+      bank_name TEXT,
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    )
+  `)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS hotel_payouts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      hotel_id INTEGER NOT NULL REFERENCES hotels(id),
+      amount REAL NOT NULL,
+      cash_account_id INTEGER NOT NULL REFERENCES cash_accounts(id),
+      date TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    )
+  `)
+  db.run(`
     CREATE TABLE IF NOT EXISTS rentals (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       date_time TEXT NOT NULL,
       customer_name TEXT NOT NULL,
       hotel TEXT,
+      hotel_id INTEGER REFERENCES hotels(id),
+      hotel_payout_id INTEGER REFERENCES hotel_payouts(id),
       motor_id INTEGER NOT NULL REFERENCES motors(id),
       period_days INTEGER NOT NULL,
       payment_method TEXT NOT NULL,
       total_price REAL NOT NULL,
+      price_per_day REAL,
       vendor_fee REAL DEFAULT 0,
       sisa REAL,
       wavy_gets REAL,
       owner_gets REAL,
-      status TEXT DEFAULT 'active',
+      status TEXT DEFAULT 'completed',
+      payout_id INTEGER,
+      invoice_number TEXT,
       created_at TEXT DEFAULT (datetime('now','localtime'))
     )
   `)
-  // Migrate: rename price_per_day to total_price if old schema exists
-  try { db.run("ALTER TABLE rentals ADD COLUMN total_price REAL DEFAULT 0") } catch (_) {}
-  try { db.run("UPDATE rentals SET total_price = price_per_day * period_days WHERE total_price = 0 OR total_price IS NULL") } catch (_) {}
   db.run(`
     CREATE TABLE IF NOT EXISTS refunds (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -149,52 +196,13 @@ function initSchema() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       owner_id INTEGER NOT NULL REFERENCES owners(id),
       amount REAL NOT NULL,
+      gross_amount REAL DEFAULT 0,
+      deduction_amount REAL DEFAULT 0,
       cash_account_id INTEGER NOT NULL REFERENCES cash_accounts(id),
       date TEXT NOT NULL,
       created_at TEXT DEFAULT (datetime('now','localtime'))
     )
   `)
-  
-  // Migrate: add invoice_number to rentals
-  try { db.run("ALTER TABLE rentals ADD COLUMN invoice_number TEXT") } catch (_) {}
-  // Generate invoice untuk rental lama yang belum punya
-  try {
-    const noInvoice = get("SELECT COUNT(*) as c FROM rentals WHERE invoice_number IS NULL")
-    if (noInvoice && noInvoice.c > 0) {
-      const rentals = all("SELECT id, date_time FROM rentals WHERE invoice_number IS NULL ORDER BY date_time ASC")
-      for (const r of rentals) {
-        const dt = new Date(r.date_time)
-        const yr = dt.getFullYear()
-        const mo = String(dt.getMonth() + 1).padStart(2, '0')
-        const existing = get("SELECT COUNT(*) as c FROM rentals WHERE invoice_number LIKE ?", [`WVY-${yr}-${mo}-%`])
-        const seq = String((existing?.c || 0) + 1).padStart(4, '0')
-        db.run("UPDATE rentals SET invoice_number = ? WHERE id = ?", [`WVY-${yr}-${mo}-${seq}`, r.id])
-      }
-    }
-  } catch (_) {}
-  // Legacy migration (tandai semua rental lama sebagai "lunas / tidak ngutang" menggunakan payout_id dummy '0')
-  try { db.run("UPDATE rentals SET payout_id = 0 WHERE payout_id IS NULL AND owner_gets > 0") } catch (_) {}
-  // Migrate: add invoice_number to rentals
-  try { db.run("ALTER TABLE rentals ADD COLUMN invoice_number TEXT") } catch (_) {}
-  // Generate invoice untuk rental lama yang belum punya
-  try {
-    const noInvoice = get("SELECT COUNT(*) as c FROM rentals WHERE invoice_number IS NULL")
-    if (noInvoice && noInvoice.c > 0) {
-      const oldRentals = all("SELECT id, date_time FROM rentals WHERE invoice_number IS NULL ORDER BY id ASC")
-      const counters = {}
-      for (const r of oldRentals) {
-        const dt = new Date(r.date_time)
-        const yr = dt.getFullYear()
-        const mo = String(dt.getMonth() + 1).padStart(2, '0')
-        const key = `${yr}-${mo}`
-        counters[key] = (counters[key] || 0) + 1
-        const seq = String(counters[key]).padStart(4, '0')
-        db.run("UPDATE rentals SET invoice_number = ? WHERE id = ?", [`WVY-${yr}-${mo}-${seq}`, r.id])
-      }
-    }
-  } catch (_) {}
-
-  // Tabel potongan pengeluaran motor saat payout
   db.run(`
     CREATE TABLE IF NOT EXISTS payout_deductions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -204,11 +212,6 @@ function initSchema() {
       created_at TEXT DEFAULT (datetime('now','localtime'))
     )
   `)
-  // Migrate: tambah kolom gross_amount dan deduction_amount ke payouts
-  try { db.run("ALTER TABLE payouts ADD COLUMN gross_amount REAL DEFAULT 0") } catch (_) {}
-  try { db.run("ALTER TABLE payouts ADD COLUMN deduction_amount REAL DEFAULT 0") } catch (_) {}
-  // Migrate: tandai expenses yang sudah dipotong dari payout
-  try { db.run("ALTER TABLE expenses ADD COLUMN payout_id INTEGER REFERENCES payouts(id)") } catch (_) {}
   db.run(`
     CREATE TABLE IF NOT EXISTS expenses (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -219,6 +222,7 @@ function initSchema() {
       payment_method TEXT NOT NULL,
       description TEXT,
       date TEXT NOT NULL,
+      payout_id INTEGER REFERENCES payouts(id),
       created_at TEXT DEFAULT (datetime('now','localtime'))
     )
   `)
@@ -235,25 +239,179 @@ function initSchema() {
       created_at TEXT DEFAULT (datetime('now','localtime'))
     )
   `)
+}
 
-  // Seed default admin
-  const admin = get('SELECT id FROM users WHERE username = ?', ['admin'])
+// ─────────────────────────────────────────────────────────────────────────────
+// MIGRATIONS — dijalankan berurutan, hanya yang belum pernah dijalankan.
+// Setiap entry = satu versi. Tambahkan entry baru di bawah untuk update fitur.
+// JANGAN ubah atau hapus entry yang sudah ada.
+// ─────────────────────────────────────────────────────────────────────────────
+const migrations = [
+  // v1 — hotel_id & hotel_payout_id di rentals
+  {
+    version: 1,
+    up() {
+      try { db.run("ALTER TABLE rentals ADD COLUMN hotel_id INTEGER REFERENCES hotels(id)") } catch (_) {}
+      try { db.run("ALTER TABLE rentals ADD COLUMN hotel_payout_id INTEGER REFERENCES hotel_payouts(id)") } catch (_) {}
+    }
+  },
+
+  // v2 — total_price (rename dari price_per_day * period_days)
+  {
+    version: 2,
+    up() {
+      try { db.run("ALTER TABLE rentals ADD COLUMN total_price REAL DEFAULT 0") } catch (_) {}
+      try {
+        db.run("UPDATE rentals SET total_price = price_per_day * period_days WHERE (total_price = 0 OR total_price IS NULL) AND price_per_day IS NOT NULL")
+      } catch (_) {}
+    }
+  },
+
+  // v3 — invoice_number di rentals + generate untuk data lama
+  {
+    version: 3,
+    up() {
+      try { db.run("ALTER TABLE rentals ADD COLUMN invoice_number TEXT") } catch (_) {}
+      try {
+        const noInvoice = get("SELECT COUNT(*) as c FROM rentals WHERE invoice_number IS NULL")
+        if (noInvoice && noInvoice.c > 0) {
+          const rentals = all("SELECT id, date_time FROM rentals WHERE invoice_number IS NULL ORDER BY id ASC")
+          const counters = {}
+          for (const r of rentals) {
+            const dt = new Date(r.date_time)
+            const yr = dt.getFullYear()
+            const mo = String(dt.getMonth() + 1).padStart(2, '0')
+            const key = `${yr}-${mo}`
+            counters[key] = (counters[key] || 0) + 1
+            const seq = String(counters[key]).padStart(4, '0')
+            db.run("UPDATE rentals SET invoice_number = ? WHERE id = ?", [`WVY-${yr}-${mo}-${seq}`, r.id])
+          }
+        }
+      } catch (_) {}
+    }
+  },
+
+  // v4 — gross_amount & deduction_amount di payouts + payout_id di expenses
+  {
+    version: 4,
+    up() {
+      try { db.run("ALTER TABLE payouts ADD COLUMN gross_amount REAL DEFAULT 0") } catch (_) {}
+      try { db.run("ALTER TABLE payouts ADD COLUMN deduction_amount REAL DEFAULT 0") } catch (_) {}
+      try { db.run("ALTER TABLE expenses ADD COLUMN payout_id INTEGER REFERENCES payouts(id)") } catch (_) {}
+      // Tandai rental lama sebagai lunas (payout_id = 0 = legacy paid)
+      try { db.run("UPDATE rentals SET payout_id = 0 WHERE payout_id IS NULL AND owner_gets > 0") } catch (_) {}
+    }
+  },
+
+  // v5 — is_active di motors + migrasi hotel string lama ke tabel hotels
+  {
+    version: 5,
+    up() {
+      try { db.run("ALTER TABLE motors ADD COLUMN is_active INTEGER DEFAULT 1") } catch (_) {}
+      try { db.run("UPDATE motors SET is_active = 1 WHERE is_active IS NULL") } catch (_) {}
+      // Migrasi hotel string lama ke relasi hotel_id
+      try {
+        const legacyVendors = all("SELECT id, hotel FROM rentals WHERE hotel_id IS NULL AND vendor_fee > 0 AND hotel IS NOT NULL AND TRIM(hotel) != ''")
+        for (const rent of legacyVendors) {
+          const hName = rent.hotel.trim()
+          let ex = get("SELECT id FROM hotels WHERE name = ?", [hName])
+          if (!ex) {
+            db.run("INSERT INTO hotels (name) VALUES (?)", [hName])
+            ex = get("SELECT last_insert_rowid() as id")
+          }
+          if (ex && ex.id) {
+            db.run("UPDATE rentals SET hotel_id = ? WHERE id = ?", [ex.id, rent.id])
+          }
+        }
+      } catch (_) {}
+    }
+  },
+
+  // v6 — QRIS cash account
+  {
+    version: 6,
+    up() {
+      const qris = get("SELECT id FROM cash_accounts WHERE type = 'qris'")
+      if (!qris) {
+        db.run("INSERT INTO cash_accounts (name, type, balance) VALUES ('QRIS', 'qris', 0)")
+      }
+    }
+  },
+
+  // ── Tambahkan migrasi baru di sini ──────────────────────────────────────────
+  // Contoh untuk update fitur berikutnya:
+  // {
+  //   version: 7,
+  //   up() {
+  //     try { db.run("ALTER TABLE rentals ADD COLUMN notes TEXT") } catch (_) {}
+  //   }
+  // },
+]
+
+function getCurrentVersion() {
+  try {
+    const row = get("SELECT MAX(version) as v FROM schema_version")
+    return row?.v || 0
+  } catch (_) {
+    return 0
+  }
+}
+
+function runMigrations() {
+  const currentVersion = getCurrentVersion()
+
+  // Bedakan install baru vs database lama yang belum punya schema_version
+  if (currentVersion === 0) {
+    const hasExistingData = get("SELECT COUNT(*) as c FROM motors") 
+    const isNewInstall = !hasExistingData || hasExistingData.c === 0
+
+    if (isNewInstall) {
+      // Install baru: langsung set ke versi terbaru, schema sudah lengkap dari createBaseSchema
+      db.run("INSERT INTO schema_version (version) VALUES (?)", [SCHEMA_VERSION])
+      return
+    } else {
+      // Database lama: jalankan SEMUA migrasi dari awal
+      for (const migration of migrations) {
+        try {
+          migration.up()
+          db.run("INSERT INTO schema_version (version) VALUES (?)", [migration.version])
+          console.log(`[DB] Migration v${migration.version} applied (legacy)`)
+        } catch (err) {
+          console.error(`[DB] Migration v${migration.version} failed:`, err.message)
+        }
+      }
+      return
+    }
+  }
+
+  // Update app: jalankan hanya migrasi yang belum dijalankan
+  const pending = migrations.filter(m => m.version > currentVersion)
+  for (const migration of pending) {
+    try {
+      migration.up()
+      db.run("INSERT INTO schema_version (version) VALUES (?)", [migration.version])
+      console.log(`[DB] Migration v${migration.version} applied`)
+    } catch (err) {
+      console.error(`[DB] Migration v${migration.version} failed:`, err.message)
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SEED — data default yang harus ada. Aman dijalankan berulang (idempotent).
+// ─────────────────────────────────────────────────────────────────────────────
+function seedDefaults() {
+  // Admin default
+  const admin = get("SELECT id FROM users WHERE username = 'admin'")
   if (!admin) {
     db.run("INSERT INTO users (username, password_hash) VALUES ('admin', '$2b$10$placeholder')")
   }
 
-  // Seed default cash accounts
-  const cash = get("SELECT id FROM cash_accounts WHERE type = 'tunai'")
-  if (!cash) {
+  // Kas default
+  const tunai = get("SELECT id FROM cash_accounts WHERE type = 'tunai'")
+  if (!tunai) {
     db.run("INSERT INTO cash_accounts (name, type, balance) VALUES ('Kas Tunai', 'tunai', 0)")
     db.run("INSERT INTO cash_accounts (name, type, balance) VALUES ('Rekening Transfer', 'transfer', 0)")
     db.run("INSERT INTO cash_accounts (name, type, balance) VALUES ('QRIS', 'qris', 0)")
   }
-  // Migrate: add QRIS account if not exists
-  const qris = get("SELECT id FROM cash_accounts WHERE type = 'qris'")
-  if (!qris) {
-    db.run("INSERT INTO cash_accounts (name, type, balance) VALUES ('QRIS', 'qris', 0)")
-  }
-
-  saveDb()
 }

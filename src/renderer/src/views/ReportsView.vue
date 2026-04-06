@@ -436,12 +436,12 @@ import SearchSelect from '../components/SearchSelect.vue'
 import {
   buildFinancialHtml, buildMotorIncomeHtml, buildMotorExpensesHtml,
   buildTransactionsHtml, buildOwnerCommissionHtml, savePdfReport,
-  buildProfitLossHtml, buildAnnualHtml, buildOwnerReportHtml
+  buildProfitLossHtml, buildAnnualHtml, buildOwnerReportHtml, buildRankingHtml
 } from '../utils/pdf'
 import {
   saveFinancialExcel, saveMotorIncomeExcel, saveMotorExpensesExcel,
   saveTransactionsExcel, saveCommissionExcel,
-  saveProfitLossExcel, saveAnnualExcel, saveOwnerReportExcel
+  saveProfitLossExcel, saveAnnualExcel, saveOwnerReportExcel, saveRankingExcel
 } from '../utils/excel'
 
 const tabs = [
@@ -584,8 +584,7 @@ async function exportPdf() {
     } else if (activeTab.value === 'commission' && commissionData.value) {
       html = buildOwnerCommissionHtml({ data: commissionData.value, period: p })
     } else if (activeTab.value === 'ranking') {
-      const allRentals = await window.api.getMotorIncomeReport({ startDate: s, endDate: e, motorId: null })
-      html = buildMotorIncomeHtml({ rentals: allRentals, period: p, motorName: 'Semua Motor' })
+      html = buildRankingHtml({ rows: motorRanking.value, period: p })
     }
     if (html) {
       const defaultName = `Laporan_Wavy_${activeTab.value}_${p.replace(/\s/g,'_')}.pdf`
@@ -619,8 +618,7 @@ async function exportExcel() {
     } else if (activeTab.value === 'commission' && commissionData.value) {
       await saveCommissionExcel({ data: commissionData.value, period: p })
     } else if (activeTab.value === 'ranking') {
-      const allRentals = await window.api.getMotorIncomeReport({ startDate: s, endDate: e, motorId: null })
-      await saveMotorIncomeExcel({ rentals: allRentals, period: p, motorName: 'Semua Motor' })
+      await saveRankingExcel({ rows: motorRanking.value, period: p })
     }
   } finally { exporting.value = '' }
 }
@@ -628,7 +626,7 @@ async function exportExcel() {
 onMounted(async () => {
   try {
     motors.value = await window.api.getMotors()
-    owners.value = await window.api.getOwners()
+    owners.value = await window.api.getOwners({ activeOnly: true })
     onPeriodChange()
     await loadReport()
   } catch (e) {
