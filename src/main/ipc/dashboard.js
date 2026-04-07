@@ -1,15 +1,28 @@
 import { ipcMain } from 'electron'
 import { dbOps } from '../db'
 
+const COMPANY_EXPENSE_WHERE = `
+  FROM expenses e
+  LEFT JOIN motors m ON e.motor_id = m.id
+  WHERE e.date BETWEEN ? AND ?
+    AND (
+      e.type != 'motor'
+      OR e.motor_id IS NULL
+      OR m.owner_id IS NULL
+    )
+`
+
 export function registerDashboardHandlers() {
   ipcMain.handle('dashboard:summary', (_, { startDate, endDate }) => {
+    const start = startDate.split('T')[0]
+    const end = endDate.split('T')[0]
     const income = dbOps.get(
       "SELECT COALESCE(SUM(total_price), 0) as total FROM rentals WHERE date_time BETWEEN ? AND ? AND status != 'refunded'",
       [startDate, endDate]
     )
     const expenses = dbOps.get(
-      'SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE date BETWEEN ? AND ?',
-      [startDate, endDate]
+      `SELECT COALESCE(SUM(e.amount), 0) as total ${COMPANY_EXPENSE_WHERE}`,
+      [start, end]
     )
     const wavyGets = dbOps.get(
       "SELECT COALESCE(SUM(wavy_gets), 0) as total FROM rentals WHERE date_time BETWEEN ? AND ? AND status != 'refunded'",
@@ -31,11 +44,11 @@ export function registerDashboardHandlers() {
     // Manual transactions
     const manualIncome = dbOps.get(
       "SELECT COALESCE(SUM(amount), 0) as total FROM cash_transactions WHERE reference_type = 'manual_income' AND date BETWEEN ? AND ?",
-      [startDate, endDate]
+      [start, end]
     )
     const manualExpense = dbOps.get(
       "SELECT COALESCE(SUM(amount), 0) as total FROM cash_transactions WHERE reference_type = 'manual_expense' AND date BETWEEN ? AND ?",
-      [startDate, endDate]
+      [start, end]
     )
 
     const totalIncome = income.total + manualIncome.total
@@ -89,10 +102,9 @@ export function registerDashboardHandlers() {
 
   ipcMain.handle('dashboard:daily-expenses', (_, { startDate, endDate }) => {
     const expenses = dbOps.all(`
-      SELECT date, COALESCE(SUM(amount), 0) as total
-      FROM expenses
-      WHERE date BETWEEN ? AND ?
-      GROUP BY date
+      SELECT e.date as date, COALESCE(SUM(e.amount), 0) as total
+      ${COMPANY_EXPENSE_WHERE}
+      GROUP BY e.date
     `, [startDate, endDate])
 
     const manuals = dbOps.all(`
@@ -155,10 +167,9 @@ export function registerDashboardHandlers() {
 
   ipcMain.handle('dashboard:expense-categories', (_, { startDate, endDate }) => {
     const categories = dbOps.all(`
-      SELECT category, COALESCE(SUM(amount), 0) as total
-      FROM expenses
-      WHERE date BETWEEN ? AND ?
-      GROUP BY category
+      SELECT e.category as category, COALESCE(SUM(e.amount), 0) as total
+      ${COMPANY_EXPENSE_WHERE}
+      GROUP BY e.category
     `, [startDate, endDate])
 
     const manualExpense = dbOps.get(`

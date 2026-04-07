@@ -39,7 +39,7 @@
     </div>
 
     <!-- Riwayat Mutasi -->
-    <div class="card overflow-hidden p-0">
+    <div class="card table-card">
       <div class="p-6 border-b border-slate-100 flex justify-between items-center">
         <h3 class="text-lg font-extrabold text-primary font-headline">Riwayat Mutasi</h3>
         <div class="flex gap-3">
@@ -48,10 +48,16 @@
             <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.name }}</option>
           </select>
           <input v-model="filterDate" type="date" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+          <select v-model.number="pageSize" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+            <option :value="10">10 / halaman</option>
+            <option :value="25">25 / halaman</option>
+            <option :value="50">50 / halaman</option>
+          </select>
           <button @click="loadTransactions" class="btn-secondary text-xs py-2">Filter</button>
         </div>
       </div>
-      <table class="w-full text-left">
+      <div class="table-scroll">
+      <table class="table-base text-left">
         <thead>
           <tr class="bg-slate-50 text-slate-400 text-xs uppercase font-bold">
             <th class="px-6 py-4">Tanggal</th>
@@ -62,7 +68,12 @@
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-50">
-          <tr v-for="t in transactions" :key="t.id" class="text-sm hover:bg-slate-50 transition-colors">
+          <tr v-if="loading" v-for="index in 6" :key="`sk-${index}`">
+            <td colspan="5" class="px-6 py-4">
+              <div class="skeleton h-10 rounded-xl"></div>
+            </td>
+          </tr>
+          <tr v-for="t in pagedTransactions" :key="t.id" class="text-sm hover:bg-slate-50 transition-colors">
             <td class="px-6 py-4 text-slate-500">{{ formatDate(t.date) }}</td>
             <td class="px-6 py-4">{{ t.description || '-' }}</td>
             <td class="px-6 py-4 text-slate-500">{{ t.account_name }}</td>
@@ -73,11 +84,20 @@
               {{ t.type === 'in' ? '+' : '-' }}{{ formatRp(t.amount) }}
             </td>
           </tr>
-          <tr v-if="!transactions.length">
+          <tr v-if="!loading && !transactions.length">
             <td colspan="5" class="px-6 py-12 text-center text-slate-400">Belum ada mutasi</td>
           </tr>
         </tbody>
       </table>
+      </div>
+      <div v-if="!loading && transactions.length" class="flex items-center justify-between border-t border-slate-100 px-6 py-4">
+        <p class="text-xs text-slate-400">Menampilkan {{ pageStart }}-{{ pageEnd }} dari {{ transactions.length }} data</p>
+        <div class="flex items-center gap-2">
+          <button @click="currentPage = Math.max(1, currentPage - 1)" :disabled="currentPage === 1" class="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50">Prev</button>
+          <span class="text-xs font-bold text-slate-500">Hal. {{ currentPage }} / {{ totalPages }}</span>
+          <button @click="currentPage = Math.min(totalPages, currentPage + 1)" :disabled="currentPage === totalPages" class="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50">Next</button>
+        </div>
+      </div>
     </div>
 
     <!-- Tambah Pemasukan Modal -->
@@ -106,6 +126,10 @@
             <label class="flex items-center gap-2 cursor-pointer">
               <input type="radio" v-model="incomeForm.payment_method" value="qris" class="accent-primary" />
               <span class="text-sm font-medium">QRIS</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="radio" v-model="incomeForm.payment_method" value="debit_card" class="accent-primary" />
+              <span class="text-sm font-medium">Debit Card</span>
             </label>
           </div>
         </div>
@@ -137,17 +161,20 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { formatRp, formatDate } from '../utils/format'
 
 const accounts = ref([])
 const total = ref(0)
 const transactions = ref([])
+const loading = ref(false)
 const showOpeningModal = ref(false)
 const showIncomeModal = ref(false)
 const openingBalances = ref({})
 const filterAccount = ref('')
 const filterDate = ref('')
+const currentPage = ref(1)
+const pageSize = ref(10)
 
 const incomeForm = ref({
   description: '',
@@ -155,29 +182,40 @@ const incomeForm = ref({
   payment_method: 'tunai',
   date: new Date().toISOString().split('T')[0]
 })
+const totalPages = computed(() => Math.max(1, Math.ceil(transactions.value.length / pageSize.value)))
+const pagedTransactions = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return transactions.value.slice(start, start + pageSize.value)
+})
+const pageStart = computed(() => transactions.value.length ? ((currentPage.value - 1) * pageSize.value) + 1 : 0)
+const pageEnd = computed(() => Math.min(currentPage.value * pageSize.value, transactions.value.length))
 
 function kasCardClass(type) {
   if (type === 'transfer') return 'bg-primary text-white'
   if (type === 'qris') return 'bg-gradient-to-br from-blue-500 to-purple-600 text-white'
+  if (type === 'debit_card') return 'bg-gradient-to-br from-slate-700 to-slate-900 text-white'
   return 'bg-white border border-slate-100'
 }
 function kasIconClass(type) {
   if (type === 'transfer') return 'text-blue-200'
   if (type === 'qris') return 'text-purple-200'
+  if (type === 'debit_card') return 'text-slate-300'
   return 'text-slate-400'
 }
 function kasLabelClass(type) {
   if (type === 'transfer') return 'text-blue-200'
   if (type === 'qris') return 'text-purple-200'
+  if (type === 'debit_card') return 'text-slate-300'
   return 'text-slate-500'
 }
 function kasBalanceClass(type) {
-  if (type === 'transfer' || type === 'qris') return 'text-white'
+  if (type === 'transfer' || type === 'qris' || type === 'debit_card') return 'text-white'
   return 'text-primary'
 }
 function kasIcon(type) {
   if (type === 'tunai') return 'payments'
   if (type === 'transfer') return 'account_balance'
+  if (type === 'debit_card') return 'credit_card'
   return 'qr_code_2'
 }
 
@@ -202,7 +240,13 @@ async function loadTransactions() {
   const filters = {}
   if (filterAccount.value) filters.accountId = filterAccount.value
   if (filterDate.value) { filters.startDate = filterDate.value; filters.endDate = filterDate.value }
-  transactions.value = await window.api.getCashTransactions(filters)
+  loading.value = true
+  try {
+    transactions.value = await window.api.getCashTransactions(filters)
+    currentPage.value = 1
+  } finally {
+    loading.value = false
+  }
 }
 
 async function reloadCash() {

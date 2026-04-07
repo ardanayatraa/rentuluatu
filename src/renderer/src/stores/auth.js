@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { resetLicenseCache } from '../router'
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref(JSON.parse(sessionStorage.getItem('wavy_user') || 'null'))
@@ -23,6 +24,7 @@ export const useAuthStore = defineStore('auth', () => {
   function logout() {
     user.value = null
     sessionStorage.removeItem('wavy_user')
+    resetLicenseCache()
   }
 
   return { user, isLoggedIn, login, logout }

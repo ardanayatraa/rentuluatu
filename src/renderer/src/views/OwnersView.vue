@@ -2,18 +2,38 @@
   <div>
     <div class="mb-8 flex justify-between items-end">
       <div>
-        <h2 class="page-title">Mitra</h2>
-        <p class="text-slate-500 text-sm mt-1">Data mitra / pemilik motor titipan</p>
+        <h2 class="page-title">Mitra / Pemilik Motor</h2>
+        <p class="text-slate-500 text-sm mt-1">Data mitra pemilik motor titipan</p>
       </div>
-      <button @click="openAdd" class="btn-primary">
-        <span class="material-symbols-outlined">add</span>
-        Tambah Pemilik
-      </button>
+      <div class="flex gap-3">
+        <button @click="openAdd" class="btn-primary">
+          <span class="material-symbols-outlined">add</span>
+          Tambah Mitra
+        </button>
+      </div>
+    </div>
+
+    <div class="mb-4 flex items-center justify-between gap-4 flex-wrap">
+      <div class="relative">
+        <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">search</span>
+        <input
+          v-model="searchQuery"
+          type="text"
+          placeholder="Cari nama atau WhatsApp..."
+          class="w-80 max-w-full border border-slate-200 rounded-lg pl-9 pr-3 py-2 text-sm"
+        />
+      </div>
+      <select v-model.number="pageSize" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+        <option :value="10">10 / halaman</option>
+        <option :value="25">25 / halaman</option>
+        <option :value="50">50 / halaman</option>
+      </select>
     </div>
 
     <!-- Table -->
-    <div class="card overflow-hidden p-0">
-      <table class="w-full text-left">
+    <div class="card table-card">
+      <div class="table-scroll">
+      <table class="table-base text-left">
         <thead>
           <tr class="bg-slate-50 text-slate-400 text-xs uppercase font-bold">
             <th class="px-6 py-4">Nama</th>
@@ -26,7 +46,12 @@
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-50">
-          <tr v-for="o in owners" :key="o.id" class="hover:bg-slate-50 transition-colors text-sm">
+          <tr v-if="loading" v-for="index in 6" :key="`sk-${index}`">
+            <td colspan="7" class="px-6 py-4">
+              <div class="skeleton h-10 rounded-xl"></div>
+            </td>
+          </tr>
+          <tr v-for="o in pagedOwners" :key="o.id" class="hover:bg-slate-50 transition-colors text-sm">
             <td class="px-6 py-4 font-semibold text-primary">{{ o.name }}</td>
             <td class="px-6 py-4 text-slate-500">{{ o.phone || '-' }}</td>
             <td class="px-6 py-4 text-slate-500">{{ o.bank_name || '-' }}</td>
@@ -51,14 +76,23 @@
               </div>
             </td>
           </tr>
-          <tr v-if="!owners.length">
-            <td colspan="7" class="px-6 py-12 text-center text-slate-400">Belum ada data pemilik</td>
+          <tr v-if="!loading && !filteredOwners.length">
+            <td colspan="7" class="px-6 py-12 text-center text-slate-400">Belum ada data mitra</td>
           </tr>
         </tbody>
       </table>
+      </div>
+      <div v-if="!loading && filteredOwners.length" class="flex items-center justify-between border-t border-slate-100 px-6 py-4">
+        <p class="text-xs text-slate-400">Menampilkan {{ pageStart }}-{{ pageEnd }} dari {{ filteredOwners.length }} data</p>
+        <div class="flex items-center gap-2">
+          <button @click="currentPage = Math.max(1, currentPage - 1)" :disabled="currentPage === 1" class="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50">Prev</button>
+          <span class="text-xs font-bold text-slate-500">Hal. {{ currentPage }} / {{ totalPages }}</span>
+          <button @click="currentPage = Math.min(totalPages, currentPage + 1)" :disabled="currentPage === totalPages" class="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50">Next</button>
+        </div>
+      </div>
     </div>
 
-    <n-modal v-model:show="showModal" preset="card" :title="editId ? 'Edit Pemilik' : 'Tambah Pemilik'" class="max-w-md" :auto-focus="false" :trap-focus="false">
+    <n-modal v-model:show="showModal" preset="card" :title="editId ? 'Edit Mitra' : 'Tambah Mitra'" class="max-w-md" :auto-focus="false" :trap-focus="false">
       <form @submit.prevent="submitOwner" class="space-y-4">
         <div>
           <label class="block text-xs font-bold text-slate-500 mb-1">Nama</label>
@@ -92,17 +126,40 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { formatRp } from '../utils/format'
 
 const router = useRouter()
 const owners = ref([])
+const loading = ref(false)
 const showModal = ref(false)
+const searchQuery = ref('')
 
 const editId = ref(null)
 
 const form = ref({ name: '', phone: '', bank_name: '', bank_account: '', is_active: 1 })
+const currentPage = ref(1)
+const pageSize = ref(10)
+const filteredOwners = computed(() => {
+  const query = searchQuery.value.trim().toLowerCase()
+  if (!query) return owners.value
+  return owners.value.filter(owner => {
+    const haystack = `${owner.name || ''} ${owner.phone || ''}`.toLowerCase()
+    return haystack.includes(query)
+  })
+})
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredOwners.value.length / pageSize.value)))
+const pagedOwners = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return filteredOwners.value.slice(start, start + pageSize.value)
+})
+const pageStart = computed(() => filteredOwners.value.length ? ((currentPage.value - 1) * pageSize.value) + 1 : 0)
+const pageEnd = computed(() => Math.min(currentPage.value * pageSize.value, filteredOwners.value.length))
+
+watch([searchQuery, pageSize], () => {
+  currentPage.value = 1
+})
 
 function openAdd() {
   editId.value = null
@@ -124,6 +181,7 @@ async function submitOwner() {
   }
   showModal.value = false
   owners.value = await window.api.getOwners()
+  currentPage.value = 1
 }
 
 function openDetail(id) {
@@ -131,15 +189,22 @@ function openDetail(id) {
 }
 
 async function deleteOwner(id) {
-  if (!confirm('Yakin ingin menghapus pemilik ini?\n\nJika pemilik memiliki motor atau riwayat transaksi, data akan dinonaktifkan (tidak dihapus permanen).')) return
+  if (!confirm('Yakin ingin menghapus mitra ini?\n\nJika mitra memiliki motor atau riwayat transaksi, data akan dinonaktifkan (tidak dihapus permanen).')) return
   const result = await window.api.deleteOwner(id)
   if (result.softDeleted) {
-    alert('Pemilik dinonaktifkan karena memiliki data terkait (motor/transaksi).')
+    alert('Mitra dinonaktifkan karena memiliki data terkait (motor/transaksi).')
   }
   owners.value = await window.api.getOwners()
+  currentPage.value = 1
 }
 
 onMounted(async () => {
-  owners.value = await window.api.getOwners()
+  loading.value = true
+  try {
+    owners.value = await window.api.getOwners()
+    currentPage.value = 1
+  } finally {
+    loading.value = false
+  }
 })
 </script>

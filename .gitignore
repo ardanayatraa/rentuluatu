@@ -4,6 +4,8 @@ out
 .DS_Store
 .eslintcache
 *.log*
+docs/*.docx
+docs/*.rtf
 
 # Environment variables
 .env

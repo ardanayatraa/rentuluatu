@@ -5,12 +5,15 @@ import initSqlJs from 'sql.js'
 
 let db
 let dbPath
+let saveTimer = null
+let isDirty = false
+const SAVE_DEBOUNCE_MS = 250
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Versi schema — naikkan angka ini setiap kali ada perubahan struktur database.
 // Sistem akan otomatis jalankan migrasi yang belum pernah dijalankan.
 // ─────────────────────────────────────────────────────────────────────────────
-const SCHEMA_VERSION = 6
+const SCHEMA_VERSION = 11
 
 export async function initDb() {
   const wasmPath = join(
@@ -32,8 +35,9 @@ export async function initDb() {
 
   createBaseSchema()
   runMigrations()
+  createBaseIndexes()
   seedDefaults()
-  saveDb()
+  forceSaveDb()
   return db
 }
 
@@ -42,10 +46,31 @@ export function getDb() {
   return db
 }
 
-export function saveDb() {
+function persistDbNow() {
   if (db && dbPath) {
     const data = db.export()
     writeFileSync(dbPath, Buffer.from(data))
+    isDirty = false
+  }
+}
+
+export function saveDb() {
+  if (!db || !dbPath) return
+  isDirty = true
+  if (saveTimer) clearTimeout(saveTimer)
+  saveTimer = setTimeout(() => {
+    saveTimer = null
+    if (isDirty) persistDbNow()
+  }, SAVE_DEBOUNCE_MS)
+}
+
+export function forceSaveDb() {
+  if (saveTimer) {
+    clearTimeout(saveTimer)
+    saveTimer = null
+  }
+  if (isDirty || (db && dbPath)) {
+    persistDbNow()
   }
 }
 
@@ -177,6 +202,8 @@ function createBaseSchema() {
       status TEXT DEFAULT 'completed',
       payout_id INTEGER,
       invoice_number TEXT,
+      is_extension INTEGER DEFAULT 0,
+      parent_rental_id INTEGER REFERENCES rentals(id),
       created_at TEXT DEFAULT (datetime('now','localtime'))
     )
   `)
@@ -239,6 +266,56 @@ function createBaseSchema() {
       created_at TEXT DEFAULT (datetime('now','localtime'))
     )
   `)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS license (
+      id INTEGER PRIMARY KEY DEFAULT 1,
+      trial_started_at TEXT,
+      trial_days INTEGER DEFAULT 7,
+      serial_number TEXT,
+      licensed_until TEXT,
+      machine_id TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    )
+  `)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS downloads (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      file_name TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      file_type TEXT NOT NULL,
+      report_name TEXT,
+      file_size INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    )
+  `)
+}
+
+function createBaseIndexes() {
+  const indexes = [
+    'CREATE INDEX IF NOT EXISTS idx_rentals_date_status ON rentals(date_time, status)',
+    'CREATE INDEX IF NOT EXISTS idx_rentals_motor_date ON rentals(motor_id, date_time)',
+    'CREATE INDEX IF NOT EXISTS idx_rentals_owner_payout ON rentals(payout_id, status)',
+    'CREATE INDEX IF NOT EXISTS idx_rentals_hotel_payout ON rentals(hotel_id, hotel_payout_id, status)',
+    'CREATE INDEX IF NOT EXISTS idx_rentals_invoice_number ON rentals(invoice_number)',
+    'CREATE INDEX IF NOT EXISTS idx_rentals_extension_parent ON rentals(parent_rental_id, is_extension)',
+    'CREATE INDEX IF NOT EXISTS idx_expenses_date_type_motor ON expenses(date, type, motor_id)',
+    'CREATE INDEX IF NOT EXISTS idx_expenses_payout ON expenses(payout_id)',
+    'CREATE INDEX IF NOT EXISTS idx_cash_transactions_date_ref ON cash_transactions(date, reference_type)',
+    'CREATE INDEX IF NOT EXISTS idx_cash_transactions_account_date ON cash_transactions(cash_account_id, date)',
+    'CREATE INDEX IF NOT EXISTS idx_payouts_owner_date ON payouts(owner_id, date)',
+    'CREATE INDEX IF NOT EXISTS idx_hotel_payouts_hotel_date ON hotel_payouts(hotel_id, date)',
+    'CREATE INDEX IF NOT EXISTS idx_downloads_created_at ON downloads(created_at)',
+    'CREATE INDEX IF NOT EXISTS idx_motors_owner_active ON motors(owner_id, is_active)',
+    'CREATE INDEX IF NOT EXISTS idx_hotels_active_name ON hotels(is_active, name)',
+    'CREATE INDEX IF NOT EXISTS idx_owners_active_name ON owners(is_active, name)'
+  ]
+
+  for (const sql of indexes) {
+    try { db.run(sql) } catch (_) {}
+  }
+
+  try { db.run('ANALYZE') } catch (_) {}
+  try { db.run('PRAGMA optimize') } catch (_) {}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -339,6 +416,70 @@ const migrations = [
   },
 
   // ── Tambahkan migrasi baru di sini ──────────────────────────────────────────
+  // v7 — tabel license untuk trial & serial number
+  {
+    version: 7,
+    up() {
+      try {
+        db.run(`
+          CREATE TABLE IF NOT EXISTS license (
+            id INTEGER PRIMARY KEY DEFAULT 1,
+            trial_started_at TEXT,
+            trial_days INTEGER DEFAULT 7,
+            serial_number TEXT,
+            licensed_until TEXT,
+            machine_id TEXT,
+            created_at TEXT DEFAULT (datetime('now','localtime'))
+          )
+        `)
+      } catch (_) {}
+    }
+  },
+  // v8 — riwayat unduhan laporan
+  {
+    version: 8,
+    up() {
+      try {
+        db.run(`
+          CREATE TABLE IF NOT EXISTS downloads (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_name TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            file_type TEXT NOT NULL,
+            report_name TEXT,
+            file_size INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now','localtime'))
+          )
+        `)
+      } catch (_) {}
+    }
+  },
+  // v9 — index performa untuk data jangka panjang
+  {
+    version: 9,
+    up() {
+      createBaseIndexes()
+    }
+  },
+  // v10 — cash account Debit Card
+  {
+    version: 10,
+    up() {
+      const debitCard = get("SELECT id FROM cash_accounts WHERE type = 'debit_card'")
+      if (!debitCard) {
+        db.run("INSERT INTO cash_accounts (name, type, balance) VALUES ('Debit Card', 'debit_card', 0)")
+      }
+    }
+  },
+  // v11 — penanda transaksi extend
+  {
+    version: 11,
+    up() {
+      try { db.run("ALTER TABLE rentals ADD COLUMN is_extension INTEGER DEFAULT 0") } catch (_) {}
+      try { db.run("ALTER TABLE rentals ADD COLUMN parent_rental_id INTEGER REFERENCES rentals(id)") } catch (_) {}
+      try { db.run("UPDATE rentals SET is_extension = 0 WHERE is_extension IS NULL") } catch (_) {}
+    }
+  },
   // Contoh untuk update fitur berikutnya:
   // {
   //   version: 7,
@@ -413,5 +554,11 @@ function seedDefaults() {
     db.run("INSERT INTO cash_accounts (name, type, balance) VALUES ('Kas Tunai', 'tunai', 0)")
     db.run("INSERT INTO cash_accounts (name, type, balance) VALUES ('Rekening Transfer', 'transfer', 0)")
     db.run("INSERT INTO cash_accounts (name, type, balance) VALUES ('QRIS', 'qris', 0)")
+    db.run("INSERT INTO cash_accounts (name, type, balance) VALUES ('Debit Card', 'debit_card', 0)")
+  } else {
+    const debitCard = get("SELECT id FROM cash_accounts WHERE type = 'debit_card'")
+    if (!debitCard) {
+      db.run("INSERT INTO cash_accounts (name, type, balance) VALUES ('Debit Card', 'debit_card', 0)")
+    }
   }
 }

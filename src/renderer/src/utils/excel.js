@@ -3,15 +3,21 @@
 const rp = (n) => Number(n || 0)
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('id-ID') : '-'
 const fmtDateTime = (d) => d ? new Date(d).toLocaleString('id-ID') : '-'
+const paymentLabel = (method) => ({
+  tunai: 'Tunai',
+  transfer: 'Transfer',
+  qris: 'QRIS',
+  debit_card: 'Debit Card'
+}[method] || method || '-')
 
-export async function saveFinancialExcel({ rows, period, groupLabel }) {
+export async function saveFinancialExcel({ rows, period, groupLabel, fileLabel }) {
   const columns = [
     { header: 'Periode', key: 'period', width: 15 },
     { header: 'Jumlah Rental', key: 'rental_count', width: 15 },
     { header: 'Pemasukan', key: 'income', width: 20 },
     { header: 'Pengeluaran', key: 'expenses', width: 20 },
     { header: 'Wavy Gets', key: 'wavy_gets', width: 20 },
-    { header: 'Owner Gets', key: 'owner_gets', width: 20 },
+    { header: 'Bagian Mitra', key: 'owner_gets', width: 20 },
     { header: 'Profit', key: 'profit', width: 20 }
   ]
   const dataRows = rows.map(r => ({
@@ -28,28 +34,28 @@ export async function saveFinancialExcel({ rows, period, groupLabel }) {
     profit: rp(rows.reduce((s,r)=>s+r.profit,0))
   }
   return window.api.saveExcel({
-    defaultName: `Laporan_Keuangan_${period.replace(/\//g,'-')}.xlsx`,
+    defaultName: `Laporan_Keuangan_${fileLabel || period.replace(/\//g,'-')}.xlsx`,
     sheets: [{ name: 'Laporan Keuangan', columns, rows: dataRows, totals,
       currencyKeys: ['income','expenses','wavy_gets','owner_gets','profit'] }]
   })
 }
 
-export async function saveMotorIncomeExcel({ rentals, period, motorName }) {
+export async function saveMotorIncomeExcel({ rentals, period, motorName, fileLabel }) {
   const columns = [
     { header: 'Tanggal', key: 'date', width: 20 },
     { header: 'Pelanggan', key: 'customer', width: 22 },
-    { header: 'Hotel', key: 'hotel', width: 20 },
+    { header: 'Hotel / Vendor Hotel', key: 'hotel', width: 20 },
     { header: 'Motor', key: 'motor', width: 22 },
     { header: 'Durasi (hari)', key: 'days', width: 14 },
     { header: 'Pembayaran', key: 'payment', width: 14 },
     { header: 'Total', key: 'total', width: 18 },
     { header: 'Wavy Gets', key: 'wavy', width: 18 },
-    { header: 'Owner Gets', key: 'owner', width: 18 }
+    { header: 'Bagian Mitra', key: 'owner', width: 18 }
   ]
   const dataRows = rentals.map(r => ({
     date: fmtDateTime(r.date_time), customer: r.customer_name, hotel: r.hotel || '-',
     motor: r.model + ' ' + r.plate_number, days: r.period_days,
-    payment: r.payment_method, total: rp(r.total_price),
+    payment: paymentLabel(r.payment_method), total: rp(r.total_price),
     wavy: rp(r.wavy_gets), owner: rp(r.owner_gets)
   }))
   const totals = {
@@ -60,13 +66,13 @@ export async function saveMotorIncomeExcel({ rentals, period, motorName }) {
     owner: rp(rentals.reduce((s,r)=>s+r.owner_gets,0))
   }
   return window.api.saveExcel({
-    defaultName: `Pendapatan_Motor_${(motorName||'Semua').replace(/\s/g,'_')}_${period.replace(/\//g,'-')}.xlsx`,
+    defaultName: `Pendapatan_Motor_${(motorName||'Semua').replace(/\s/g,'_')}_${fileLabel || period.replace(/\//g,'-')}.xlsx`,
     sheets: [{ name: 'Pendapatan Motor', columns, rows: dataRows, totals,
       currencyKeys: ['total','wavy','owner'] }]
   })
 }
 
-export async function saveMotorExpensesExcel({ expenses, period, motorName }) {
+export async function saveMotorExpensesExcel({ expenses, period, motorName, fileLabel }) {
   const columns = [
     { header: 'Tanggal', key: 'date', width: 18 },
     { header: 'Motor', key: 'motor', width: 22 },
@@ -79,17 +85,17 @@ export async function saveMotorExpensesExcel({ expenses, period, motorName }) {
   const dataRows = expenses.map(e => ({
     date: fmtDate(e.date), motor: e.model ? e.model+' '+e.plate_number : 'Umum',
     type: e.type, category: e.category, desc: e.description || '-',
-    payment: e.payment_method, amount: rp(e.amount)
+    payment: paymentLabel(e.payment_method), amount: rp(e.amount)
   }))
   const totals = { date: 'TOTAL', motor:'', type:'', category:'', desc:'', payment:'',
     amount: rp(expenses.reduce((s,e)=>s+e.amount,0)) }
   return window.api.saveExcel({
-    defaultName: `Pengeluaran_Motor_${(motorName||'Semua').replace(/\s/g,'_')}_${period.replace(/\//g,'-')}.xlsx`,
+    defaultName: `Pengeluaran_Motor_${(motorName||'Semua').replace(/\s/g,'_')}_${fileLabel || period.replace(/\//g,'-')}.xlsx`,
     sheets: [{ name: 'Pengeluaran Motor', columns, rows: dataRows, totals, currencyKeys: ['amount'] }]
   })
 }
 
-export async function saveTransactionsExcel({ rentals, expenses, period }) {
+export async function saveTransactionsExcel({ rentals, operationalExpenses, motorExpenses, period, fileLabel }) {
   const rentalCols = [
     { header: 'Tanggal', key: 'date', width: 20 },
     { header: 'Pelanggan', key: 'desc', width: 22 },
@@ -106,21 +112,25 @@ export async function saveTransactionsExcel({ rentals, expenses, period }) {
     { header: 'Jumlah', key: 'amount', width: 18 }
   ]
   return window.api.saveExcel({
-    defaultName: `Transaksi_${period.replace(/\//g,'-')}.xlsx`,
-    sheets: [
-      { name: 'Pemasukan', columns: rentalCols, currencyKeys: ['amount'],
-        rows: rentals.map(r => ({ date: fmtDateTime(r.date), desc: r.description, motor: r.motor, payment: r.payment_method, amount: rp(r.amount), status: r.status })),
-        totals: { date:'TOTAL', desc:'', motor:'', payment:'', amount: rp(rentals.filter(r=>r.status!=='refunded').reduce((s,r)=>s+r.amount,0)), status:'' }
-      },
-      { name: 'Pengeluaran', columns: expCols, currencyKeys: ['amount'],
-        rows: expenses.map(e => ({ date: fmtDate(e.date), desc: e.description, motor: e.motor, payment: e.payment_method, amount: rp(e.amount) })),
-        totals: { date:'TOTAL', desc:'', motor:'', payment:'', amount: rp(expenses.reduce((s,e)=>s+e.amount,0)) }
-      }
-    ]
+      defaultName: `Transaksi_${fileLabel || period.replace(/\//g,'-')}.xlsx`,
+      sheets: [
+        { name: 'Pemasukan', columns: rentalCols, currencyKeys: ['amount'],
+          rows: rentals.map(r => ({ date: fmtDateTime(r.date), desc: r.description, motor: r.motor, payment: paymentLabel(r.payment_method), amount: rp(r.amount), status: r.status })),
+          totals: { date:'TOTAL', desc:'', motor:'', payment:'', amount: rp(rentals.filter(r=>r.status!=='refunded').reduce((s,r)=>s+r.amount,0)), status:'' }
+        },
+        { name: 'Pengeluaran Operasional', columns: expCols, currencyKeys: ['amount'],
+          rows: operationalExpenses.map(e => ({ date: fmtDate(e.date), desc: e.description, motor: e.motor, payment: paymentLabel(e.payment_method), amount: rp(e.amount) })),
+          totals: { date:'TOTAL', desc:'', motor:'', payment:'', amount: rp(operationalExpenses.reduce((s,e)=>s+e.amount,0)) }
+        },
+        { name: 'Pengeluaran Motor', columns: expCols, currencyKeys: ['amount'],
+          rows: motorExpenses.map(e => ({ date: fmtDate(e.date), desc: e.description, motor: e.motor, payment: paymentLabel(e.payment_method), amount: rp(e.amount) })),
+          totals: { date:'TOTAL', desc:'', motor:'', payment:'', amount: rp(motorExpenses.reduce((s,e)=>s+e.amount,0)) }
+        }
+      ]
   })
 }
 
-export async function saveCommissionExcel({ data, period }) {
+export async function saveCommissionExcel({ data, period, fileLabel }) {
   const { owner, rentals } = data
   const columns = [
     { header: 'Tanggal', key: 'date', width: 20 },
@@ -128,7 +138,7 @@ export async function saveCommissionExcel({ data, period }) {
     { header: 'Pelanggan', key: 'customer', width: 22 },
     { header: 'Durasi (hari)', key: 'days', width: 14 },
     { header: 'Total Sewa', key: 'total', width: 18 },
-    { header: 'Komisi Vendor', key: 'commission', width: 18 },
+    { header: 'Bagian Mitra', key: 'commission', width: 18 },
     { header: 'Status', key: 'status', width: 12 }
   ]
   const dataRows = rentals.map(r => ({
@@ -141,12 +151,12 @@ export async function saveCommissionExcel({ data, period }) {
     total: rp(rentals.reduce((s,r)=>s+r.total_price,0)),
     commission: rp(rentals.reduce((s,r)=>s+r.owner_gets,0)), status:'' }
   return window.api.saveExcel({
-    defaultName: `Komisi_${owner.name.replace(/\s/g,'_')}_${period.replace(/\//g,'-')}.xlsx`,
-    sheets: [{ name: 'Komisi Vendor', columns, rows: dataRows, totals, currencyKeys: ['total','commission'] }]
+    defaultName: `Komisi_${owner.name.replace(/\s/g,'_')}_${fileLabel || period.replace(/\//g,'-')}.xlsx`,
+    sheets: [{ name: 'Komisi Mitra', columns, rows: dataRows, totals, currencyKeys: ['total','commission'] }]
   })
 }
 
-export async function saveProfitLossExcel({ data, period }) {
+export async function saveProfitLossExcel({ data, period, fileLabel }) {
   const columns = [
     { header: 'Keterangan', key: 'label', width: 35 },
     { header: 'Jumlah', key: 'amount', width: 20 }
@@ -165,8 +175,31 @@ export async function saveProfitLossExcel({ data, period }) {
     { label: 'LABA BERSIH', amount: rp(data.laba_bersih) }
   ]
   return window.api.saveExcel({
-    defaultName: `Laba_Rugi_${period.replace(/\s/g,'_')}.xlsx`,
+    defaultName: `Laba_Rugi_${fileLabel || period.replace(/\s/g,'_')}.xlsx`,
     sheets: [{ name: 'Laba Rugi', columns, rows }]
+  })
+}
+
+export async function saveBalanceSheetExcel({ data, period, fileLabel }) {
+  const columns = [
+    { header: 'Kelompok', key: 'group', width: 22 },
+    { header: 'Keterangan', key: 'label', width: 38 },
+    { header: 'Jumlah', key: 'amount', width: 20 }
+  ]
+
+  const rows = [
+    ...data.assets.current.map(row => ({ group: 'Aset', label: row.label, amount: Number(row.amount) })),
+    { group: 'Aset', label: 'TOTAL ASET', amount: Number(data.assets.total) },
+    ...data.liabilities.current.map(row => ({ group: 'Kewajiban', label: row.label, amount: Number(row.amount) })),
+    { group: 'Kewajiban', label: 'TOTAL KEWAJIBAN', amount: Number(data.liabilities.total) },
+    ...data.equity.rows.map(row => ({ group: 'Ekuitas', label: row.label, amount: Number(row.amount) })),
+    { group: 'Ekuitas', label: 'TOTAL EKUITAS', amount: Number(data.equity.total) },
+    { group: 'Kontrol', label: 'TOTAL KEWAJIBAN + EKUITAS', amount: Number(data.totals.liabilitiesAndEquity) }
+  ]
+
+  return window.api.saveExcel({
+    defaultName: `Neraca_${fileLabel || period.replace(/\s/g,'_')}.xlsx`,
+    sheets: [{ name: 'Neraca', columns, rows, currencyKeys: ['amount'] }]
   })
 }
 
@@ -199,7 +232,7 @@ export async function saveAnnualExcel({ rows, year }) {
   })
 }
 
-export async function saveOwnerReportExcel({ rows, period }) {
+export async function saveOwnerReportExcel({ rows, period, fileLabel }) {
   const columns = [
     { header: 'Mitra', key: 'name', width: 22 },
     { header: 'No. HP', key: 'phone', width: 16 },
@@ -229,13 +262,13 @@ export async function saveOwnerReportExcel({ rows, period }) {
     net_commission: Number(rows.reduce((s,o)=>s+(o.gross_commission-o.total_expenses),0))
   }
   return window.api.saveExcel({
-    defaultName: `Laporan_Mitra_${period.replace(/\s/g,'_')}.xlsx`,
+    defaultName: `Laporan_Mitra_${fileLabel || period.replace(/\s/g,'_')}.xlsx`,
     sheets: [{ name: 'Laporan Mitra', columns, rows: dataRows, totals,
       currencyKeys: ['total_omzet','gross_commission','total_expenses','net_commission'] }]
   })
 }
 
-export async function saveRankingExcel({ rows, period }) {
+export async function saveRankingExcel({ rows, period, fileLabel }) {
   const columns = [
     { header: '#', key: 'rank', width: 6 },
     { header: 'Motor', key: 'model', width: 22 },
@@ -244,7 +277,7 @@ export async function saveRankingExcel({ rows, period }) {
     { header: 'Total Rental', key: 'total_rentals', width: 14 },
     { header: 'Total Hari', key: 'total_days', width: 14 },
     { header: 'Wavy Gets', key: 'total_wavy', width: 20 },
-    { header: 'Owner Gets', key: 'total_owner', width: 20 }
+    { header: 'Bagian Mitra', key: 'total_owner', width: 20 }
   ]
   const dataRows = rows.map((m, i) => ({
     rank: i + 1, model: m.model, plate: m.plate_number, type: m.type,
@@ -252,7 +285,7 @@ export async function saveRankingExcel({ rows, period }) {
     total_wavy: Number(m.total_wavy), total_owner: Number(m.total_owner)
   }))
   return window.api.saveExcel({
-    defaultName: `Ranking_Motor_${period.replace(/\s/g,'_')}.xlsx`,
+    defaultName: `Ranking_Motor_${fileLabel || period.replace(/\s/g,'_')}.xlsx`,
     sheets: [{ name: 'Ranking Motor', columns, rows: dataRows,
       currencyKeys: ['total_wavy', 'total_owner'] }]
   })

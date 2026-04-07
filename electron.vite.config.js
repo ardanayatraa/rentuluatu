@@ -1,4 +1,5 @@
 import { resolve } from 'path'
+import pkg from './package.json'
 import { defineConfig, loadEnv } from 'electron-vite'
 import vue from '@vitejs/plugin-vue'
 
@@ -24,6 +25,9 @@ export default defineConfig(({ mode }) => {
     }
   },
   renderer: {
+    define: {
+      'import.meta.env.VITE_APP_VERSION': JSON.stringify(pkg.version)
+    },
     resolve: {
       alias: {
         '@': resolve('src/renderer/src'),

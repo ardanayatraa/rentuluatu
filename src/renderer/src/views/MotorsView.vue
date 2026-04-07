@@ -5,10 +5,12 @@
         <h2 class="page-title">Manajemen Motor</h2>
         <p class="text-slate-500 text-sm mt-1">Data armada motor rental</p>
       </div>
-      <button @click="openAdd" class="btn-primary">
-        <span class="material-symbols-outlined">add</span>
-        Tambah Motor
-      </button>
+      <div class="flex gap-3">
+        <button @click="openAdd" class="btn-primary">
+          <span class="material-symbols-outlined">add</span>
+          Tambah Motor
+        </button>
+      </div>
     </div>
 
     <!-- Filter -->
@@ -20,12 +22,18 @@
         <option value="pribadi">Pribadi</option>
         <option value="titipan">Titipan</option>
       </select>
+      <select v-model.number="pageSize" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+        <option :value="10">10 / halaman</option>
+        <option :value="25">25 / halaman</option>
+        <option :value="50">50 / halaman</option>
+      </select>
       <span class="ml-auto text-sm text-slate-500">{{ filteredMotors.length }} motor</span>
     </div>
 
     <!-- Table -->
-    <div class="card overflow-hidden p-0">
-      <table class="w-full text-left">
+    <div class="card table-card">
+      <div class="table-scroll">
+      <table class="table-base text-left">
         <thead>
           <tr class="bg-slate-50 text-slate-400 text-xs uppercase font-bold">
             <th class="px-6 py-4">Model</th>
@@ -37,7 +45,12 @@
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-50">
-          <tr v-for="m in filteredMotors" :key="m.id" class="hover:bg-slate-50 transition-colors text-sm">
+          <tr v-if="loading" v-for="index in 6" :key="`sk-${index}`">
+            <td colspan="6" class="px-6 py-4">
+              <div class="skeleton h-10 rounded-xl"></div>
+            </td>
+          </tr>
+          <tr v-for="m in pagedMotors" :key="m.id" class="hover:bg-slate-50 transition-colors text-sm">
             <td class="px-6 py-4 font-semibold text-primary">{{ m.model }}</td>
             <td class="px-6 py-4 text-slate-500 font-mono">{{ m.plate_number }}</td>
             <td class="px-6 py-4">
@@ -56,11 +69,20 @@
               </div>
             </td>
           </tr>
-          <tr v-if="!filteredMotors.length">
+          <tr v-if="!loading && !filteredMotors.length">
             <td colspan="6" class="px-6 py-12 text-center text-slate-400">Belum ada data motor</td>
           </tr>
         </tbody>
       </table>
+      </div>
+      <div v-if="!loading && filteredMotors.length" class="flex items-center justify-between border-t border-slate-100 px-6 py-4">
+        <p class="text-xs text-slate-400">Menampilkan {{ pageStart }}-{{ pageEnd }} dari {{ filteredMotors.length }} data</p>
+        <div class="flex items-center gap-2">
+          <button @click="currentPage = Math.max(1, currentPage - 1)" :disabled="currentPage === 1" class="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50">Prev</button>
+          <span class="text-xs font-bold text-slate-500">Hal. {{ currentPage }} / {{ totalPages }}</span>
+          <button @click="currentPage = Math.min(totalPages, currentPage + 1)" :disabled="currentPage === totalPages" class="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50">Next</button>
+        </div>
+      </div>
     </div>
 
     <!-- Modal -->
@@ -99,7 +121,7 @@
               <SearchSelect
                 v-model="form.owner_id"
                 :options="ownerOptions"
-                placeholder="Tidak ada / Pilih Mitra..."
+                placeholder="Pilih Mitra / Pemilik..."
               />
               <p v-if="form.owner_id" class="text-xs text-slate-400 mt-1">
                 {{ owners.find(o => o.id == form.owner_id)?.phone || '' }}
@@ -138,12 +160,15 @@ import { ref, computed, onMounted } from 'vue'
 import SearchSelect from '../components/SearchSelect.vue'
 
 const motors = ref([])
+const loading = ref(false)
 const owners = ref([])
 const showModal = ref(false)
 const editId = ref(null)
 const search = ref('')
 const filterType = ref('')
 const form = ref({ model: '', plate_number: '', type: 'pribadi', owner_id: '' })
+const currentPage = ref(1)
+const pageSize = ref(10)
 
 const isCreatingOwner = ref(false)
 const ownerForm = ref({ name: '', phone: '', bank_name: '', bank_account: '' })
@@ -160,6 +185,13 @@ const filteredMotors = computed(() => motors.value.filter(m => {
   }
   return true
 }))
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredMotors.value.length / pageSize.value)))
+const pagedMotors = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return filteredMotors.value.slice(start, start + pageSize.value)
+})
+const pageStart = computed(() => filteredMotors.value.length ? ((currentPage.value - 1) * pageSize.value) + 1 : 0)
+const pageEnd = computed(() => Math.min(currentPage.value * pageSize.value, filteredMotors.value.length))
 
 function openAdd() {
   editId.value = null
@@ -188,6 +220,11 @@ async function submitMotor() {
     return
   }
 
+  if (!isCreatingOwner.value && !form.value.owner_id) {
+    motorError.value = 'Pemilik motor wajib dipilih'
+    return
+  }
+
   let finalOwnerId = form.value.owner_id || null
 
   // Buat owner baru dulu, lalu assign ID-nya ke motor
@@ -212,6 +249,7 @@ async function submitMotor() {
     }
     showModal.value = false
     motors.value = await window.api.getMotors()
+    currentPage.value = 1
   } catch (err) {
     motorError.value = err.message.replace("Error invoking remote method 'motor:create': Error: ", '')
       .replace("Error invoking remote method 'motor:update': Error: ", '')
@@ -223,13 +261,20 @@ async function deleteMotor(id) {
   try {
     await window.api.deleteMotor(id)
     motors.value = await window.api.getMotors()
+    currentPage.value = 1
   } catch (err) {
     alert(err.message.replace("Error invoking remote method 'motor:delete': Error: ", ''))
   }
 }
 
 onMounted(async () => {
-  motors.value = await window.api.getMotors()
-  owners.value = await window.api.getOwners({ activeOnly: true })
+  loading.value = true
+  try {
+    motors.value = await window.api.getMotors()
+    owners.value = await window.api.getOwners({ activeOnly: true })
+    currentPage.value = 1
+  } finally {
+    loading.value = false
+  }
 })
 </script>

@@ -1,0 +1,373 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const handlers = new Map()
+
+vi.mock('electron', () => ({
+  ipcMain: {
+    handle: vi.fn((channel, fn) => {
+      handlers.set(channel, fn)
+    })
+  }
+}))
+
+vi.mock('../main/db.js', () => ({
+  dbOps: {
+    get: vi.fn(),
+    all: vi.fn(),
+    run: vi.fn(),
+    runRaw: vi.fn()
+  },
+  saveDb: vi.fn()
+}))
+
+import { dbOps, saveDb } from '../main/db.js'
+import { registerDashboardHandlers } from '../main/ipc/dashboard.js'
+import { registerReportHandlers } from '../main/ipc/reports.js'
+import { registerRentalHandlers } from '../main/ipc/rentals.js'
+import { registerOwnerHandlers } from '../main/ipc/owners.js'
+import { registerHotelHandlers } from '../main/ipc/hotels.js'
+import { registerRefundHandlers } from '../main/ipc/refunds.js'
+
+describe('IPC business logic', () => {
+  beforeEach(() => {
+    handlers.clear()
+    vi.clearAllMocks()
+  })
+
+  it('dashboard summary menghitung profit perusahaan tanpa membebankan pengeluaran motor mitra', async () => {
+    dbOps.get.mockImplementation((sql) => {
+      if (sql.includes('SUM(total_price)')) return { total: 300_000 }
+      if (sql.includes('SUM(e.amount)')) return { total: 30_000 }
+      if (sql.includes('SUM(wavy_gets)')) return { total: 75_000 }
+      if (sql.includes('SUM(owner_gets)')) return { total: 225_000 }
+      if (sql.includes('COUNT(*) as total') && sql.includes("status != 'refunded'")) return { total: 2 }
+      if (sql.includes('COUNT(*) as total') && sql.includes("status = 'refunded'")) return { total: 0 }
+      if (sql.includes("reference_type = 'manual_income'")) return { total: 5_000 }
+      if (sql.includes("reference_type = 'manual_expense'")) return { total: 10_000 }
+      return { total: 0 }
+    })
+
+    registerDashboardHandlers()
+    const summary = await handlers.get('dashboard:summary')(null, {
+      startDate: '2026-04-01T00:00:00',
+      endDate: '2026-04-07T23:59:59'
+    })
+
+    expect(summary).toEqual({
+      income: 305_000,
+      expenses: 40_000,
+      wavy_gets: 75_000,
+      owner_gets: 225_000,
+      profit: 40_000,
+      rental_count: 2,
+      refund_count: 0
+    })
+  })
+
+  it('report owner commission mengelompokkan komisi dan pengeluaran per motor dengan benar', async () => {
+    dbOps.get.mockImplementation((sql, params) => {
+      if (sql.includes('SELECT * FROM owners')) return { id: params[0], name: 'Mitra A' }
+      return null
+    })
+    dbOps.all.mockImplementation((sql) => {
+      if (sql.includes('SELECT * FROM motors WHERE owner_id')) {
+        return [
+          { id: 10, model: 'Vario', plate_number: 'DK 1234 AA' },
+          { id: 11, model: 'NMax', plate_number: 'DK 5555 BB' }
+        ]
+      }
+      if (sql.includes('FROM rentals r') && sql.includes('m.id as motor_id')) {
+        return [
+          { id: 1, motor_id: 10, model: 'Vario', plate_number: 'DK 1234 AA', owner_gets: 200_000, payout_id: null, date_time: '2026-04-07T10:00:00', customer_name: 'A', period_days: 2, total_price: 300_000 },
+          { id: 2, motor_id: 11, model: 'NMax', plate_number: 'DK 5555 BB', owner_gets: 150_000, payout_id: 8, date_time: '2026-04-06T10:00:00', customer_name: 'B', period_days: 1, total_price: 220_000 }
+        ]
+      }
+      if (sql.includes('FROM expenses e') && sql.includes("e.type = 'motor'")) {
+        return [
+          { id: 21, motor_id: 10, model: 'Vario', plate_number: 'DK 1234 AA', amount: 50_000, category: 'Servis', description: 'Oli' }
+        ]
+      }
+      if (sql.includes('FROM payouts p')) {
+        return [{ id: 8, cash_account_name: 'Kas Utama', date: '2026-04-06', amount: 150_000 }]
+      }
+      return []
+    })
+
+    registerReportHandlers()
+    const report = await handlers.get('report:owner-commission')(null, {
+      ownerId: 2,
+      startDate: '2026-04-01T00:00:00',
+      endDate: '2026-04-07T23:59:59'
+    })
+
+    expect(report.totalOwnerGets).toBe(350_000)
+    expect(report.totalPaid).toBe(150_000)
+    expect(report.totalUnpaid).toBe(200_000)
+    expect(report.totalExpenses).toBe(50_000)
+    expect(report.totalNet).toBe(300_000)
+    expect(report.byMotor).toEqual([
+      {
+        motor_id: 11,
+        model: 'NMax',
+        plate_number: 'DK 5555 BB',
+        rentals: [expect.objectContaining({ id: 2, motor_id: 11 })],
+        expenses: [],
+        rental_total: 150_000,
+        expense_total: 0,
+        net_total: 150_000
+      },
+      {
+        motor_id: 10,
+        model: 'Vario',
+        plate_number: 'DK 1234 AA',
+        rentals: [expect.objectContaining({ id: 1, motor_id: 10 })],
+        expenses: [expect.objectContaining({ id: 21, motor_id: 10 })],
+        rental_total: 200_000,
+        expense_total: 50_000,
+        net_total: 150_000
+      }
+    ])
+  })
+
+  it('owner slip period meta mengambil payout terakhir dan aktivitas paling awal', async () => {
+    dbOps.get.mockImplementation((sql) => {
+      if (sql.includes('FROM payouts p')) return { date: '2026-04-06' }
+      if (sql.includes('date(MIN(r.date_time))')) return { first_date: '2026-03-15' }
+      if (sql.includes('SELECT MIN(e.date)')) return { first_date: '2026-03-10' }
+      return null
+    })
+
+    registerOwnerHandlers()
+    const meta = await handlers.get('owner:get-slip-period-meta')(null, { ownerId: 2 })
+
+    expect(meta).toEqual({
+      latestPayoutDate: '2026-04-06',
+      firstActivityDate: '2026-03-10'
+    })
+  })
+
+  it('rental create menolak vendor fee negatif atau melebihi total sewa', async () => {
+    dbOps.get.mockImplementation((sql) => {
+      if (sql.includes('SELECT * FROM motors')) return { id: 1, type: 'titipan', model: 'Vario' }
+      return null
+    })
+
+    registerRentalHandlers()
+    const createRental = handlers.get('rental:create')
+
+    expect(() => createRental(null, {
+      motor_id: 1,
+      total_price: 300_000,
+      vendor_fee: -1
+    })).toThrow('Vendor fee tidak boleh negatif')
+
+    expect(() => createRental(null, {
+      motor_id: 1,
+      total_price: 300_000,
+      vendor_fee: 400_000
+    })).toThrow('Vendor fee tidak boleh melebihi total harga sewa')
+  })
+
+  it('rental create menghasilkan invoice, pembagian komisi, dan transaksi kas yang benar', async () => {
+    dbOps.get.mockImplementation((sql, params) => {
+      if (sql.includes('SELECT * FROM motors')) return { id: 1, type: 'titipan', model: 'Vario' }
+      if (sql.includes('COUNT(*) as c FROM rentals WHERE invoice_number LIKE')) return { c: 2 }
+      if (sql.includes('SELECT last_insert_rowid() as id')) return { id: 99 }
+      if (sql.includes('SELECT * FROM cash_accounts WHERE type = ?')) return { id: 7, type: params[0] }
+      return null
+    })
+
+    registerRentalHandlers()
+    const result = await handlers.get('rental:create')(null, {
+      date_time: '2026-04-07T10:00:00',
+      customer_name: 'Budi',
+      hotel: 'Hotel A',
+      hotel_id: 3,
+      motor_id: 1,
+      period_days: 2,
+      payment_method: 'cash',
+      total_price: 500_000,
+      vendor_fee: 100_000
+    })
+
+    expect(result).toEqual({ id: 99, invoice_number: 'WVY-2026-04-0003' })
+    expect(dbOps.runRaw).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO rentals'),
+      expect.arrayContaining([
+        '2026-04-07T10:00:00',
+        'Budi',
+        'Hotel A',
+        3,
+        1,
+        2,
+        'cash',
+        500_000,
+        250_000,
+        100_000,
+        400_000,
+        120_000,
+        280_000,
+        'completed',
+        'WVY-2026-04-0003'
+      ])
+    )
+    expect(dbOps.run).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO cash_transactions'),
+      [7, 500_000, 99, 'Sewa Vario - Budi', '2026-04-07']
+    )
+    expect(dbOps.run).toHaveBeenCalledWith(
+      'UPDATE cash_accounts SET balance = balance + ? WHERE id = ?',
+      [500_000, 7]
+    )
+    expect(saveDb).toHaveBeenCalled()
+  })
+
+  it('owner payout tetap bisa diproses saat net payout Rp 0 tanpa akun kas', async () => {
+    dbOps.get.mockImplementation((sql) => {
+      if (sql.includes('SELECT last_insert_rowid() as id')) return { id: 51 }
+      return null
+    })
+    dbOps.all.mockImplementation((sql) => {
+      if (sql.includes('SELECT id, owner_gets FROM rentals')) {
+        return [{ id: 1, owner_gets: 100_000 }]
+      }
+      if (sql.includes('FROM expenses e') && sql.includes('JOIN motors m')) {
+        return [{ id: 21, amount: 100_000 }]
+      }
+      return []
+    })
+
+    registerOwnerHandlers()
+    const result = await handlers.get('owner:payout')(null, {
+      owner_id: 2,
+      owner_name: 'Mitra A',
+      net_amount: 0,
+      gross_amount: 100_000,
+      deduction_amount: 100_000,
+      expense_ids: [21],
+      motor_ids: null,
+      cash_account_id: null,
+      date: '2026-04-07'
+    })
+
+    expect(result).toEqual({ success: true, payoutId: 51 })
+    expect(dbOps.runRaw).toHaveBeenCalledWith(
+      'INSERT INTO payouts (owner_id, amount, gross_amount, deduction_amount, cash_account_id, date) VALUES (?, ?, ?, ?, ?, ?)',
+      [2, 0, 100_000, 100_000, null, '2026-04-07']
+    )
+    expect(dbOps.run).not.toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO cash_transactions'),
+      expect.anything()
+    )
+  })
+
+  it('owner payout hanya menerima expense milik mitra yang sama', async () => {
+    dbOps.get.mockImplementation((sql, params) => {
+      if (sql.includes('SELECT * FROM cash_accounts WHERE id = ?')) return { id: params[0], name: 'Kas Utama', balance: 500_000 }
+      return null
+    })
+    dbOps.all.mockImplementation((sql) => {
+      if (sql.includes('SELECT id, owner_gets FROM rentals')) return [{ id: 1, owner_gets: 200_000 }]
+      if (sql.includes('FROM expenses e') && sql.includes('JOIN motors m')) return []
+      return []
+    })
+
+    registerOwnerHandlers()
+    expect(() => handlers.get('owner:payout')(null, {
+      owner_id: 2,
+      owner_name: 'Mitra A',
+      net_amount: 100_000,
+      gross_amount: 200_000,
+      deduction_amount: 100_000,
+      expense_ids: [999],
+      motor_ids: null,
+      cash_account_id: 7,
+      date: '2026-04-07'
+    })).toThrow('Jumlah payout tidak sesuai. Server menghitung Rp 200.000')
+  })
+
+  it('hotel payout memvalidasi amount di server dan menolak manipulasi client', async () => {
+    dbOps.get.mockImplementation((sql, params) => {
+      if (sql.includes('SELECT * FROM cash_accounts WHERE id = ?')) return { id: params[0], name: 'Kas Utama', balance: 1_000_000 }
+      return null
+    })
+    dbOps.all.mockImplementation((sql) => {
+      if (sql.includes('SELECT id, vendor_fee FROM rentals')) {
+        return [
+          { id: 1, vendor_fee: 50_000 },
+          { id: 2, vendor_fee: 75_000 }
+        ]
+      }
+      return []
+    })
+
+    registerHotelHandlers()
+    expect(() => handlers.get('hotel:payout')(null, {
+      hotel_id: 3,
+      hotel_name: 'Hotel A',
+      rental_ids: [1, 2],
+      net_amount: 999_999,
+      cash_account_id: 7,
+      date: '2026-04-07'
+    })).toThrow('Jumlah payout tidak sesuai. Server menghitung Rp 125.000')
+  })
+
+  it('hotel payout hanya membayar rental ids yang dipreview', async () => {
+    dbOps.get.mockImplementation((sql, params) => {
+      if (sql.includes('SELECT * FROM cash_accounts WHERE id = ?')) return { id: params[0], name: 'Kas Utama', balance: 1_000_000 }
+      if (sql.includes('SELECT last_insert_rowid() as id')) return { id: 88 }
+      return null
+    })
+    dbOps.all.mockImplementation((sql, params) => {
+      if (sql.includes('SELECT id, vendor_fee FROM rentals')) {
+        expect(params).toEqual([3, 2])
+        return [{ id: 2, vendor_fee: 75_000 }]
+      }
+      return []
+    })
+
+    registerHotelHandlers()
+    const result = handlers.get('hotel:payout')(null, {
+      hotel_id: 3,
+      hotel_name: 'Hotel A',
+      rental_ids: [2],
+      net_amount: 75_000,
+      cash_account_id: 7,
+      date: '2026-04-07'
+    })
+
+    expect(result).toEqual({ success: true, payoutId: 88 })
+    expect(dbOps.run).toHaveBeenCalledWith(
+      'UPDATE cash_accounts SET balance = balance - ? WHERE id = ?',
+      [75_000, 7]
+    )
+    expect(saveDb).toHaveBeenCalled()
+  })
+
+  it('refund create menolak nominal nol atau melebihi total rental', async () => {
+    dbOps.get.mockImplementation((sql, params) => {
+      if (sql.includes('SELECT * FROM rentals WHERE id = ?')) {
+        return { id: params[0], status: 'completed', total_price: 300_000, payment_method: 'cash' }
+      }
+      if (sql.includes('SELECT * FROM cash_accounts WHERE type = ?')) {
+        return { id: 1, name: 'Kas Tunai', balance: 500_000 }
+      }
+      return null
+    })
+
+    registerRefundHandlers()
+    const createRefund = handlers.get('refund:create')
+
+    expect(() => createRefund(null, {
+      rental_id: 1,
+      refund_amount: 0,
+      remaining_days: 1
+    })).toThrow('Nominal refund harus lebih besar dari nol')
+
+    expect(() => createRefund(null, {
+      rental_id: 1,
+      refund_amount: 400_000,
+      remaining_days: 1
+    })).toThrow('Nominal refund tidak boleh melebihi total harga rental')
+  })
+})

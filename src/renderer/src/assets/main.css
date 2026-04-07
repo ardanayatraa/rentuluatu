@@ -27,8 +27,24 @@
 }
 
 @layer base {
+  :root {
+    --app-sidebar-width: 16rem;
+    --app-shell-gap: 2rem;
+    --app-card-padding: 1.5rem;
+    --app-control-padding-x: 1.25rem;
+    --app-control-padding-y: 0.625rem;
+    --app-title-size: clamp(1.9rem, 2.1vw, 2.6rem);
+    --app-body-size: clamp(0.9rem, 0.82rem + 0.2vw, 1rem);
+  }
   * {
     box-sizing: border-box;
+  }
+  html {
+    font-size: var(--app-body-size);
+  }
+  html, body, #app {
+    width: 100%;
+    height: 100%;
   }
   body {
     font-family: 'Inter', sans-serif;
@@ -56,16 +72,21 @@
     @apply text-white font-bold bg-white/10;
   }
   .page-title {
-    @apply text-3xl font-black text-primary font-headline tracking-tight italic;
+    @apply font-black text-primary font-headline tracking-tight italic;
+    font-size: var(--app-title-size);
+    line-height: 1.05;
   }
   .card {
-    @apply bg-white rounded-xl shadow-sm border border-slate-100 p-6;
+    @apply bg-white rounded-xl shadow-sm border border-slate-100;
+    padding: var(--app-card-padding);
   }
   .btn-primary {
-    @apply flex items-center gap-2 bg-primary text-white px-5 py-2.5 rounded-lg text-sm font-bold hover:bg-primary-hover transition-all;
+    @apply flex items-center gap-2 bg-primary text-white rounded-lg text-sm font-bold hover:bg-primary-hover transition-all;
+    padding: var(--app-control-padding-y) var(--app-control-padding-x);
   }
   .btn-secondary {
-    @apply flex items-center gap-2 bg-white border border-slate-200 text-primary px-5 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-50 transition-all;
+    @apply flex items-center gap-2 bg-white border border-slate-200 text-primary rounded-lg text-sm font-bold hover:bg-slate-50 transition-all;
+    padding: var(--app-control-padding-y) var(--app-control-padding-x);
   }
   .badge-success {
     @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700;
@@ -78,5 +99,91 @@
   }
   .badge-neutral {
     @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-600;
+  }
+  .app-loading-overlay {
+    @apply fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/20 backdrop-blur-sm;
+  }
+  .app-loading-card {
+    @apply rounded-2xl border border-slate-200 bg-white px-6 py-5 shadow-xl;
+  }
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    background: #e9eef5;
+  }
+  .skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.75), transparent);
+    animation: skeleton-shimmer 1.3s infinite;
+  }
+  .table-card {
+    @apply p-0 overflow-hidden;
+  }
+  .table-scroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-gutter: stable both-edges;
+  }
+  .table-scroll > table,
+  .table-scroll .table-base {
+    width: max-content;
+    min-width: 100%;
+  }
+}
+
+@keyframes skeleton-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@media (max-width: 1440px) {
+  :root {
+    --app-sidebar-width: 15rem;
+    --app-shell-gap: 1.5rem;
+    --app-card-padding: 1.2rem;
+    --app-control-padding-x: 1rem;
+    --app-title-size: clamp(1.75rem, 1.8vw, 2.2rem);
+  }
+}
+
+@media (max-width: 1280px) {
+  :root {
+    --app-sidebar-width: 14rem;
+    --app-shell-gap: 1.25rem;
+    --app-card-padding: 1rem;
+    --app-control-padding-x: 0.95rem;
+    --app-control-padding-y: 0.55rem;
+    --app-title-size: clamp(1.55rem, 1.7vw, 1.95rem);
+    --app-body-size: clamp(0.84rem, 0.8rem + 0.15vw, 0.94rem);
+  }
+}
+
+@media (max-width: 1120px) {
+  :root {
+    --app-sidebar-width: 13.25rem;
+    --app-shell-gap: 1rem;
+    --app-card-padding: 0.9rem;
+    --app-control-padding-x: 0.85rem;
+    --app-control-padding-y: 0.5rem;
+    --app-title-size: clamp(1.4rem, 1.5vw, 1.8rem);
+    --app-body-size: 0.86rem;
+  }
+
+  .card {
+    border-radius: 1rem;
+  }
+}
+
+@media (max-width: 1280px) {
+  .table-scroll table th,
+  .table-scroll table td {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+    white-space: nowrap;
   }
 }

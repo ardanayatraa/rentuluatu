@@ -5,13 +5,14 @@ const invoke = (channel, ...args) => ipcRenderer.invoke(channel, ...args)
 contextBridge.exposeInMainWorld('api', {
   login: (data) => invoke('auth:login', data),
   changePassword: (data) => invoke('auth:change-password', data),
+  setInitialPassword: (data) => invoke('auth:set-initial-password', data),
   getMotors: () => invoke('motor:get-all'),
   getMotor: (id) => invoke('motor:get-by-id', id),
   createMotor: (data) => invoke('motor:create', data),
   updateMotor: (data) => invoke('motor:update', data),
   deleteMotor: (id) => invoke('motor:delete', id),
   getOwners: (params) => invoke('owner:get-all', params),
-  getOwner: (id) => invoke('owner:get-by-id', id),
+  getOwner: (payload) => invoke('owner:get-by-id', payload),
   createOwner: (data) => invoke('owner:create', data),
   updateOwner: (data) => invoke('owner:update', data),
   deleteOwner: (id) => invoke('owner:delete', id),
@@ -27,10 +28,13 @@ contextBridge.exposeInMainWorld('api', {
   payoutOwner: (data) => invoke('owner:payout', data),
   getPayoutPreview: (data) => invoke('owner:payout-preview', data),
   getPayoutHistory: (data) => invoke('owner:get-payout-history', data),
+  getOwnerSlipPeriodMeta: (data) => invoke('owner:get-slip-period-meta', data),
   getRentals: (filters) => invoke('rental:get-all', filters),
   getRental: (id) => invoke('rental:get-by-id', id),
   createRental: (data) => invoke('rental:create', data),
+  extendRental: (data) => invoke('rental:extend', data),
   updateRental: (data) => invoke('rental:update', data),
+  deleteRental: (id) => invoke('rental:delete', id),
   completeRental: (id) => invoke('rental:complete', id),
   calculateRefund: (data) => invoke('refund:calculate', data),
   createRefund: (data) => invoke('refund:create', data),
@@ -53,6 +57,7 @@ contextBridge.exposeInMainWorld('api', {
   getOwnerSummaryReport: (data) => invoke('report:owner-summary', data),
   getFinancialReport: (data) => invoke('report:financial', data),
   getProfitLossReport: (data) => invoke('report:profit-loss', data),
+  getBalanceSheetReport: (data) => invoke('report:balance-sheet', data),
   getAnnualRecap: (data) => invoke('report:annual-recap', data),
   // Dashboard
   getDashboardSummary: (data) => invoke('dashboard:summary', data),
@@ -63,6 +68,8 @@ contextBridge.exposeInMainWorld('api', {
   getExpenseCategories: (data) => invoke('dashboard:expense-categories', data),
   // System
   resetAllData: () => invoke('db:reset-all'),
+  getDevSandboxStats: () => invoke('db:dev-stats'),
+  seedDevSandboxData: (data) => invoke('db:dev-seed', data),
   // Backup & Restore
   backupGdriveStatus: () => invoke('backup:gdrive-status'),
   backupGdriveConnect: () => invoke('backup:gdrive-connect'),
@@ -75,7 +82,25 @@ contextBridge.exposeInMainWorld('api', {
   backupGdriveRestore: (data) => invoke('backup:gdrive-restore', data),
   backupGdriveDelete: (data) => invoke('backup:gdrive-delete', data),
   backupSetPassphrase: (data) => invoke('backup:set-passphrase', data),
+  backupGetAutoCloseStatus: () => invoke('backup:auto-close-status'),
+  backupSetAutoCloseStatus: (data) => invoke('backup:auto-close-set', data),
+  onAppClosingBackupStatus: (callback) => {
+    const listener = (_, payload) => callback(payload)
+    ipcRenderer.on('app:auto-backup-close-state', listener)
+    return () => ipcRenderer.removeListener('app:auto-backup-close-state', listener)
+  },
   // Export
+  previewPdf: (data) => invoke('export:preview-pdf', data),
+  previewPdfWindow: (data) => invoke('export:preview-pdf-window', data),
   savePdf: (data) => invoke('export:save-pdf', data),
-  saveExcel: (data) => invoke('export:save-excel', data)
+  saveExcel: (data) => invoke('export:save-excel', data),
+  getDownloads: () => invoke('downloads:list'),
+  openDownload: (id) => invoke('downloads:open', id),
+  showDownloadInFolder: (id) => invoke('downloads:show-in-folder', id),
+  deleteDownloadRecord: (id) => invoke('downloads:delete-record', id),
+  deleteDownloadFile: (id) => invoke('downloads:delete-file', id),
+  // License
+  getLicenseStatus: () => invoke('license:status'),
+  startTrial: () => invoke('license:start-trial'),
+  activateLicense: (data) => invoke('license:activate', data),
 })

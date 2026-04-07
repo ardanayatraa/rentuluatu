@@ -13,10 +13,45 @@ export function registerOwnerHandlers() {
     `)
   })
 
-  ipcMain.handle('owner:get-by-id', (_, id) => {
-    const owner = dbOps.get('SELECT * FROM owners WHERE id = ?', [id])
-    const motors = dbOps.all('SELECT * FROM motors WHERE owner_id = ?', [id])
-    return { ...owner, motors }
+  ipcMain.handle('owner:get-by-id', (_, payload) => {
+    const ownerId = typeof payload === 'object' && payload !== null ? Number(payload.id) : Number(payload)
+    const startDate = typeof payload === 'object' && payload !== null ? payload.startDate || null : null
+    const endDate = typeof payload === 'object' && payload !== null ? payload.endDate || null : null
+    const owner = dbOps.get('SELECT * FROM owners WHERE id = ?', [ownerId])
+    const motors = dbOps.all('SELECT * FROM motors WHERE owner_id = ?', [ownerId])
+
+    // Tambah summary finansial per motor
+    const motorsWithSummary = motors.map(m => {
+      const pendingCommission = dbOps.get(`
+        SELECT COALESCE(SUM(owner_gets), 0) as total
+        FROM rentals
+        WHERE motor_id = ? AND payout_id IS NULL AND status != 'refunded'
+          ${startDate ? 'AND date(date_time) >= ?' : ''}
+          ${endDate ? 'AND date(date_time) <= ?' : ''}
+      `, [m.id, ...(startDate ? [startDate] : []), ...(endDate ? [endDate] : [])])
+
+      const pendingExpenses = dbOps.all(`
+        SELECT id, date, category, description, amount
+        FROM expenses
+        WHERE motor_id = ? AND payout_id IS NULL AND type = 'motor'
+          ${startDate ? 'AND date >= ?' : ''}
+          ${endDate ? 'AND date <= ?' : ''}
+        ORDER BY date DESC
+      `, [m.id, ...(startDate ? [startDate] : []), ...(endDate ? [endDate] : [])])
+
+      const totalExpenses = pendingExpenses.reduce((s, e) => s + (e.amount || 0), 0)
+      const netCommission = Math.max(0, (pendingCommission?.total || 0) - totalExpenses)
+
+      return {
+        ...m,
+        pending_commission: pendingCommission?.total || 0,
+        pending_expenses: pendingExpenses,
+        total_pending_expenses: totalExpenses,
+        net_commission: netCommission
+      }
+    })
+
+    return { ...owner, motors: motorsWithSummary }
   })
 
   ipcMain.handle('owner:create', (_, data) => {
@@ -58,7 +93,18 @@ export function registerOwnerHandlers() {
     return { success: true, softDeleted: false }
   })
 
-  ipcMain.handle('owner:get-payout-history', (_, { ownerId }) => {
+  ipcMain.handle('owner:get-payout-history', (_, { ownerId, startDate, endDate }) => {
+    const params = [ownerId]
+    let dateFilter = ''
+    if (startDate) {
+      dateFilter += ' AND p.date >= ?'
+      params.push(startDate)
+    }
+    if (endDate) {
+      dateFilter += ' AND p.date <= ?'
+      params.push(endDate)
+    }
+
     const payouts = dbOps.all(`
       SELECT p.*, ca.name as cash_account_name,
         ct.description as tx_description
@@ -66,8 +112,9 @@ export function registerOwnerHandlers() {
       JOIN cash_accounts ca ON p.cash_account_id = ca.id
       LEFT JOIN cash_transactions ct ON ct.reference_type = 'owner_payout' AND ct.reference_id = p.id
       WHERE p.owner_id = ?
+      ${dateFilter}
       ORDER BY p.date DESC, p.id DESC
-    `, [ownerId])
+    `, params)
 
     // Expense motor yang belum masuk ke payout manapun
     const unpaidExpenses = dbOps.all(`
@@ -105,6 +152,36 @@ export function registerOwnerHandlers() {
     }
   })
 
+  ipcMain.handle('owner:get-slip-period-meta', (_, { ownerId }) => {
+    const latestPayout = dbOps.get(`
+      SELECT p.date
+      FROM payouts p
+      WHERE p.owner_id = ?
+      ORDER BY p.date DESC, p.id DESC
+      LIMIT 1
+    `, [ownerId])
+
+    const firstRental = dbOps.get(`
+      SELECT date(MIN(r.date_time)) as first_date
+      FROM rentals r
+      JOIN motors m ON r.motor_id = m.id
+      WHERE m.owner_id = ? AND r.status != 'refunded'
+    `, [ownerId])
+
+    const firstExpense = dbOps.get(`
+      SELECT MIN(e.date) as first_date
+      FROM expenses e
+      JOIN motors m ON e.motor_id = m.id
+      WHERE m.owner_id = ? AND e.type = 'motor'
+    `, [ownerId])
+
+    const dates = [firstRental?.first_date, firstExpense?.first_date].filter(Boolean).sort()
+    return {
+      latestPayoutDate: latestPayout?.date || null,
+      firstActivityDate: dates[0] || null
+    }
+  })
+
   ipcMain.handle('owner:get-commission-summary', (_, { ownerId, startDate, endDate }) => {
     let query = `
       SELECT r.*, m.model, m.plate_number,
@@ -123,50 +200,76 @@ export function registerOwnerHandlers() {
   })
 
   // Preview payout: hitung komisi kotor, pengeluaran motor belum dipotong, dan bersih
-  ipcMain.handle('owner:payout-preview', (_, { ownerId }) => {
-    // Komisi kotor (rental belum dibayar)
+  ipcMain.handle('owner:payout-preview', (_, { ownerId, motorIds = null }) => {
+    const hasFilter = motorIds && motorIds.length > 0
+    const motorFilter = hasFilter ? `AND m.id IN (${motorIds.map(() => '?').join(',')})` : ''
+    const motorParams = hasFilter ? motorIds : []
+
     const rentals = dbOps.all(`
       SELECT r.id, r.date_time, r.owner_gets, r.total_price, r.period_days,
              m.model, m.plate_number, m.id as motor_id
       FROM rentals r
       JOIN motors m ON r.motor_id = m.id
       WHERE m.owner_id = ? AND r.payout_id IS NULL AND r.status != 'refunded' AND r.owner_gets > 0
-      ORDER BY r.date_time DESC
-    `, [ownerId])
+      ${motorFilter}
+      ORDER BY m.model, r.date_time DESC
+    `, [ownerId, ...motorParams])
 
-    const grossCommission = rentals.reduce((s, r) => s + (r.owner_gets || 0), 0)
-
-    // Pengeluaran motor yang belum dipotong dari payout manapun
     const expenses = dbOps.all(`
       SELECT e.id, e.date, e.category, e.type, e.amount, e.description,
              m.model, m.plate_number, m.id as motor_id
       FROM expenses e
       JOIN motors m ON e.motor_id = m.id
       WHERE m.owner_id = ? AND e.payout_id IS NULL AND e.type = 'motor'
-      ORDER BY e.date DESC
-    `, [ownerId])
+      ${motorFilter}
+      ORDER BY m.model, e.date DESC
+    `, [ownerId, ...motorParams])
 
+    const grossCommission = rentals.reduce((s, r) => s + (r.owner_gets || 0), 0)
     const totalDeductions = expenses.reduce((s, e) => s + (e.amount || 0), 0)
     const netAmount = Math.max(0, grossCommission - totalDeductions)
 
-    return { rentals, expenses, grossCommission, totalDeductions, netAmount }
+    const motorMap = {}
+    for (const r of rentals) {
+      if (!motorMap[r.motor_id]) motorMap[r.motor_id] = { motor_id: r.motor_id, model: r.model, plate_number: r.plate_number, rentals: [], expenses: [], rental_total: 0, expense_total: 0 }
+      motorMap[r.motor_id].rentals.push(r)
+      motorMap[r.motor_id].rental_total += r.owner_gets || 0
+    }
+    for (const e of expenses) {
+      if (!motorMap[e.motor_id]) motorMap[e.motor_id] = { motor_id: e.motor_id, model: e.model, plate_number: e.plate_number, rentals: [], expenses: [], rental_total: 0, expense_total: 0 }
+      motorMap[e.motor_id].expenses.push(e)
+      motorMap[e.motor_id].expense_total += e.amount || 0
+    }
+    const byMotor = Object.values(motorMap).sort((a, b) => a.model.localeCompare(b.model))
+
+    return { rentals, expenses, byMotor, grossCommission, totalDeductions, netAmount }
   })
 
   ipcMain.handle('owner:payout', (_, data) => {
-    const cashAccount = dbOps.get('SELECT * FROM cash_accounts WHERE id = ?', [data.cash_account_id])
-    if (!cashAccount) throw new Error('Akun kas tidak ditemukan')
-
     // FIX: Recalculate server-side — jangan percaya net_amount dari client
+    const hasMotorFilter = data.motor_ids && data.motor_ids.length > 0
+    const motorFilter = hasMotorFilter ? `AND motor_id IN (${data.motor_ids.map(() => '?').join(',')})` : ''
+    const motorParams = hasMotorFilter ? data.motor_ids : []
+
     const validRentals = dbOps.all(`
       SELECT id, owner_gets FROM rentals
       WHERE payout_id IS NULL AND status != 'refunded' AND owner_gets > 0
       AND motor_id IN (SELECT id FROM motors WHERE owner_id = ?)
-    `, [data.owner_id])
+      ${motorFilter}
+    `, [data.owner_id, ...motorParams])
 
+    const expenseMotorFilter = hasMotorFilter ? `AND e.motor_id IN (${data.motor_ids.map(() => '?').join(',')})` : ''
     const validExpenses = data.expense_ids && data.expense_ids.length > 0
       ? dbOps.all(
-          `SELECT id, amount FROM expenses WHERE id IN (${data.expense_ids.map(() => '?').join(',')}) AND payout_id IS NULL`,
-          data.expense_ids
+          `SELECT e.id, e.amount
+           FROM expenses e
+           JOIN motors m ON e.motor_id = m.id
+           WHERE e.id IN (${data.expense_ids.map(() => '?').join(',')})
+             AND e.payout_id IS NULL
+             AND e.type = 'motor'
+             AND m.owner_id = ?
+             ${expenseMotorFilter}`,
+          [...data.expense_ids, data.owner_id, ...motorParams]
         )
       : []
 
@@ -178,6 +281,11 @@ export function registerOwnerHandlers() {
     if (Math.abs(serverNetAmount - data.net_amount) > 1) {
       throw new Error(`Jumlah payout tidak sesuai. Server menghitung Rp ${serverNetAmount.toLocaleString('id-ID')}`)
     }
+
+    const cashAccount = serverNetAmount > 0
+      ? dbOps.get('SELECT * FROM cash_accounts WHERE id = ?', [data.cash_account_id])
+      : null
+    if (serverNetAmount > 0 && !cashAccount) throw new Error('Akun kas tidak ditemukan')
 
     if (serverNetAmount > 0 && cashAccount.balance < serverNetAmount) {
       throw new Error(`Saldo Kas ${cashAccount.name} tidak cukup! (Sisa: Rp ${cashAccount.balance.toLocaleString('id-ID')})`)

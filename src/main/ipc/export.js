@@ -1,6 +1,123 @@
-import { ipcMain, dialog, BrowserWindow } from 'electron'
-import { writeFileSync } from 'fs'
+import { ipcMain, dialog, BrowserWindow, shell, app } from 'electron'
+import { basename, extname, join } from 'path'
+import { existsSync, statSync, unlinkSync, writeFileSync } from 'fs'
 import ExcelJS from 'exceljs'
+import { dbOps } from '../db'
+
+function getWindowIconPath() {
+  const candidates = [
+    join(__dirname, '../../resources/icon.png'),
+    join(__dirname, '../../build/icon.png')
+  ]
+  return candidates.find(path => existsSync(path))
+}
+
+function inferFileType(filePath, fallbackType = '') {
+  const ext = extname(filePath).toLowerCase()
+  if (ext === '.pdf') return 'pdf'
+  if (ext === '.xlsx') return 'excel'
+  return fallbackType || ext.replace('.', '') || 'file'
+}
+
+function inferReportName(defaultName = '') {
+  return String(defaultName || '')
+    .replace(/\.[^.]+$/, '')
+    .replace(/[_-]+/g, ' ')
+    .trim()
+}
+
+function recordDownload(filePath, defaultName, explicitType = '') {
+  const stats = statSync(filePath)
+  dbOps.run(
+    `INSERT INTO downloads (file_name, file_path, file_type, report_name, file_size)
+     VALUES (?, ?, ?, ?, ?)`,
+    [
+      basename(filePath),
+      filePath,
+      inferFileType(filePath, explicitType),
+      inferReportName(defaultName),
+      Number(stats.size || 0)
+    ]
+  )
+}
+
+async function waitForPdfDocumentReady(webContents) {
+  await webContents.executeJavaScript(`
+    new Promise((resolve) => {
+      const finish = async () => {
+        try {
+          if (document.fonts?.ready) await document.fonts.ready
+        } catch {}
+
+        const images = Array.from(document.images || [])
+        await Promise.all(images.map(img => {
+          if (img.complete) return Promise.resolve()
+          return new Promise(res => {
+            img.addEventListener('load', res, { once: true })
+            img.addEventListener('error', res, { once: true })
+          })
+        }))
+
+        await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)))
+        resolve(true)
+      }
+
+      if (document.readyState === 'complete') {
+        finish()
+      } else {
+        window.addEventListener('load', finish, { once: true })
+      }
+    })
+  `)
+}
+
+async function printToPdfWithRetry(webContents, options) {
+  try {
+    return await webContents.printToPDF(options)
+  } catch (error) {
+    await new Promise(resolve => setTimeout(resolve, 350))
+    try {
+      return await webContents.printToPDF(options)
+    } catch {
+      throw new Error(`Failed to generate PDF: ${error?.message || error}`)
+    }
+  }
+}
+
+async function renderPdfBuffer(html, documentTitle = 'Laporan_Wavy.pdf') {
+  const pdfWin = new BrowserWindow({
+    show: false,
+    icon: getWindowIconPath(),
+    webPreferences: { sandbox: false }
+  })
+  const tempHtmlPath = join(app.getPath('temp'), `${Date.now()}_${Math.random().toString(36).slice(2)}.html`)
+
+  try {
+    writeFileSync(tempHtmlPath, html, 'utf-8')
+    await pdfWin.loadFile(tempHtmlPath)
+    await pdfWin.webContents.executeJavaScript(`document.title = ${JSON.stringify(documentTitle)}`)
+    await waitForPdfDocumentReady(pdfWin.webContents)
+
+    return await printToPdfWithRetry(pdfWin.webContents, {
+      printBackground: true,
+      pageSize: 'A4',
+      landscape: false,
+      displayHeaderFooter: true,
+      headerTemplate: '<div></div>',
+      footerTemplate: `
+        <div style="width:100%;padding:0 10mm;font-size:8px;color:#64748b;display:flex;justify-content:flex-end;">
+          Halaman&nbsp;<span class="pageNumber"></span>&nbsp;/&nbsp;<span class="totalPages"></span>
+        </div>
+      `,
+      margins: { top: 0.45, bottom: 0.7, left: 0.45, right: 0.45 }
+    })
+  } finally {
+    if (existsSync(tempHtmlPath)) {
+      try { unlinkSync(tempHtmlPath) } catch {}
+    }
+    if (!pdfWin.isDestroyed()) pdfWin.destroy()
+  }
+}
 
 // ── PDF via printToPDF ────────────────────────────────────────────────────────
 ipcMain.handle('export:save-pdf', async (_, { html, defaultName }) => {
@@ -14,25 +131,67 @@ ipcMain.handle('export:save-pdf', async (_, { html, defaultName }) => {
   })
   if (canceled || !filePath) return { success: false }
 
-  // Buat hidden window untuk render HTML → PDF
-  const pdfWin = new BrowserWindow({ show: false, webPreferences: { sandbox: false } })
-  
-  // Load HTML via data URL agar style ter-render dengan benar
-  await pdfWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
-  
-  // Tunggu sebentar agar render selesai
-  await new Promise(r => setTimeout(r, 800))
-
-  const pdfBuffer = await pdfWin.webContents.printToPDF({
-    printBackground: true,
-    pageSize: 'A4',
-    landscape: false,
-    margins: { top: 0.5, bottom: 0.5, left: 0.5, right: 0.5 }
-  })
-  pdfWin.destroy()
-
+  const pdfBuffer = await renderPdfBuffer(html, defaultName || 'Laporan_Wavy.pdf')
   writeFileSync(filePath, pdfBuffer)
+  recordDownload(filePath, defaultName, 'pdf')
   return { success: true, filePath }
+})
+
+ipcMain.handle('export:preview-pdf', async (_, { html }) => {
+  const pdfBuffer = await renderPdfBuffer(html)
+  return {
+    success: true,
+    base64: pdfBuffer.toString('base64')
+  }
+})
+
+ipcMain.handle('export:preview-pdf-window', async (_, { html, defaultName }) => {
+  const pdfBuffer = await renderPdfBuffer(html, defaultName || 'Preview_Laporan.pdf')
+  const safeName = String(defaultName || 'Preview_Laporan.pdf').replace(/[<>:"/\\|?*]+/g, '_')
+  const tempPath = join(app.getPath('temp'), `${Date.now()}_${safeName}`)
+  writeFileSync(tempPath, pdfBuffer)
+
+  const previewWin = new BrowserWindow({
+    width: 1100,
+    height: 820,
+    autoHideMenuBar: false,
+    icon: getWindowIconPath(),
+    webPreferences: { sandbox: false }
+  })
+
+  const previewSession = previewWin.webContents.session
+  const recordedPaths = new Set()
+
+  previewWin.on('closed', () => {
+    previewSession.removeListener('will-download', handlePreviewDownload)
+    if (existsSync(tempPath)) {
+      try { unlinkSync(tempPath) } catch {}
+    }
+  })
+
+  function handlePreviewDownload(event, item) {
+    item.on('done', (_, state) => {
+      if (state !== 'completed') return
+      const savePath = item.getSavePath()
+      if (!savePath || !existsSync(savePath) || recordedPaths.has(savePath)) return
+      recordedPaths.add(savePath)
+
+      const url = String(item.getURL() || '')
+      const fileName = String(item.getFilename() || '')
+      const isPdfDownload = fileName.toLowerCase().endsWith('.pdf')
+        || savePath.toLowerCase().endsWith('.pdf')
+        || url.toLowerCase().endsWith('.pdf')
+
+      if (!isPdfDownload) return
+      recordDownload(savePath, fileName || safeName, 'pdf')
+    })
+  }
+
+  previewSession.on('will-download', handlePreviewDownload)
+  previewWin.setTitle(safeName)
+  await previewWin.loadFile(tempPath)
+  previewWin.setTitle(safeName)
+  return { success: true }
 })
 
 // ── Excel export ──────────────────────────────────────────────────────────────
@@ -103,5 +262,54 @@ ipcMain.handle('export:save-excel', async (_, { sheets, defaultName }) => {
 
   const buffer = await workbook.xlsx.writeBuffer()
   writeFileSync(filePath, buffer)
+  recordDownload(filePath, defaultName, 'excel')
   return { success: true, filePath }
+})
+
+ipcMain.handle('downloads:list', () => {
+  const rows = dbOps.all(`
+    SELECT id, file_name, file_path, file_type, report_name, file_size, created_at
+    FROM downloads
+    ORDER BY datetime(created_at) DESC, id DESC
+  `)
+
+  return rows.map(row => ({
+    ...row,
+    exists: existsSync(row.file_path)
+  }))
+})
+
+ipcMain.handle('downloads:open', async (_, id) => {
+  const download = dbOps.get('SELECT * FROM downloads WHERE id = ?', [id])
+  if (!download) throw new Error('File unduhan tidak ditemukan')
+  if (!existsSync(download.file_path)) throw new Error('File sudah tidak ada di lokasi penyimpanan')
+
+  const errorMessage = await shell.openPath(download.file_path)
+  if (errorMessage) throw new Error(errorMessage)
+  return { success: true }
+})
+
+ipcMain.handle('downloads:show-in-folder', (_, id) => {
+  const download = dbOps.get('SELECT * FROM downloads WHERE id = ?', [id])
+  if (!download) throw new Error('File unduhan tidak ditemukan')
+  if (!existsSync(download.file_path)) throw new Error('File sudah tidak ada di lokasi penyimpanan')
+
+  shell.showItemInFolder(download.file_path)
+  return { success: true }
+})
+
+ipcMain.handle('downloads:delete-record', (_, id) => {
+  dbOps.run('DELETE FROM downloads WHERE id = ?', [id])
+  return { success: true }
+})
+
+ipcMain.handle('downloads:delete-file', (_, id) => {
+  const download = dbOps.get('SELECT * FROM downloads WHERE id = ?', [id])
+  if (!download) throw new Error('File unduhan tidak ditemukan')
+
+  if (existsSync(download.file_path)) {
+    unlinkSync(download.file_path)
+  }
+  dbOps.run('DELETE FROM downloads WHERE id = ?', [id])
+  return { success: true }
 })

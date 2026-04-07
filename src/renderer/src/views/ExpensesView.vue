@@ -5,9 +5,38 @@
         <h2 class="page-title">Pengeluaran</h2>
         <p class="text-slate-500 text-sm mt-1">Pengeluaran per motor & operasional umum</p>
       </div>
-      <button @click="openAdd" class="btn-primary">
-        <span class="material-symbols-outlined">add</span>
-        Tambah Pengeluaran
+      <div class="flex gap-3">
+        <button @click="openAdd" class="btn-primary">
+          <span class="material-symbols-outlined">add</span>
+          Tambah Pengeluaran
+        </button>
+      </div>
+    </div>
+
+    <div class="flex gap-2 mb-6 border-b border-slate-200">
+      <button
+        @click="switchExpenseTab('umum')"
+        :class="[
+          'px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors',
+          activeExpenseTab === 'umum'
+            ? 'bg-white border border-b-white border-slate-200 text-primary -mb-px'
+            : 'text-slate-500 hover:text-slate-700'
+        ]"
+      >
+        <span class="material-symbols-outlined text-sm align-middle mr-1">business_center</span>
+        Operasional Kantor
+      </button>
+      <button
+        @click="switchExpenseTab('motor')"
+        :class="[
+          'px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors',
+          activeExpenseTab === 'motor'
+            ? 'bg-white border border-b-white border-slate-200 text-primary -mb-px'
+            : 'text-slate-500 hover:text-slate-700'
+        ]"
+      >
+        <span class="material-symbols-outlined text-sm align-middle mr-1">two_wheeler</span>
+        Motor
       </button>
     </div>
 
@@ -16,21 +45,56 @@
       <input v-model="filters.startDate" type="date" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
       <span class="text-slate-400">—</span>
       <input v-model="filters.endDate" type="date" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-      <select v-model="filters.type" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
-        <option value="">Semua Tipe</option>
-        <option value="motor">Per Motor</option>
-        <option value="umum">Umum</option>
-      </select>
+      <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-600">
+        {{ activeExpenseTab === 'motor' ? 'Pengeluaran Motor' : 'Operasional Kantor' }}
+      </div>
+      <div v-if="activeExpenseTab === 'motor'" class="relative min-w-[260px]">
+        <input
+          v-model="filterMotorSearch"
+          type="text"
+          placeholder="Cari model atau plat..."
+          class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm pr-8"
+          @focus="showFilterMotorDropdown = true"
+          @blur="onFilterMotorBlur"
+        />
+        <span class="material-symbols-outlined absolute right-2 top-2 text-slate-400 text-base">search</span>
+        <div
+          v-if="showFilterMotorDropdown && filteredFilterMotors.length"
+          class="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg"
+        >
+          <div
+            v-for="m in filteredFilterMotors"
+            :key="m.id"
+            @mousedown.prevent="selectFilterMotor(m)"
+            class="flex cursor-pointer items-center justify-between px-3 py-2.5 text-sm hover:bg-slate-50"
+          >
+            <span class="font-medium">{{ m.model }}</span>
+            <span class="text-xs font-mono text-slate-400">{{ m.plate_number }}</span>
+          </div>
+        </div>
+        <div
+          v-if="showFilterMotorDropdown && filterMotorSearch && !filteredFilterMotors.length"
+          class="absolute left-0 right-0 top-full z-50 mt-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-400 shadow-lg"
+        >
+          Motor tidak ditemukan
+        </div>
+      </div>
       <button @click="loadExpenses" class="btn-secondary">
         <span class="material-symbols-outlined">filter_list</span>
         Filter
       </button>
+      <select v-model.number="pageSize" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+        <option :value="10">10 / halaman</option>
+        <option :value="25">25 / halaman</option>
+        <option :value="50">50 / halaman</option>
+      </select>
       <span class="ml-auto text-sm font-bold text-primary">Total: {{ formatRp(totalExpenses) }}</span>
     </div>
 
     <!-- Table -->
-    <div class="card overflow-hidden p-0">
-      <table class="w-full text-left">
+    <div class="card table-card">
+      <div class="table-scroll">
+      <table class="table-base text-left">
         <thead>
           <tr class="bg-slate-50 text-slate-400 text-xs uppercase font-bold">
             <th class="px-6 py-4">Tanggal</th>
@@ -43,7 +107,12 @@
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-50">
-          <tr v-for="e in expenses" :key="e.id" class="text-sm hover:bg-slate-50 transition-colors">
+          <tr v-if="loading" v-for="index in 6" :key="`sk-${index}`">
+            <td colspan="7" class="px-6 py-4">
+              <div class="skeleton h-10 rounded-xl"></div>
+            </td>
+          </tr>
+          <tr v-for="e in pagedExpenses" :key="e.id" class="text-sm hover:bg-slate-50 transition-colors">
             <td class="px-6 py-4 text-slate-500">{{ formatDate(e.date) }}</td>
             <td class="px-6 py-4">
               <template v-if="e.type === 'motor' && e.motor_model">
@@ -55,7 +124,7 @@
             <td class="px-6 py-4 font-medium capitalize">{{ e.category }}</td>
             <td class="px-6 py-4 text-slate-500">{{ e.description || '-' }}</td>
             <td class="px-6 py-4">
-              <span :class="e.payment_method === 'tunai' ? 'badge-neutral' : 'badge-success'">{{ e.payment_method }}</span>
+              <span :class="paymentMethodBadge(e.payment_method)">{{ paymentMethodLabel(e.payment_method) }}</span>
             </td>
             <td class="px-6 py-4 text-right font-bold text-red-600">{{ formatRp(e.amount) }}</td>
             <td class="px-6 py-4 text-right">
@@ -64,11 +133,35 @@
               </button>
             </td>
           </tr>
-          <tr v-if="!expenses.length">
+          <tr v-if="!loading && !expenses.length">
             <td colspan="7" class="px-6 py-12 text-center text-slate-400">Belum ada data pengeluaran</td>
           </tr>
         </tbody>
       </table>
+      </div>
+
+      <div v-if="!loading && expenses.length" class="flex items-center justify-between border-t border-slate-100 px-6 py-4">
+        <p class="text-xs text-slate-400">
+          Menampilkan {{ pageStart }}-{{ pageEnd }} dari {{ expenses.length }} data
+        </p>
+        <div class="flex items-center gap-2">
+          <button
+            @click="currentPage = Math.max(1, currentPage - 1)"
+            :disabled="currentPage === 1"
+            class="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
+          >
+            Prev
+          </button>
+          <span class="text-xs font-bold text-slate-500">Hal. {{ currentPage }} / {{ totalPages }}</span>
+          <button
+            @click="currentPage = Math.min(totalPages, currentPage + 1)"
+            :disabled="currentPage === totalPages"
+            class="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Modal -->
@@ -104,7 +197,10 @@
               class="px-3 py-2.5 hover:bg-slate-50 cursor-pointer text-sm flex justify-between items-center"
             >
               <span class="font-medium">{{ m.model }}</span>
-              <span class="text-slate-400 text-xs font-mono">{{ m.plate_number }}</span>
+              <div class="text-right">
+                <span class="text-slate-400 text-xs font-mono block">{{ m.plate_number }}</span>
+                <span v-if="m.owner_name" class="text-slate-400 text-xs block">{{ m.owner_name }}</span>
+              </div>
             </div>
           </div>
           <div v-if="showMotorDropdown && motorSearch && !filteredMotors.length"
@@ -113,7 +209,7 @@
           </div>
           <div v-if="selectedMotor" class="mt-2 bg-primary/5 border border-primary/20 rounded-lg px-3 py-2 text-sm flex justify-between">
             <span class="font-semibold text-primary">{{ selectedMotor.model }} · {{ selectedMotor.plate_number }}</span>
-            <span class="text-slate-500 capitalize">{{ selectedMotor.type }}</span>
+            <span class="text-slate-500 text-xs">{{ selectedMotor.type }}{{ selectedMotor.owner_name ? ' · ' + selectedMotor.owner_name : '' }}</span>
           </div>
         </div>
 
@@ -153,6 +249,7 @@
               <option value="tunai">Tunai</option>
               <option value="transfer">Transfer</option>
               <option value="qris">QRIS</option>
+              <option value="debit_card">Debit Card</option>
             </select>
           </div>
         </div>
@@ -179,21 +276,38 @@ import { ref, computed, onMounted } from 'vue'
 import { formatRp, formatDate, today } from '../utils/format'
 
 const expenses = ref([])
+const loading = ref(false)
 const allMotors = ref([])
 const showModal = ref(false)
-const filters = ref({ startDate: '', endDate: '', type: '' })
+const activeExpenseTab = ref('umum')
+const filters = ref({ startDate: '', endDate: '', type: 'umum', motorId: '' })
 const form = ref({ type: 'umum', motor_id: '', category: 'air', amount: 0, payment_method: 'tunai', date: today(), description: '' })
 const customCategory = ref('')
 const formError = ref('')
+const currentPage = ref(1)
+const pageSize = ref(10)
 
 // Motor search
 const motorSearch = ref('')
 const showMotorDropdown = ref(false)
 const selectedMotor = ref(null)
+const filterMotorSearch = ref('')
+const showFilterMotorDropdown = ref(false)
+const selectedFilterMotor = ref(null)
 
 const filteredMotors = computed(() => {
   if (!motorSearch.value) return allMotors.value.slice(0, 20)
   const q = motorSearch.value.toLowerCase().replace(/\s+/g, '')
+  return allMotors.value.filter(m => {
+    const model = m.model.toLowerCase().replace(/\s+/g, '')
+    const plate = m.plate_number.toLowerCase().replace(/\s+/g, '')
+    return model.includes(q) || plate.includes(q)
+  }).slice(0, 20)
+})
+
+const filteredFilterMotors = computed(() => {
+  if (!filterMotorSearch.value) return allMotors.value.slice(0, 20)
+  const q = filterMotorSearch.value.toLowerCase().replace(/\s+/g, '')
   return allMotors.value.filter(m => {
     const model = m.model.toLowerCase().replace(/\s+/g, '')
     const plate = m.plate_number.toLowerCase().replace(/\s+/g, '')
@@ -212,6 +326,33 @@ function onMotorBlur() {
   setTimeout(() => { showMotorDropdown.value = false }, 150)
 }
 
+function selectFilterMotor(m) {
+  selectedFilterMotor.value = m
+  filters.value.motorId = m.id
+  filterMotorSearch.value = `${m.model} - ${m.plate_number}`
+  showFilterMotorDropdown.value = false
+}
+
+function onFilterMotorBlur() {
+  setTimeout(() => { showFilterMotorDropdown.value = false }, 150)
+}
+
+function onFilterTypeChange() {
+  if (filters.value.type !== 'motor') {
+    filters.value.motorId = ''
+    selectedFilterMotor.value = null
+    filterMotorSearch.value = ''
+    showFilterMotorDropdown.value = false
+  }
+}
+
+function switchExpenseTab(tab) {
+  activeExpenseTab.value = tab
+  filters.value.type = tab
+  onFilterTypeChange()
+  loadExpenses()
+}
+
 function onTypeChange() {
   form.value.motor_id = ''
   selectedMotor.value = null
@@ -221,9 +362,38 @@ function onTypeChange() {
 }
 
 const totalExpenses = computed(() => expenses.value.reduce((sum, e) => sum + e.amount, 0))
+const totalPages = computed(() => Math.max(1, Math.ceil(expenses.value.length / pageSize.value)))
+const pagedExpenses = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return expenses.value.slice(start, start + pageSize.value)
+})
+const pageStart = computed(() => expenses.value.length ? ((currentPage.value - 1) * pageSize.value) + 1 : 0)
+const pageEnd = computed(() => Math.min(currentPage.value * pageSize.value, expenses.value.length))
+
+function paymentMethodLabel(method) {
+  return {
+    tunai: 'Tunai',
+    transfer: 'Transfer',
+    qris: 'QRIS',
+    debit_card: 'Debit Card'
+  }[method] || method || '-'
+}
+
+function paymentMethodBadge(method) {
+  return method === 'tunai' ? 'badge-neutral' : 'badge-success'
+}
 
 function openAdd() {
-  form.value = { type: 'umum', motor_id: '', category: 'air', amount: 0, payment_method: 'tunai', date: today(), description: '' }
+  const nextType = activeExpenseTab.value === 'motor' ? 'motor' : 'umum'
+  form.value = {
+    type: nextType,
+    motor_id: '',
+    category: nextType === 'motor' ? 'gps' : 'air',
+    amount: 0,
+    payment_method: 'tunai',
+    date: today(),
+    description: ''
+  }
   customCategory.value = ''
   formError.value = ''
   selectedMotor.value = null
@@ -232,7 +402,13 @@ function openAdd() {
 }
 
 async function loadExpenses() {
-  expenses.value = await window.api.getExpenses({ ...filters.value })
+  loading.value = true
+  try {
+    expenses.value = await window.api.getExpenses({ ...filters.value })
+    currentPage.value = 1
+  } finally {
+    loading.value = false
+  }
 }
 
 async function submitExpense() {

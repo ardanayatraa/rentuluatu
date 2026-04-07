@@ -2,13 +2,31 @@
   <div>
     <div class="mb-8">
       <h2 class="page-title">Pengaturan</h2>
-      <p class="text-slate-500 text-sm mt-1">Konfigurasi akun dan sistem</p>
+      <p class="text-slate-500 text-sm mt-1">Konfigurasi akun, lisensi, dan sistem</p>
     </div>
 
-    <div class="grid grid-cols-3 gap-6 items-start">
+    <div class="mb-6 flex gap-1 rounded-xl border border-slate-200 bg-slate-100 p-1 w-fit">
+      <button
+        @click="settingsTab = 'general'"
+        :class="settingsTab === 'general' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'"
+        class="rounded-lg px-4 py-2 text-sm font-bold transition-colors"
+      >
+        Umum
+      </button>
+      <button
+        v-if="isDev"
+        @click="settingsTab = 'sandbox'"
+        :class="settingsTab === 'sandbox' ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'"
+        class="rounded-lg px-4 py-2 text-sm font-bold transition-colors"
+      >
+        Sandbox Dev
+      </button>
+    </div>
 
-      <!-- ── Kolom Kiri ── -->
-      <div class="col-span-1 space-y-4">
+    <div v-if="settingsTab === 'general'" class="grid grid-cols-2 gap-6">
+
+      <!-- ── KOLOM KIRI ── -->
+      <div class="space-y-6">
 
         <!-- Info Aplikasi -->
         <div class="card">
@@ -20,11 +38,72 @@
             </div>
           </div>
           <div class="space-y-2 text-xs border-t border-slate-100 pt-3">
-            <div class="flex justify-between"><span class="text-slate-400">Versi Aplikasi</span><span class="font-semibold text-slate-700">{{ appVersion }}</span></div>
-            <div class="flex justify-between"><span class="text-slate-400">Sistem</span><span class="font-semibold text-slate-700">Wavy Desktop</span></div>
-            <div class="flex justify-between"><span class="text-slate-400">Status Data</span><span class="font-semibold text-slate-700">Tersimpan Aman</span></div>
-            <div class="flex justify-between"><span class="text-slate-400">Operator</span><span class="font-semibold text-slate-700">{{ auth.user?.username }}</span></div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">Versi Aplikasi</span>
+              <span class="font-semibold text-slate-700">{{ appVersion }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">Operator</span>
+              <span class="font-semibold text-slate-700">{{ auth.user?.username }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">Status Data</span>
+              <span class="font-semibold text-emerald-600 flex items-center gap-1">
+                <span class="material-symbols-outlined text-[12px]">check_circle</span> Tersimpan Aman
+              </span>
+            </div>
           </div>
+        </div>
+
+        <!-- Lisensi -->
+        <div class="card">
+          <h3 class="font-bold text-slate-700 text-sm mb-4 flex items-center gap-2">
+            <span class="material-symbols-outlined text-base text-slate-400">verified</span>
+            Lisensi
+          </h3>
+
+          <!-- Status -->
+          <div class="rounded-lg px-3 py-2.5 text-xs font-bold flex items-center gap-2 mb-4"
+            :class="{
+              'bg-amber-50 text-amber-700 border border-amber-200': license.isTrial,
+              'bg-emerald-50 text-emerald-700 border border-emerald-200': license.isLicensed,
+              'bg-red-50 text-red-700 border border-red-200': license.isExpired,
+              'bg-slate-50 text-slate-500 border border-slate-200': !license.isTrial && !license.isLicensed && !license.isExpired
+            }">
+            <span class="material-symbols-outlined text-sm">
+              {{ license.isLicensed ? 'verified' : license.isTrial ? 'timer' : 'lock' }}
+            </span>
+            <span v-if="license.isTrial">Trial aktif — sisa {{ license.daysLeft }} hari</span>
+            <span v-else-if="license.isLicensed">
+              Aktif {{ license.licensedUntil === 'LIFETIME' ? '(Selamanya)' : '· hingga ' + license.licensedUntil }}
+            </span>
+            <span v-else>Tidak aktif / Kadaluarsa</span>
+          </div>
+
+          <!-- Machine ID -->
+          <div class="mb-4">
+            <p class="text-xs text-slate-400 mb-1">ID Perangkat (hubungi developer untuk aktivasi)</p>
+            <p class="font-mono text-xs font-bold text-primary bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 tracking-widest break-all">
+              {{ license.machineId }}
+            </p>
+          </div>
+
+          <!-- Input aktivasi (hanya jika belum licensed) -->
+          <template v-if="!license.isLicensed">
+            <div class="border-t border-slate-100 pt-4">
+              <label class="block text-xs font-bold text-slate-500 mb-1">Kode Aktivasi</label>
+              <textarea v-model="activationCode" rows="2"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono resize-none focus:outline-none focus:border-primary"
+                placeholder="WAVY-XXXX-XXXX-XXXX-XXXX|YYYY-MM-DD" />
+              <p class="text-[10px] text-slate-400 mt-1">Format: SERIAL|TANGGAL (contoh: WAVY-A1B2-...|2027-01-01)</p>
+              <p v-if="licenseError" class="text-xs text-red-600 mt-1.5">{{ licenseError }}</p>
+              <p v-if="licenseSuccess" class="text-xs text-emerald-600 mt-1.5">{{ licenseSuccess }}</p>
+              <button @click="handleActivate" :disabled="!activationCode.trim()"
+                class="btn-primary w-full justify-center text-sm mt-3 disabled:opacity-50">
+                Aktifkan Lisensi
+              </button>
+            </div>
+          </template>
         </div>
 
         <!-- Ganti Password -->
@@ -36,17 +115,21 @@
           <form @submit.prevent="changePassword" class="space-y-3">
             <div>
               <label class="block text-xs font-bold text-slate-500 mb-1">Password Lama</label>
-              <input v-model="pwForm.oldPassword" type="password" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required />
+              <input v-model="pwForm.oldPassword" type="password"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required />
             </div>
             <div>
               <label class="block text-xs font-bold text-slate-500 mb-1">Password Baru</label>
-              <input v-model="pwForm.newPassword" type="password" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required />
+              <input v-model="pwForm.newPassword" type="password"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required />
             </div>
             <div>
-              <label class="block text-xs font-bold text-slate-500 mb-1">Konfirmasi</label>
-              <input v-model="pwForm.confirmPassword" type="password" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required />
+              <label class="block text-xs font-bold text-slate-500 mb-1">Konfirmasi Password Baru</label>
+              <input v-model="pwForm.confirmPassword" type="password"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required />
             </div>
-            <p v-if="pwMessage" :class="pwSuccess ? 'text-emerald-600' : 'text-red-500'" class="text-xs">{{ pwMessage }}</p>
+            <p v-if="pwMessage" :class="pwSuccess ? 'text-emerald-600 bg-emerald-50 border-emerald-100' : 'text-red-500 bg-red-50 border-red-100'"
+              class="text-xs border rounded-lg px-3 py-2">{{ pwMessage }}</p>
             <button type="submit" class="btn-primary w-full justify-center text-sm">Simpan Password</button>
           </form>
         </div>
@@ -57,7 +140,8 @@
             <span class="material-symbols-outlined text-base">warning</span> Reset Database
           </h3>
           <p class="text-xs text-red-400 mb-3">Hanya muncul saat development. Hapus semua data permanen.</p>
-          <button @click="handleReset" :disabled="isResetting" class="btn-primary !bg-red-600 hover:!bg-red-700 w-full justify-center text-sm">
+          <button @click="handleReset" :disabled="isResetting"
+            class="btn-primary !bg-red-600 hover:!bg-red-700 w-full justify-center text-sm">
             <span class="material-symbols-outlined text-sm">{{ isResetting ? 'hourglass_empty' : 'delete_forever' }}</span>
             {{ isResetting ? 'Mereset...' : 'Hapus Semua Data' }}
           </button>
@@ -65,134 +149,278 @@
 
       </div>
 
-      <!-- ── Kolom Kanan (Backup) ── -->
-      <div class="col-span-2 card">
-        <h3 class="font-bold text-slate-700 text-sm mb-1 flex items-center gap-2">
-          <span class="material-symbols-outlined text-base text-slate-400">backup</span>
-          Backup & Restore
-        </h3>
-        <p class="text-xs text-slate-400 mb-5">Simpan checkpoint data ke lokal atau Google Drive</p>
+      <!-- ── KOLOM KANAN ── -->
+      <div class="space-y-6">
 
-        <div v-if="backupMessage" :class="backupSuccess ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-red-700 bg-red-50 border-red-200'"
-          class="text-xs px-3 py-2 rounded-lg border mb-4">{{ backupMessage }}</div>
+        <!-- Backup & Restore -->
+        <div class="card">
+          <h3 class="font-bold text-slate-700 text-sm mb-1 flex items-center gap-2">
+            <span class="material-symbols-outlined text-base text-slate-400">backup</span>
+            Backup & Restore
+          </h3>
+          <p class="text-xs text-slate-400 mb-5">Simpan checkpoint data ke lokal atau Google Drive</p>
 
-        <div class="grid grid-cols-2 gap-4 mb-5">
-          <!-- Enkripsi -->
-          <div class="rounded-xl border border-slate-200 p-4 bg-slate-50">
-            <div class="flex items-center justify-between mb-2">
-              <div class="flex items-center gap-2">
-                <span class="material-symbols-outlined text-slate-500 text-sm">lock</span>
-                <span class="text-xs font-bold text-slate-700">Enkripsi</span>
-                <span class="text-[10px] bg-emerald-100 text-emerald-700 font-bold px-1.5 py-0.5 rounded">AES-256</span>
+          <div v-if="backupMessage"
+            :class="backupSuccess ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-red-700 bg-red-50 border-red-200'"
+            class="text-xs px-3 py-2 rounded-lg border mb-4">{{ backupMessage }}</div>
+
+          <!-- Enkripsi & Google Drive -->
+          <div class="grid grid-cols-2 gap-3 mb-5">
+            <div class="rounded-xl border border-slate-200 p-3 bg-slate-50">
+              <div class="flex items-center justify-between mb-1.5">
+                <div class="flex items-center gap-1.5">
+                  <span class="material-symbols-outlined text-slate-500 text-sm">lock</span>
+                  <span class="text-xs font-bold text-slate-700">Enkripsi</span>
+                  <span class="text-[10px] bg-emerald-100 text-emerald-700 font-bold px-1.5 py-0.5 rounded">AES-256</span>
+                </div>
+                <button @click="showPassphraseForm = !showPassphraseForm"
+                  class="text-[10px] text-primary font-semibold hover:underline">Ubah</button>
               </div>
-              <button @click="showPassphraseForm = !showPassphraseForm" class="text-[10px] text-primary font-semibold hover:underline">Ubah</button>
-            </div>
-            <p class="text-[10px] text-slate-400 leading-relaxed">Semua backup dienkripsi otomatis. Jaga passphrase dengan baik.</p>
-            <div v-if="showPassphraseForm" class="mt-3 flex gap-2">
-              <input v-model="newPassphrase" type="password" placeholder="Passphrase baru..."
-                class="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white" />
-              <button @click="savePassphrase" :disabled="newPassphrase.length < 6" class="btn-primary text-xs px-2 py-1">OK</button>
-            </div>
-          </div>
-
-          <!-- Google Drive -->
-          <div class="rounded-xl border border-slate-200 p-4">
-            <div class="flex items-center justify-between mb-2">
-              <div class="flex items-center gap-2">
-                <span class="material-symbols-outlined text-slate-500 text-sm">cloud</span>
-                <span class="text-xs font-bold text-slate-700">Google Drive</span>
+              <p class="text-[10px] text-slate-400 leading-relaxed">Semua backup dienkripsi otomatis.</p>
+              <div v-if="showPassphraseForm" class="mt-2 flex gap-1.5">
+                <input v-model="newPassphrase" type="password" placeholder="Passphrase baru..."
+                  class="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white" />
+                <button @click="savePassphrase" :disabled="newPassphrase.length < 6"
+                  class="btn-primary text-xs px-2 py-1">OK</button>
               </div>
-              <span v-if="gdriveConnected" class="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full flex items-center gap-1">
-                <span class="material-symbols-outlined text-[10px]">check_circle</span> Terhubung
-              </span>
-              <span v-else class="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Belum</span>
             </div>
-            <div v-if="!gdriveConfigured" class="text-[10px] text-amber-600 mb-2">Credentials belum dikonfigurasi.</div>
-            <div v-if="!gdriveConnected">
-              <button @click="connectGdrive" :disabled="backupLoading || !gdriveConfigured" class="btn-secondary w-full justify-center text-xs py-1.5">
-                {{ backupLoading ? 'Menunggu...' : 'Hubungkan' }}
-              </button>
-            </div>
-            <div v-else class="flex gap-2">
-              <button @click="uploadToGdrive" :disabled="backupLoading" class="btn-primary flex-1 justify-center text-xs py-1.5">
-                <span class="material-symbols-outlined text-sm">cloud_upload</span>
-                {{ backupLoading ? 'Upload...' : 'Upload' }}
-              </button>
-              <button @click="disconnectGdrive" class="btn-secondary text-xs px-2 py-1.5" title="Putuskan">
-                <span class="material-symbols-outlined text-sm">logout</span>
-              </button>
-            </div>
-          </div>
-        </div>
 
-        <div class="flex gap-2 mb-4">
-          <button @click="createLocalBackup" :disabled="backupLoading" class="btn-secondary flex-1 justify-center text-xs">
-            <span class="material-symbols-outlined text-sm">save</span>
-            {{ backupLoading ? 'Menyimpan...' : 'Buat Checkpoint Lokal' }}
-          </button>
-          <button @click="loadBackupList" class="btn-secondary text-xs px-3" title="Refresh">
-            <span class="material-symbols-outlined text-sm">refresh</span>
-          </button>
-        </div>
-
-        <div class="flex gap-1 mb-3 bg-slate-100 rounded-lg p-1">
-          <button @click="backupTab = 'local'" :class="['flex-1 text-xs py-1.5 rounded-md font-semibold transition-colors', backupTab==='local' ? 'bg-white text-primary shadow-sm' : 'text-slate-500']">
-            Lokal ({{ localBackups.length }})
-          </button>
-          <button @click="backupTab = 'drive'; loadDriveBackups()" :class="['flex-1 text-xs py-1.5 rounded-md font-semibold transition-colors', backupTab==='drive' ? 'bg-white text-primary shadow-sm' : 'text-slate-500']" :disabled="!gdriveConnected">
-            Google Drive ({{ driveBackups.length }})
-          </button>
-        </div>
-
-        <div v-if="backupTab === 'local'" class="space-y-1.5 max-h-56 overflow-y-auto">
-          <div v-if="!localBackups.length" class="text-center py-8 text-slate-400 text-xs">Belum ada checkpoint lokal</div>
-          <div v-for="b in localBackups" :key="b.name"
-            class="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
-            <div>
-              <p class="text-xs font-semibold text-slate-700 flex items-center gap-1">
-                {{ b.name }}
-                <span v-if="b.encrypted" class="text-[10px] bg-emerald-100 text-emerald-700 font-bold px-1 rounded flex items-center gap-0.5">
-                  <span class="material-symbols-outlined text-[10px]">lock</span> Enkripsi
+            <div class="rounded-xl border border-slate-200 p-3">
+              <div class="flex items-center justify-between mb-1.5">
+                <div class="flex items-center gap-1.5">
+                  <span class="material-symbols-outlined text-slate-500 text-sm">cloud</span>
+                  <span class="text-xs font-bold text-slate-700">Google Drive</span>
+                </div>
+                <span v-if="gdriveConnected"
+                  class="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <span class="material-symbols-outlined text-[10px]">check_circle</span> Aktif
                 </span>
-              </p>
-              <p class="text-[10px] text-slate-400">{{ formatFileDate(b.modifiedTime) }} · {{ formatSize(b.size) }}</p>
+                <span v-else class="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Belum</span>
+              </div>
+              <div v-if="!gdriveConfigured" class="text-[10px] text-amber-600 mb-1.5">Credentials belum dikonfigurasi.</div>
+              <div v-if="!gdriveConnected">
+                <button @click="connectGdrive" :disabled="backupLoading || !gdriveConfigured"
+                  class="btn-secondary w-full justify-center text-xs py-1.5 mt-1">
+                  {{ backupLoading ? 'Menunggu...' : 'Hubungkan' }}
+                </button>
+              </div>
+              <div v-else class="flex gap-1.5 mt-1">
+                <button @click="uploadToGdrive" :disabled="backupLoading"
+                  class="btn-primary flex-1 justify-center text-xs py-1.5">
+                  <span class="material-symbols-outlined text-sm">cloud_upload</span>
+                  {{ backupLoading ? 'Upload...' : 'Upload' }}
+                </button>
+                <button @click="disconnectGdrive" class="btn-secondary text-xs px-2 py-1.5" title="Putuskan">
+                  <span class="material-symbols-outlined text-sm">logout</span>
+                </button>
+              </div>
+              <div class="mt-3 pt-3 border-t border-slate-100">
+                <button
+                  @click="toggleAutoBackupOnClose"
+                  :disabled="backupLoading || !gdriveConfigured"
+                  type="button"
+                  class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-left transition hover:border-slate-300 hover:bg-slate-100 disabled:opacity-50"
+                >
+                  <div class="flex items-center justify-between gap-3">
+                    <div class="min-w-0">
+                      <p class="text-[11px] font-bold text-slate-700">Backup otomatis saat tutup app</p>
+                      <p class="mt-1 text-[10px] text-slate-400 leading-relaxed">
+                        Simpan ke Google Drive saat aplikasi ditutup. Backup harian akan diperbarui tanpa menumpuk file di tanggal yang sama.
+                      </p>
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0">
+                      <span
+                        :class="autoBackupOnClose ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'"
+                        class="rounded-full px-2 py-1 text-[10px] font-bold"
+                      >
+                        {{ autoBackupOnClose ? 'AKTIF' : 'NONAKTIF' }}
+                      </span>
+                      <span
+                        :class="autoBackupOnClose ? 'bg-emerald-500 shadow-emerald-200' : 'bg-slate-300'"
+                        class="relative inline-flex h-7 w-12 items-center rounded-full transition-colors shadow-inner"
+                      >
+                        <span
+                          :class="autoBackupOnClose ? 'translate-x-6' : 'translate-x-1'"
+                          class="inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform"
+                        />
+                      </span>
+                    </div>
+                  </div>
+                </button>
+              </div>
             </div>
-            <button @click="restoreLocal(b)" class="text-xs text-primary font-bold hover:underline flex items-center gap-1">
-              <span class="material-symbols-outlined text-sm">restore</span> Restore
+          </div>
+
+          <!-- Tombol backup lokal -->
+          <div class="flex gap-2 mb-4">
+            <button @click="createLocalBackup" :disabled="backupLoading"
+              class="btn-secondary flex-1 justify-center text-xs">
+              <span class="material-symbols-outlined text-sm">save</span>
+              {{ backupLoading ? 'Menyimpan...' : 'Buat Checkpoint Lokal' }}
+            </button>
+            <button @click="loadBackupList" class="btn-secondary text-xs px-3" title="Refresh">
+              <span class="material-symbols-outlined text-sm">refresh</span>
             </button>
           </div>
+
+          <!-- Tab lokal / drive -->
+          <div class="flex gap-1 mb-3 bg-slate-100 rounded-lg p-1">
+            <button @click="backupTab = 'local'"
+              :class="['flex-1 text-xs py-1.5 rounded-md font-semibold transition-colors',
+                backupTab==='local' ? 'bg-white text-primary shadow-sm' : 'text-slate-500']">
+              Lokal ({{ localBackups.length }})
+            </button>
+            <button @click="backupTab = 'drive'; loadDriveBackups()"
+              :class="['flex-1 text-xs py-1.5 rounded-md font-semibold transition-colors',
+                backupTab==='drive' ? 'bg-white text-primary shadow-sm' : 'text-slate-500']"
+              :disabled="!gdriveConnected">
+              Google Drive ({{ driveBackups.length }})
+            </button>
+          </div>
+
+          <!-- List backup lokal -->
+          <div v-if="backupTab === 'local'" class="space-y-1.5 max-h-64 overflow-y-auto">
+            <div v-if="!localBackups.length" class="text-center py-8 text-slate-400 text-xs">
+              Belum ada checkpoint lokal
+            </div>
+            <div v-for="b in localBackups" :key="b.name"
+              class="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
+              <div>
+                <p class="text-xs font-semibold text-slate-700 flex items-center gap-1">
+                  {{ b.name }}
+                  <span v-if="b.encrypted"
+                    class="text-[10px] bg-emerald-100 text-emerald-700 font-bold px-1 rounded flex items-center gap-0.5">
+                    <span class="material-symbols-outlined text-[10px]">lock</span> Enkripsi
+                  </span>
+                </p>
+                <p class="text-[10px] text-slate-400">{{ formatFileDate(b.modifiedTime) }} · {{ formatSize(b.size) }}</p>
+              </div>
+              <button @click="restoreLocal(b)"
+                class="text-xs text-primary font-bold hover:underline flex items-center gap-1">
+                <span class="material-symbols-outlined text-sm">restore</span> Restore
+              </button>
+            </div>
+          </div>
+
+          <!-- List backup drive -->
+          <div v-if="backupTab === 'drive'" class="space-y-1.5 max-h-64 overflow-y-auto">
+            <div v-if="driveLoading" class="text-center py-8 text-slate-400 text-xs">Memuat dari Drive...</div>
+            <div v-else-if="!driveBackups.length" class="text-center py-8 text-slate-400 text-xs">
+              Belum ada backup di Google Drive
+            </div>
+            <div v-for="b in driveBackups" :key="b.id"
+              class="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
+              <div>
+                <p class="text-xs font-semibold text-slate-700 flex items-center gap-1">
+                  {{ b.name }}
+                  <span v-if="b.name.endsWith('.wavy')"
+                    class="text-[10px] bg-emerald-100 text-emerald-700 font-bold px-1 rounded flex items-center gap-0.5">
+                    <span class="material-symbols-outlined text-[10px]">lock</span> Enkripsi
+                  </span>
+                </p>
+                <p class="text-[10px] text-slate-400">{{ formatFileDate(b.modifiedTime) }} · {{ formatSize(b.size) }}</p>
+              </div>
+              <div class="flex gap-2">
+                <button @click="restoreDrive(b)"
+                  class="text-xs text-primary font-bold hover:underline flex items-center gap-1">
+                  <span class="material-symbols-outlined text-sm">cloud_download</span> Restore
+                </button>
+                <button @click="deleteDriveBackup(b)" class="text-xs text-red-400 hover:text-red-600">
+                  <span class="material-symbols-outlined text-sm">delete</span>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div v-if="backupTab === 'drive'" class="space-y-1.5 max-h-56 overflow-y-auto">
-          <div v-if="driveLoading" class="text-center py-8 text-slate-400 text-xs">Memuat dari Drive...</div>
-          <div v-else-if="!driveBackups.length" class="text-center py-8 text-slate-400 text-xs">Belum ada backup di Google Drive</div>
-          <div v-for="b in driveBackups" :key="b.id"
-            class="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
+      </div>
+    </div>
+
+    <div v-else-if="isDev" class="space-y-6">
+      <div class="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
+        <div class="flex items-center gap-2 text-amber-800">
+          <span class="material-symbols-outlined text-base">science</span>
+          <p class="text-sm font-black">Sandbox Development</p>
+        </div>
+        <p class="mt-1 text-xs text-amber-700">Area khusus development untuk seed data, stress test ringan, dan benchmark cepat. Tidak tampil di production.</p>
+      </div>
+
+      <div v-if="sandboxMessage" :class="sandboxSuccess ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'" class="rounded-xl border px-4 py-3 text-sm">
+        {{ sandboxMessage }}
+      </div>
+
+      <div class="grid grid-cols-3 gap-4">
+        <div class="rounded-2xl border border-slate-200 bg-white p-4" v-for="item in sandboxStatCards" :key="item.table">
+          <p class="text-xs font-bold uppercase tracking-wider text-slate-400">{{ item.label }}</p>
+          <p class="mt-2 text-3xl font-black text-primary font-headline">{{ item.count.toLocaleString('id-ID') }}</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-6">
+        <div class="card">
+          <div class="flex items-center justify-between mb-4">
             <div>
-              <p class="text-xs font-semibold text-slate-700 flex items-center gap-1">
-                {{ b.name }}
-                <span v-if="b.name.endsWith('.wavy')" class="text-[10px] bg-emerald-100 text-emerald-700 font-bold px-1 rounded flex items-center gap-0.5">
-                  <span class="material-symbols-outlined text-[10px]">lock</span> Enkripsi
-                </span>
-              </p>
-              <p class="text-[10px] text-slate-400">{{ formatFileDate(b.modifiedTime) }} · {{ formatSize(b.size) }}</p>
+              <h3 class="font-bold text-slate-700 text-sm">Seed Data</h3>
+              <p class="text-xs text-slate-400 mt-1">Tambahkan data simulasi operasional untuk uji performa dan laporan.</p>
             </div>
-            <div class="flex gap-2">
-              <button @click="restoreDrive(b)" class="text-xs text-primary font-bold hover:underline flex items-center gap-1">
-                <span class="material-symbols-outlined text-sm">cloud_download</span> Restore
-              </button>
-              <button @click="deleteDriveBackup(b)" class="text-xs text-red-400 hover:text-red-600">
-                <span class="material-symbols-outlined text-sm">delete</span>
-              </button>
+            <button @click="loadSandboxStats" class="btn-secondary text-xs px-3 py-1.5">
+              <span class="material-symbols-outlined text-sm">refresh</span>
+              Refresh
+            </button>
+          </div>
+          <div class="grid grid-cols-2 gap-3 mb-4">
+            <button v-for="preset in seedPresets" :key="preset.label" @click="runSandboxSeed(preset)" :disabled="sandboxLoading" class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-left transition hover:border-primary/30 hover:bg-primary/5 disabled:opacity-50">
+              <p class="text-sm font-black text-slate-800">{{ preset.label }}</p>
+              <p class="mt-1 text-xs text-slate-400">{{ preset.rentalCount.toLocaleString('id-ID') }} rental • {{ preset.daysBack }} hari</p>
+            </button>
+          </div>
+          <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
+            Ukuran database saat ini: <span class="font-bold text-slate-700">{{ formatSize(sandboxStats.dbSizeBytes) }}</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h3 class="font-bold text-slate-700 text-sm">Benchmark Cepat</h3>
+              <p class="text-xs text-slate-400 mt-1">Ukur respons query utama dashboard dan laporan.</p>
+            </div>
+            <button @click="runSandboxBenchmarks" :disabled="sandboxBenchmarkLoading" class="btn-primary text-xs px-3 py-1.5">
+              <span class="material-symbols-outlined text-sm">speed</span>
+              {{ sandboxBenchmarkLoading ? 'Menjalankan...' : 'Jalankan' }}
+            </button>
+          </div>
+          <div class="space-y-3">
+            <div v-for="row in benchmarkRows" :key="row.key" class="rounded-xl border border-slate-200 px-4 py-3">
+              <div class="flex items-center justify-between gap-3">
+                <div>
+                  <p class="text-sm font-bold text-slate-700">{{ row.label }}</p>
+                  <p class="text-xs text-slate-400">{{ row.desc }}</p>
+                </div>
+                <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">{{ row.ms === null ? '-' : `${row.ms} ms` }}</span>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
+      <div class="card border border-red-200 bg-red-50/40">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <h3 class="font-bold text-red-700 text-sm">Danger Zone Sandbox</h3>
+            <p class="text-xs text-red-400 mt-1">Reset seluruh data sandbox. Hanya gunakan saat development.</p>
+          </div>
+          <button @click="handleReset" :disabled="isResetting" class="btn-primary !bg-red-600 hover:!bg-red-700 text-sm">
+            <span class="material-symbols-outlined text-sm">delete_forever</span>
+            Reset Sandbox
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Reset Modal -->
-    <n-modal v-model:show="showResetModal" preset="card" title="Konfirmasi Reset" class="max-w-sm" :auto-focus="false" :trap-focus="false">
+    <n-modal v-model:show="showResetModal" preset="card" title="Konfirmasi Reset" class="max-w-sm"
+      :auto-focus="false" :trap-focus="false">
       <div class="space-y-4">
         <div class="bg-red-50 text-red-600 p-3 rounded-lg text-xs font-bold border border-red-200">
           BAHAYA! Semua data akan dihapus permanen dan tidak bisa dikembalikan!
@@ -213,13 +441,36 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
+import { useLicenseStore } from '../stores/license'
 
 const auth = useAuthStore()
+const license = useLicenseStore()
 const isDev = import.meta.env.DEV
 const appVersion = import.meta.env.VITE_APP_VERSION || '1.0.0'
+const settingsTab = ref('general')
 
+// ── Lisensi ──────────────────────────────────────────────────────────────────
+const activationCode = ref('')
+const licenseError = ref('')
+const licenseSuccess = ref('')
+
+async function handleActivate() {
+  licenseError.value = ''
+  licenseSuccess.value = ''
+  try {
+    const result = await window.api.activateLicense({ activationCode: activationCode.value })
+    if (!result.success) { licenseError.value = result.message; return }
+    await license.load()
+    licenseSuccess.value = 'Lisensi berhasil diaktifkan!'
+    activationCode.value = ''
+  } catch (e) {
+    licenseError.value = e.message
+  }
+}
+
+// ── Password ─────────────────────────────────────────────────────────────────
 const pwForm = ref({ oldPassword: '', newPassword: '', confirmPassword: '' })
 const pwMessage = ref('')
 const pwSuccess = ref(false)
@@ -229,12 +480,17 @@ async function changePassword() {
   if (pwForm.value.newPassword !== pwForm.value.confirmPassword) {
     pwMessage.value = 'Password baru tidak cocok'; pwSuccess.value = false; return
   }
-  const result = await window.api.changePassword({ userId: auth.user.id, oldPassword: pwForm.value.oldPassword, newPassword: pwForm.value.newPassword })
+  const result = await window.api.changePassword({
+    userId: auth.user.id,
+    oldPassword: pwForm.value.oldPassword,
+    newPassword: pwForm.value.newPassword
+  })
   pwSuccess.value = result.success
   pwMessage.value = result.success ? 'Password berhasil diubah' : result.message
   if (result.success) pwForm.value = { oldPassword: '', newPassword: '', confirmPassword: '' }
 }
 
+// ── Reset DB ──────────────────────────────────────────────────────────────────
 const isResetting = ref(false)
 const showResetModal = ref(false)
 const resetConfirmText = ref('')
@@ -242,20 +498,20 @@ const resetConfirmText = ref('')
 function handleReset() { resetConfirmText.value = ''; showResetModal.value = true }
 
 async function executeReset() {
-  if (resetConfirmText.value === 'RESET') {
-    try {
-      isResetting.value = true
-      await window.api.resetAllData()
-      window.location.reload()
-    } catch (err) {
-      alert('Gagal mereset: ' + err.message)
-    } finally {
-      isResetting.value = false
-      showResetModal.value = false
-    }
+  if (resetConfirmText.value !== 'RESET') return
+  try {
+    isResetting.value = true
+    await window.api.resetAllData()
+    window.location.reload()
+  } catch (err) {
+    alert('Gagal mereset: ' + err.message)
+  } finally {
+    isResetting.value = false
+    showResetModal.value = false
   }
 }
 
+// ── Backup ────────────────────────────────────────────────────────────────────
 const gdriveConnected = ref(false)
 const gdriveConfigured = ref(false)
 const backupLoading = ref(false)
@@ -267,19 +523,36 @@ const localBackups = ref([])
 const driveBackups = ref([])
 const showPassphraseForm = ref(false)
 const newPassphrase = ref('')
+const autoBackupOnClose = ref(true)
+const sandboxLoading = ref(false)
+const sandboxBenchmarkLoading = ref(false)
+const sandboxMessage = ref('')
+const sandboxSuccess = ref(true)
+const sandboxStats = ref({ counts: [], dbSizeBytes: 0 })
+const benchmarkRows = ref([
+  { key: 'dashboardSummary', label: 'Dashboard Summary', desc: 'Ringkasan utama dashboard', ms: null },
+  { key: 'dailyIncome', label: 'Grafik Pemasukan', desc: 'Dataset pemasukan harian', ms: null },
+  { key: 'transactionsReport', label: 'Laporan Transaksi', desc: 'Semua transaksi periode 30 hari', ms: null },
+  { key: 'motorIncomeReport', label: 'Pendapatan Motor', desc: 'Laporan pendapatan per motor 30 hari', ms: null }
+])
+const seedPresets = [
+  { label: 'Seed 100', rentalCount: 100, daysBack: 60 },
+  { label: 'Seed 1.000', rentalCount: 1000, daysBack: 365 },
+  { label: 'Seed 5.000', rentalCount: 5000, daysBack: 730 },
+  { label: 'Seed 10.000', rentalCount: 10000, daysBack: 1095 }
+]
 
-async function savePassphrase() {
-  try {
-    await window.api.backupSetPassphrase({ passphrase: newPassphrase.value })
-    showPassphraseForm.value = false
-    newPassphrase.value = ''
-    setMsg('Passphrase berhasil diperbarui.')
-  } catch (e) { setMsg(e.message, false) }
-}
+const sandboxStatCards = computed(() => sandboxStats.value.counts.slice(0, 6))
 
 function setMsg(msg, ok = true) {
   backupMessage.value = msg; backupSuccess.value = ok
   setTimeout(() => { backupMessage.value = '' }, 5000)
+}
+
+function setSandboxMsg(msg, ok = true) {
+  sandboxMessage.value = msg
+  sandboxSuccess.value = ok
+  setTimeout(() => { sandboxMessage.value = '' }, 5000)
 }
 
 function formatFileDate(iso) {
@@ -292,10 +565,20 @@ function formatSize(bytes) {
   return kb > 1024 ? (kb / 1024).toFixed(1) + ' MB' : kb.toFixed(0) + ' KB'
 }
 
+async function savePassphrase() {
+  try {
+    await window.api.backupSetPassphrase({ passphrase: newPassphrase.value })
+    showPassphraseForm.value = false; newPassphrase.value = ''
+    setMsg('Passphrase berhasil diperbarui.')
+  } catch (e) { setMsg(e.message, false) }
+}
+
 async function checkGdriveStatus() {
   const status = await window.api.backupGdriveStatus()
   gdriveConnected.value = status.connected
   gdriveConfigured.value = status.configured
+  const autoStatus = await window.api.backupGetAutoCloseStatus()
+  autoBackupOnClose.value = autoStatus.enabled
 }
 
 async function loadBackupList() {
@@ -312,74 +595,129 @@ async function loadDriveBackups() {
 
 async function connectGdrive() {
   backupLoading.value = true
-  try {
-    await window.api.backupGdriveConnect()
-    gdriveConnected.value = true
-    setMsg('Google Drive berhasil terhubung!')
-  } catch (e) { setMsg('Gagal: ' + e.message, false) }
+  try { await window.api.backupGdriveConnect(); gdriveConnected.value = true; setMsg('Google Drive berhasil terhubung!') }
+  catch (e) { setMsg('Gagal: ' + e.message, false) }
   finally { backupLoading.value = false }
 }
 
 async function disconnectGdrive() {
   await window.api.backupGdriveDisconnect()
-  gdriveConnected.value = false
-  driveBackups.value = []
+  gdriveConnected.value = false; driveBackups.value = []
   setMsg('Google Drive diputus.')
 }
 
 async function createLocalBackup() {
   backupLoading.value = true
-  try {
-    const res = await window.api.backupCreateLocal()
-    await loadBackupList()
-    setMsg(`Checkpoint disimpan: ${res.filename}`)
-  } catch (e) { setMsg(e.message, false) }
+  try { const res = await window.api.backupCreateLocal(); await loadBackupList(); setMsg(`Checkpoint disimpan: ${res.filename}`) }
+  catch (e) { setMsg(e.message, false) }
   finally { backupLoading.value = false }
 }
 
 async function uploadToGdrive() {
   backupLoading.value = true
-  try {
-    const res = await window.api.backupGdriveUpload()
-    setMsg(`Berhasil upload ke Drive: ${res.filename}`)
-    if (backupTab.value === 'drive') await loadDriveBackups()
-  } catch (e) { setMsg('Upload gagal: ' + e.message, false) }
+  try { const res = await window.api.backupGdriveUpload(); setMsg(`Berhasil upload: ${res.filename}`); if (backupTab.value === 'drive') await loadDriveBackups() }
+  catch (e) { setMsg('Upload gagal: ' + e.message, false) }
   finally { backupLoading.value = false }
 }
 
-async function restoreLocal(backup) {
-  if (!confirm(`Restore dari "${backup.name}"?\n\nData saat ini akan diganti. App akan reload otomatis.`)) return
-  backupLoading.value = true
+async function toggleAutoBackupOnClose() {
   try {
-    await window.api.backupRestoreLocal({ path: backup.path })
-    setMsg('Restore berhasil! App akan reload...')
-    setTimeout(() => window.location.reload(), 1500)
-  } catch (e) { setMsg('Restore gagal: ' + e.message, false) }
+    const next = !autoBackupOnClose.value
+    const res = await window.api.backupSetAutoCloseStatus({ enabled: next })
+    autoBackupOnClose.value = res.enabled
+    setMsg(res.enabled
+      ? 'Backup otomatis saat tutup aplikasi diaktifkan.'
+      : 'Backup otomatis saat tutup aplikasi dimatikan.')
+  } catch (e) {
+    setMsg('Gagal mengubah pengaturan auto backup: ' + e.message, false)
+  }
+}
+
+async function restoreLocal(backup) {
+  if (!confirm(`Restore dari "${backup.name}"?\n\nData saat ini akan diganti.`)) return
+  backupLoading.value = true
+  try { await window.api.backupRestoreLocal({ path: backup.path }); setMsg('Restore berhasil! App akan reload...'); setTimeout(() => window.location.reload(), 1500) }
+  catch (e) { setMsg('Restore gagal: ' + e.message, false) }
   finally { backupLoading.value = false }
 }
 
 async function restoreDrive(backup) {
-  if (!confirm(`Restore dari Drive: "${backup.name}"?\n\nData saat ini akan diganti. App akan reload otomatis.`)) return
+  if (!confirm(`Restore dari Drive: "${backup.name}"?\n\nData saat ini akan diganti.`)) return
   backupLoading.value = true
-  try {
-    await window.api.backupGdriveRestore({ fileId: backup.id, fileName: backup.name })
-    setMsg('Restore dari Drive berhasil! App akan reload...')
-    setTimeout(() => window.location.reload(), 1500)
-  } catch (e) { setMsg('Restore gagal: ' + e.message, false) }
+  try { await window.api.backupGdriveRestore({ fileId: backup.id, fileName: backup.name }); setMsg('Restore berhasil! App akan reload...'); setTimeout(() => window.location.reload(), 1500) }
+  catch (e) { setMsg('Restore gagal: ' + e.message, false) }
   finally { backupLoading.value = false }
 }
 
 async function deleteDriveBackup(backup) {
   if (!confirm(`Hapus backup "${backup.name}" dari Drive?`)) return
+  try { await window.api.backupGdriveDelete({ fileId: backup.id }); driveBackups.value = driveBackups.value.filter(b => b.id !== backup.id); setMsg('Backup dihapus.') }
+  catch (e) { setMsg('Gagal hapus: ' + e.message, false) }
+}
+
+async function loadSandboxStats() {
+  if (!isDev) return
   try {
-    await window.api.backupGdriveDelete({ fileId: backup.id })
-    driveBackups.value = driveBackups.value.filter(b => b.id !== backup.id)
-    setMsg('Backup dihapus dari Drive.')
-  } catch (e) { setMsg('Gagal hapus: ' + e.message, false) }
+    sandboxStats.value = await window.api.getDevSandboxStats()
+  } catch (error) {
+    setSandboxMsg(`Gagal memuat statistik sandbox: ${error.message}`, false)
+  }
+}
+
+async function runSandboxSeed(preset) {
+  sandboxLoading.value = true
+  try {
+    const result = await window.api.seedDevSandboxData(preset)
+    sandboxStats.value = result.stats
+    const added = result.stats?.addedMasters || {}
+    setSandboxMsg(
+      `Seed selesai: ${result.rentalCount.toLocaleString('id-ID')} rental, +${(added.owners || 0).toLocaleString('id-ID')} mitra, +${(added.hotels || 0).toLocaleString('id-ID')} hotel, +${(added.motors || 0).toLocaleString('id-ID')} motor.`
+    )
+  } catch (error) {
+    setSandboxMsg(`Seed gagal: ${error.message}`, false)
+  } finally {
+    sandboxLoading.value = false
+  }
+}
+
+function dateRangeDays(days) {
+  const end = new Date()
+  const start = new Date()
+  start.setDate(end.getDate() - days + 1)
+  const toDate = (value) => value.toISOString().split('T')[0]
+  return {
+    short: { startDate: toDate(start), endDate: toDate(end) },
+    full: { startDate: `${toDate(start)}T00:00:00`, endDate: `${toDate(end)}T23:59:59` }
+  }
+}
+
+async function benchmark(labelKey, runner) {
+  const startedAt = performance.now()
+  await runner()
+  const elapsed = Math.round(performance.now() - startedAt)
+  benchmarkRows.value = benchmarkRows.value.map((row) => row.key === labelKey ? { ...row, ms: elapsed } : row)
+}
+
+async function runSandboxBenchmarks() {
+  sandboxBenchmarkLoading.value = true
+  const range = dateRangeDays(30)
+  try {
+    await benchmark('dashboardSummary', () => window.api.getDashboardSummary(range.full))
+    await benchmark('dailyIncome', () => window.api.getDailyIncome(range.full))
+    await benchmark('transactionsReport', () => window.api.getTransactionsReport(range.short))
+    await benchmark('motorIncomeReport', () => window.api.getMotorIncomeReport(range.short))
+    setSandboxMsg('Benchmark sandbox selesai dijalankan.')
+  } catch (error) {
+    setSandboxMsg(`Benchmark gagal: ${error.message}`, false)
+  } finally {
+    sandboxBenchmarkLoading.value = false
+  }
 }
 
 onMounted(async () => {
+  await license.load()
   await checkGdriveStatus()
   await loadBackupList()
+  if (isDev) await loadSandboxStats()
 })
 </script>

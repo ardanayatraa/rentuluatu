@@ -1,15 +1,28 @@
 import { ipcMain } from 'electron'
 import { dbOps } from '../db'
 
+const COMPANY_EXPENSE_WHERE = `
+  FROM expenses e
+  LEFT JOIN motors m ON e.motor_id = m.id
+  WHERE e.date BETWEEN ? AND ?
+    AND (
+      e.type != 'motor'
+      OR e.motor_id IS NULL
+      OR m.owner_id IS NULL
+    )
+`
+
 export function registerReportHandlers() {
   ipcMain.handle('report:summary', (_, { startDate, endDate }) => {
+    const start = startDate.split('T')[0]
+    const end = endDate.split('T')[0]
     const income = dbOps.get(
       "SELECT COALESCE(SUM(total_price), 0) as total FROM rentals WHERE date_time BETWEEN ? AND ? AND status != 'refunded'",
       [startDate, endDate]
     )
     const expenses = dbOps.get(
-      'SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE date BETWEEN ? AND ?',
-      [startDate, endDate]
+      `SELECT COALESCE(SUM(e.amount), 0) as total ${COMPANY_EXPENSE_WHERE}`,
+      [start, end]
     )
     const refunds = dbOps.get(
       'SELECT COALESCE(SUM(r.refund_amount), 0) as total FROM refunds r WHERE r.created_at BETWEEN ? AND ?',
@@ -98,48 +111,144 @@ export function registerReportHandlers() {
       ORDER BY r.date_time DESC
     `, [startDate, endDate])
 
-    const expenses = dbOps.all(`
+    const operationalExpenses = dbOps.all(`
       SELECT e.id, e.date, 'expense' as type,
              e.category as description,
              COALESCE(m.model || ' (' || m.plate_number || ')', 'Umum') as motor,
              e.payment_method, e.amount, 'completed' as status
       FROM expenses e LEFT JOIN motors m ON e.motor_id = m.id
       WHERE e.date BETWEEN ? AND ?
+        AND e.type != 'motor'
       ORDER BY e.date DESC
     `, [startDate.split('T')[0], endDate.split('T')[0]])
 
-    return { rentals, expenses }
+    const motorExpenses = dbOps.all(`
+      SELECT e.id, e.date, 'expense' as type,
+             e.category as description,
+             COALESCE(m.model || ' (' || m.plate_number || ')', 'Motor') as motor,
+             e.payment_method, e.amount, 'completed' as status
+      FROM expenses e LEFT JOIN motors m ON e.motor_id = m.id
+      WHERE e.date BETWEEN ? AND ?
+        AND e.type = 'motor'
+      ORDER BY e.date DESC
+    `, [startDate.split('T')[0], endDate.split('T')[0]])
+
+    return { rentals, operationalExpenses, motorExpenses }
   })
 
   // Laporan komisi owner (untuk cetak PDF pembayaran komisi)
-  ipcMain.handle('report:owner-commission', (_, { ownerId, startDate, endDate }) => {
+  ipcMain.handle('report:owner-commission', (_, { ownerId, startDate, endDate, motorId = null }) => {
     const owner = dbOps.get('SELECT * FROM owners WHERE id = ?', [ownerId])
-    const motors = dbOps.all('SELECT * FROM motors WHERE owner_id = ?', [ownerId])
+    const motors = dbOps.all(
+      `SELECT * FROM motors WHERE owner_id = ? ${motorId ? 'AND id = ?' : ''}`,
+      motorId ? [ownerId, motorId] : [ownerId]
+    )
+    const motorFilter = motorId ? ' AND m.id = ?' : ''
+    const rentalParams = motorId ? [ownerId, startDate, endDate, motorId] : [ownerId, startDate, endDate]
 
     const rentals = dbOps.all(`
       SELECT r.id, r.date_time, r.customer_name, r.period_days,
              r.total_price, r.owner_gets, r.wavy_gets, r.sisa,
              r.payment_method, r.payout_id,
-             m.model, m.plate_number
+             m.id as motor_id, m.model, m.plate_number
       FROM rentals r
       JOIN motors m ON r.motor_id = m.id
       WHERE m.owner_id = ? AND r.status != 'refunded'
         AND r.date_time BETWEEN ? AND ?
+        ${motorFilter}
       ORDER BY r.date_time DESC
-    `, [ownerId, startDate, endDate])
+    `, rentalParams)
 
+    const expenseParams = motorId
+      ? [ownerId, startDate.split('T')[0], endDate.split('T')[0], motorId]
+      : [ownerId, startDate.split('T')[0], endDate.split('T')[0]]
     const totalOwnerGets = rentals.reduce((s, r) => s + (r.owner_gets || 0), 0)
     const totalPaid = rentals.filter(r => r.payout_id).reduce((s, r) => s + (r.owner_gets || 0), 0)
     const totalUnpaid = rentals.filter(r => !r.payout_id).reduce((s, r) => s + (r.owner_gets || 0), 0)
+    const expenses = dbOps.all(`
+      SELECT e.id, e.date, e.category, e.type, e.amount, e.description, e.payout_id,
+             m.id as motor_id, m.model, m.plate_number
+      FROM expenses e
+      JOIN motors m ON e.motor_id = m.id
+      WHERE m.owner_id = ? AND e.type = 'motor'
+        AND e.date BETWEEN ? AND ?
+        ${motorFilter}
+      ORDER BY m.model, e.date DESC
+    `, expenseParams)
 
+    const totalExpenses = expenses.reduce((s, e) => s + (e.amount || 0), 0)
+    const totalNet = totalOwnerGets - totalExpenses
+
+    const motorMap = {}
+    for (const motor of motors) {
+      motorMap[motor.id] = {
+        motor_id: motor.id,
+        model: motor.model,
+        plate_number: motor.plate_number,
+        rentals: [],
+        expenses: [],
+        rental_total: 0,
+        expense_total: 0,
+        net_total: 0
+      }
+    }
+    for (const rental of rentals) {
+      if (!motorMap[rental.motor_id]) {
+        motorMap[rental.motor_id] = {
+          motor_id: rental.motor_id,
+          model: rental.model,
+          plate_number: rental.plate_number,
+          rentals: [],
+          expenses: [],
+          rental_total: 0,
+          expense_total: 0,
+          net_total: 0
+        }
+      }
+      motorMap[rental.motor_id].rentals.push(rental)
+      motorMap[rental.motor_id].rental_total += rental.owner_gets || 0
+    }
+    for (const expense of expenses) {
+      if (!motorMap[expense.motor_id]) {
+        motorMap[expense.motor_id] = {
+          motor_id: expense.motor_id,
+          model: expense.model,
+          plate_number: expense.plate_number,
+          rentals: [],
+          expenses: [],
+          rental_total: 0,
+          expense_total: 0,
+          net_total: 0
+        }
+      }
+      motorMap[expense.motor_id].expenses.push(expense)
+      motorMap[expense.motor_id].expense_total += expense.amount || 0
+    }
+    const byMotor = Object.values(motorMap)
+      .map(item => ({
+        ...item,
+        net_total: (item.rental_total || 0) - (item.expense_total || 0)
+      }))
+      .filter(item => item.rentals.length || item.expenses.length)
+      .sort((a, b) => a.model.localeCompare(b.model))
+
+    const payoutMotorFilter = motorId
+      ? `AND EXISTS (
+          SELECT 1 FROM rentals r
+          WHERE r.payout_id = p.id AND r.motor_id = ?
+        )`
+      : ''
     const payouts = dbOps.all(`
       SELECT p.*, ca.name as cash_account_name
       FROM payouts p JOIN cash_accounts ca ON p.cash_account_id = ca.id
       WHERE p.owner_id = ? AND p.date BETWEEN ? AND ?
+      ${payoutMotorFilter}
       ORDER BY p.date DESC
-    `, [ownerId, startDate.split('T')[0], endDate.split('T')[0]])
+    `, motorId
+      ? [ownerId, startDate.split('T')[0], endDate.split('T')[0], motorId]
+      : [ownerId, startDate.split('T')[0], endDate.split('T')[0]])
 
-    return { owner, motors, rentals, payouts, totalOwnerGets, totalPaid, totalUnpaid }
+    return { owner, motors, rentals, expenses, byMotor, payouts, totalOwnerGets, totalPaid, totalUnpaid, totalExpenses, totalNet }
   })
 
   // Laporan per pemilik motor
@@ -197,7 +306,10 @@ export function registerReportHandlers() {
       [startDate, endDate]
     )
     const expenses = dbOps.all(
-      "SELECT category, type, COALESCE(SUM(amount),0) as total FROM expenses WHERE date BETWEEN ? AND ? GROUP BY category, type ORDER BY type, total DESC",
+      `SELECT e.category as category, e.type as type, COALESCE(SUM(e.amount),0) as total
+       ${COMPANY_EXPENSE_WHERE}
+       GROUP BY e.category, e.type
+       ORDER BY e.type, total DESC`,
       [startDate.split('T')[0], endDate.split('T')[0]]
     )
     const totalExpenses = expenses.reduce((s, e) => s + e.total, 0)
@@ -213,6 +325,130 @@ export function registerReportHandlers() {
       expenses,
       total_expenses: totalExpenses,
       laba_bersih: labaBersih
+    }
+  })
+
+  // Neraca sederhana berbasis data yang tersedia di sistem
+  ipcMain.handle('report:balance-sheet', (_, { endDate }) => {
+    const cutoffDate = (endDate || new Date().toISOString()).split('T')[0]
+    const cutoffDateTime = `${cutoffDate}T23:59:59`
+
+    const cashAccounts = dbOps.all(
+      `SELECT id, name, type, COALESCE(balance, 0) as balance
+       FROM cash_accounts
+       ORDER BY type ASC, name ASC`
+    )
+
+    const receivableRentals = dbOps.get(
+      `SELECT COALESCE(SUM(sisa), 0) as total
+       FROM rentals
+       WHERE status != 'refunded'
+         AND date_time <= ?
+         AND COALESCE(sisa, 0) > 0`,
+      [cutoffDateTime]
+    )
+
+    const ownerPayable = dbOps.get(
+      `SELECT COALESCE(SUM(owner_gets), 0) as total
+       FROM rentals
+       WHERE status != 'refunded'
+         AND date_time <= ?
+         AND payout_id IS NULL`,
+      [cutoffDateTime]
+    )
+
+    const hotelPayable = dbOps.get(
+      `SELECT COALESCE(SUM(vendor_fee), 0) as total
+       FROM rentals
+       WHERE status != 'refunded'
+         AND date_time <= ?
+         AND hotel_id IS NOT NULL
+         AND hotel_payout_id IS NULL`,
+      [cutoffDateTime]
+    )
+
+    const ownerExpensePayable = dbOps.get(
+      `SELECT COALESCE(SUM(e.amount), 0) as total
+       FROM expenses e
+       JOIN motors m ON e.motor_id = m.id
+       WHERE e.type = 'motor'
+         AND e.date <= ?
+         AND e.payout_id IS NULL
+         AND m.owner_id IS NOT NULL`,
+      [cutoffDate]
+    )
+
+    const currentPeriodProfit = dbOps.get(
+      `SELECT
+        COALESCE((
+          SELECT SUM(wavy_gets)
+          FROM rentals
+          WHERE status != 'refunded' AND date_time <= ?
+        ), 0)
+        -
+        COALESCE((
+          SELECT SUM(refund_amount)
+          FROM refunds
+          WHERE created_at <= ?
+        ), 0)
+        -
+        COALESCE((
+          SELECT SUM(e.amount)
+          FROM expenses e
+          LEFT JOIN motors m ON e.motor_id = m.id
+          WHERE e.date <= ?
+            AND (
+              e.type != 'motor'
+              OR e.motor_id IS NULL
+              OR m.owner_id IS NULL
+            )
+        ), 0) as total`,
+      [cutoffDateTime, cutoffDateTime, cutoffDate]
+    )
+
+    const cashRows = cashAccounts.map(account => ({
+      label: account.name,
+      amount: Number(account.balance || 0)
+    }))
+
+    const assetRows = [
+      ...cashRows,
+      { label: 'Piutang Pelanggan (Sisa Tagihan)', amount: Number(receivableRentals?.total || 0) }
+    ].filter(row => Math.abs(row.amount) > 0.0001)
+
+    const liabilityRows = [
+      { label: 'Utang Komisi Mitra / Pemilik Motor', amount: Number(ownerPayable?.total || 0) },
+      { label: 'Utang Komisi Hotel / Vendor Hotel', amount: Number(hotelPayable?.total || 0) },
+      { label: 'Utang Pengeluaran Motor ke Mitra', amount: Number(ownerExpensePayable?.total || 0) }
+    ].filter(row => Math.abs(row.amount) > 0.0001)
+
+    const totalAssets = assetRows.reduce((sum, row) => sum + row.amount, 0)
+    const totalLiabilities = liabilityRows.reduce((sum, row) => sum + row.amount, 0)
+    const equityAmount = totalAssets - totalLiabilities
+
+    return {
+      asOfDate: cutoffDate,
+      assets: {
+        current: assetRows,
+        total: totalAssets
+      },
+      liabilities: {
+        current: liabilityRows,
+        total: totalLiabilities
+      },
+      equity: {
+        rows: [
+          { label: 'Saldo Ditahan / Ekuitas Bersih', amount: equityAmount },
+          { label: 'Laba Bersih Sampai Tanggal Laporan', amount: Number(currentPeriodProfit?.total || 0) }
+        ],
+        total: equityAmount
+      },
+      totals: {
+        assets: totalAssets,
+        liabilities: totalLiabilities,
+        equity: equityAmount,
+        liabilitiesAndEquity: totalLiabilities + equityAmount
+      }
     }
   })
 
@@ -232,7 +468,7 @@ export function registerReportHandlers() {
         [start, end]
       )
       const exp = dbOps.get(
-        "SELECT COALESCE(SUM(amount),0) as total FROM expenses WHERE date BETWEEN ? AND ?",
+        `SELECT COALESCE(SUM(e.amount),0) as total ${COMPANY_EXPENSE_WHERE}`,
         [`${year}-${mo}-01`, `${year}-${mo}-31`]
       )
       months.push({
@@ -260,10 +496,9 @@ export function registerReportHandlers() {
     `, [startDate, endDate])
 
     const expensesByPeriod = dbOps.all(`
-      SELECT strftime('${fmt}', date) as period,
-             COALESCE(SUM(amount), 0) as expenses
-      FROM expenses
-      WHERE date BETWEEN ? AND ?
+      SELECT strftime('${fmt}', e.date) as period,
+             COALESCE(SUM(e.amount), 0) as expenses
+      ${COMPANY_EXPENSE_WHERE}
       GROUP BY period ORDER BY period ASC
     `, [startDate.split('T')[0], endDate.split('T')[0]])
 

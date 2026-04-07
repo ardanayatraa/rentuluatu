@@ -3,7 +3,7 @@ import { join } from 'path'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'fs'
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypto'
 import { createServer } from 'http'
-import { saveDb } from '../db'
+import { forceSaveDb } from '../db'
 import { Readable } from 'stream'
 
 // googleapis di-lazy load supaya tidak crash saat startup
@@ -43,6 +43,7 @@ const CLIENT_ID = process.env.GOOGLE_CLIENT_ID || ''
 const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || ''
 const DRIVE_FOLDER_NAME = 'Wavy Rental Backups'
 const DB_FILENAME = 'wavy.db'
+const BACKUP_SETTINGS_FILENAME = 'backup-settings.json'
 
 // Port untuk localhost callback — Google Cloud Console harus punya:
 // http://127.0.0.1:42813/callback di Authorized Redirect URIs
@@ -175,6 +176,74 @@ function getBackupDir() {
   return dir
 }
 
+function getBackupSettingsPath() {
+  return join(app.getPath('userData'), BACKUP_SETTINGS_FILENAME)
+}
+
+function loadBackupSettings() {
+  const defaults = { autoBackupOnClose: true }
+  const p = getBackupSettingsPath()
+  if (!existsSync(p)) return defaults
+  try {
+    return { ...defaults, ...JSON.parse(readFileSync(p, 'utf-8')) }
+  } catch {
+    return defaults
+  }
+}
+
+function saveBackupSettings(nextSettings) {
+  writeFileSync(getBackupSettingsPath(), JSON.stringify(nextSettings, null, 2))
+}
+
+export function shouldAutoBackupOnClose() {
+  const settings = loadBackupSettings()
+  return Boolean(settings.autoBackupOnClose && CLIENT_ID && CLIENT_SECRET && loadToken())
+}
+
+async function uploadBackupToDrive({ filename, buffer }) {
+  const auth = await getAuthenticatedClient()
+  if (!auth) throw new Error('Belum terhubung ke Google Drive')
+
+  const google = await getGoogle()
+  const drive = google.drive({ version: 'v3', auth })
+  const folderId = await getOrCreateFolder(drive)
+
+  const existing = await drive.files.list({
+    q: `'${folderId}' in parents and name='${filename}' and trashed=false`,
+    fields: 'files(id, name)',
+    pageSize: 1
+  })
+
+  const media = { mimeType: 'application/octet-stream', body: Readable.from(buffer) }
+  if (existing.data.files.length > 0) {
+    const fileId = existing.data.files[0].id
+    await drive.files.update({ fileId, media })
+    return { success: true, filename, updated: true, fileId }
+  }
+
+  const created = await drive.files.create({
+    requestBody: { name: filename, parents: [folderId] },
+    media,
+    fields: 'id, name'
+  })
+
+  return { success: true, filename, updated: false, fileId: created.data.id }
+}
+
+export async function runAutoCloseBackup() {
+  forceSaveDb()
+  const dbPath = getDbPath()
+  if (!existsSync(dbPath)) throw new Error('File database tidak ditemukan')
+
+  const passphrase = getOrCreatePassphrase()
+  const plainData = readFileSync(dbPath)
+  const encData = encryptBuffer(plainData, passphrase)
+  const dayStamp = new Date().toISOString().slice(0, 10)
+  const filename = `wavy_backup_daily_${dayStamp}.wavy`
+
+  return uploadBackupToDrive({ filename, buffer: encData })
+}
+
 // ── Register handlers ────────────────────────────────────────────────────────
 export function registerBackupHandlers() {
 
@@ -182,6 +251,18 @@ export function registerBackupHandlers() {
     connected: !!loadToken(),
     configured: !!(CLIENT_ID && CLIENT_SECRET)
   }))
+
+  ipcMain.handle('backup:auto-close-status', () => {
+    const settings = loadBackupSettings()
+    return { enabled: Boolean(settings.autoBackupOnClose) }
+  })
+
+  ipcMain.handle('backup:auto-close-set', (_, { enabled }) => {
+    const current = loadBackupSettings()
+    const next = { ...current, autoBackupOnClose: Boolean(enabled) }
+    saveBackupSettings(next)
+    return { success: true, enabled: next.autoBackupOnClose }
+  })
 
   // Buka browser + jalankan localhost callback server, resolve otomatis saat Google redirect balik
   ipcMain.handle('backup:gdrive-connect', () => {
@@ -259,7 +340,7 @@ export function registerBackupHandlers() {
 
   // ── Backup lokal (terenkripsi) ─────────────────────────────────────────────
   ipcMain.handle('backup:create-local', () => {
-    saveDb()
+    forceSaveDb()
     const dbPath = getDbPath()
     if (!existsSync(dbPath)) throw new Error('File database tidak ditemukan')
 
@@ -314,10 +395,7 @@ export function registerBackupHandlers() {
 
   // ── Upload ke Google Drive (terenkripsi) ───────────────────────────────────
   ipcMain.handle('backup:gdrive-upload', async () => {
-    const auth = await getAuthenticatedClient()
-    if (!auth) throw new Error('Belum terhubung ke Google Drive')
-
-    saveDb()
+    forceSaveDb()
     const dbPath = getDbPath()
     if (!existsSync(dbPath)) throw new Error('File database tidak ditemukan')
 
@@ -325,20 +403,10 @@ export function registerBackupHandlers() {
     const plainData = readFileSync(dbPath)
     const encData = encryptBuffer(plainData, passphrase)
 
-    const google = await getGoogle()
-    const drive = google.drive({ version: 'v3', auth })
-    const folderId = await getOrCreateFolder(drive)
-
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
     const filename = `wavy_backup_${ts}.wavy`
-
-    await drive.files.create({
-      requestBody: { name: filename, parents: [folderId] },
-      media: { mimeType: 'application/octet-stream', body: Readable.from(encData) },
-      fields: 'id, name'
-    })
-
-    return { success: true, filename, encrypted: true }
+    const result = await uploadBackupToDrive({ filename, buffer: encData })
+    return { ...result, encrypted: true }
   })
 
   ipcMain.handle('backup:gdrive-list', async () => {

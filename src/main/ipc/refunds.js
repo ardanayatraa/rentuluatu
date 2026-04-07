@@ -16,6 +16,11 @@ export function registerRefundHandlers() {
     const rental = dbOps.get('SELECT * FROM rentals WHERE id = ?', [data.rental_id])
     if (!rental) throw new Error('Rental tidak ditemukan')
     if (rental.status === 'refunded') throw new Error('Rental ini sudah direfund sebelumnya')
+    if (Number(data.refund_amount || 0) <= 0) throw new Error('Nominal refund harus lebih besar dari nol')
+    if (Number(data.refund_amount || 0) > Number(rental.total_price || 0)) {
+      throw new Error('Nominal refund tidak boleh melebihi total harga rental')
+    }
+    if (Number(data.remaining_days || 0) < 0) throw new Error('Sisa hari refund tidak valid')
 
     // FIX: Cek saldo DULU sebelum ubah status apapun
     const cashAccount = dbOps.get('SELECT * FROM cash_accounts WHERE type = ?', [rental.payment_method])

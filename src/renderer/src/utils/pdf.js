@@ -18,6 +18,12 @@ let _logoBase64 = ''
 getLogoBase64().then(b64 => { _logoBase64 = b64 })
 
 const rp = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID', { minimumFractionDigits: 0 })
+const paymentLabel = (method) => ({
+  tunai: 'Tunai',
+  transfer: 'Transfer',
+  qris: 'QRIS',
+  debit_card: 'Debit Card'
+}[method] || method || '-')
 
 const fmtDate = (d) => {
   if (!d) return '-'
@@ -31,9 +37,18 @@ const fmtDateTime = (d) => {
     ' ' + dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
 }
 
+const esc = (value) => String(value ?? '-')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+
 const baseStyle = `<style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Arial', sans-serif; font-size: 11px; color: #111; background: #fff; padding: 36px 40px; }
+  @page { size: A4 portrait; margin: 14mm 12mm 18mm 12mm; }
+  html, body { background: #fff; }
+  body { font-family: 'Arial', sans-serif; font-size: 11px; color: #111; background: #fff; padding: 0; }
+  .pdf-document { width: 100%; }
 
   /* ── Header ── */
   .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; padding-bottom: 14px; border-bottom: 2px solid #111; }
@@ -81,43 +96,136 @@ const baseStyle = `<style>
   .info-box .info-name { font-size: 13px; font-weight: 700; color: #111; margin-bottom: 3px; }
   .info-box .info-detail { font-size: 10px; color: #444; line-height: 1.6; }
 
-  @media print { body { padding: 20px 24px; } }
+  @media print {
+    body { padding: 0; }
+    .pdf-document { width: 100%; }
+  }
 </style>`
 
 // PDF generator — kirim ke main process untuk save dialog
+function wrapPdfHtml(content, documentTitle = 'Laporan_Wavy.pdf') {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${documentTitle}</title>${baseStyle}</head><body><div class="pdf-document">${content}</div></body></html>`
+}
+
+function showPreviewLoading(message = 'Menyiapkan preview PDF...') {
+  const existing = document.getElementById('pdf-preview-loading')
+  if (existing) existing.remove()
+
+  const overlay = document.createElement('div')
+  overlay.id = 'pdf-preview-loading'
+  overlay.className = 'app-loading-overlay'
+  overlay.innerHTML = `
+    <div class="app-loading-card">
+      <div style="display:flex;align-items:center;gap:12px">
+        <span class="material-symbols-outlined" style="font-size:26px;color:#1d4ed8;animation:spin 1s linear infinite">progress_activity</span>
+        <div>
+          <p style="margin:0;font-size:14px;font-weight:800;color:#0f172a">Preview PDF</p>
+          <p style="margin:4px 0 0;font-size:12px;color:#64748b">${message}</p>
+        </div>
+      </div>
+    </div>
+  `
+
+  const spinStyle = document.createElement('style')
+  spinStyle.id = 'pdf-preview-loading-style'
+  spinStyle.textContent = '@keyframes spin { to { transform: rotate(360deg); } }'
+  document.head.appendChild(spinStyle)
+  document.body.appendChild(overlay)
+}
+
+function hidePreviewLoading() {
+  document.getElementById('pdf-preview-loading')?.remove()
+  document.getElementById('pdf-preview-loading-style')?.remove()
+}
+
+async function waitForNextPaint() {
+  await new Promise(resolve => requestAnimationFrame(() => resolve()))
+  await new Promise(resolve => setTimeout(resolve, 0))
+}
+
+export async function runWithPdfLoading(message, work) {
+  showPreviewLoading(message)
+  await waitForNextPaint()
+  try {
+    return await work()
+  } finally {
+    hidePreviewLoading()
+  }
+}
+
 export async function savePdfReport(html, defaultName) {
   // Pastikan logo base64 sudah ter-load
   if (!_logoBase64) _logoBase64 = await getLogoBase64()
-  const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">${baseStyle}</head><body>${html}</body></html>`
+  const fullHtml = wrapPdfHtml(html, defaultName || 'Laporan_Wavy.pdf')
   return window.api.savePdf({ html: fullHtml, defaultName })
 }
 
-// Tetap ada printWindow untuk preview di window baru
-function printWindow(html) {
-  const w = window.open('', '_blank', 'width=900,height=700')
+// Preview di window baru — ada tombol Download PDF dan tutup
+export async function previewReport(html, defaultName, options = {}) {
+  const runPreview = async () => {
+    if (!_logoBase64) _logoBase64 = await getLogoBase64()
+    const fullHtml = wrapPdfHtml(html, defaultName || 'Laporan_Wavy.pdf')
+    await window.api.previewPdfWindow({
+      html: fullHtml,
+      defaultName: defaultName || 'Laporan_Wavy.pdf'
+    })
+  }
+
+  if (options.skipLoading) {
+    return runPreview()
+  }
+
+  return runWithPdfLoading('Sedang merender dokumen. Mohon tunggu sebentar...', runPreview)
+
+  const w = window.open('', '_blank', 'width=960,height=720')
   w.document.open()
   w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
     ${baseStyle}
     <style>
-      .print-bar { position: fixed; top: 0; left: 0; right: 0; background: #1e293b; padding: 10px 20px; display: flex; gap: 10px; align-items: center; z-index: 999; }
-      .print-bar button { padding: 8px 18px; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; border: none; }
-      .btn-save { background: #0ea5e9; color: white; }
-      .btn-save:hover { background: #0284c7; }
-      .btn-close { background: #475569; color: white; }
-      .print-bar span { color: #94a3b8; font-size: 12px; }
-      body { padding-top: 60px; }
-      @media print { .print-bar { display: none; } body { padding-top: 32px; } }
+      .preview-bar {
+        position: fixed; top: 0; left: 0; right: 0;
+        background: #1e3a5f; padding: 10px 20px;
+        display: flex; gap: 10px; align-items: center; z-index: 999;
+      }
+      .preview-bar button {
+        padding: 8px 18px; border-radius: 8px; font-size: 13px;
+        font-weight: 700; cursor: pointer; border: none;
+      }
+      .preview-bar button:disabled { cursor: wait; opacity: 0.7; }
+      .btn-download { background: #10b981; color: white; }
+      .btn-download:hover:not(:disabled) { background: #059669; }
+      .preview-bar span { color: #94a3b8; font-size: 12px; }
+      body { padding-top: 60px; background: #e2e8f0; }
+      .preview-shell { max-width: 210mm; margin: 0 auto; background: white; min-height: calc(100vh - 92px); box-shadow: 0 12px 40px rgba(15, 23, 42, 0.16); }
     </style>
   </head><body>
-    <div class="print-bar">
-      <button class="btn-save" onclick="window.print()">Simpan PDF</button>
-      <button class="btn-close" onclick="window.close()">Tutup</button>
-      <span>Gunakan "Save as PDF" di dialog print</span>
+    <div class="preview-bar">
+      <button class="btn-download" id="btnDl">Download PDF</button>
+      <span>Preview — klik Download PDF untuk menyimpan</span>
     </div>
-    ${html}
+    <div class="preview-shell">${html}</div>
   </body></html>`)
   w.document.close()
   w.focus()
+
+  // Inject handler setelah window siap — akses fullHtml dari closure, bukan embed di string
+  w._pdfHtml = fullHtml
+  w._pdfName = defaultName || 'Laporan_Wavy.pdf'
+  w.document.getElementById('btnDl').addEventListener('click', async function () {
+    const btn = this
+    btn.disabled = true
+    btn.textContent = 'Menyimpan...'
+    try {
+      const api = window.api // akses dari parent (renderer Electron)
+      await api.savePdf({ html: w._pdfHtml, defaultName: w._pdfName })
+    } catch (e) {
+      console.error('savePdf error:', e)
+      alert('Gagal menyimpan PDF: ' + e.message)
+    } finally {
+      btn.disabled = false
+      btn.textContent = 'Download PDF'
+    }
+  })
 }
 
 function headerHtml(title, period, subtitle = '') {
@@ -142,6 +250,44 @@ function headerHtml(title, period, subtitle = '') {
 
 function footerHtml() {
   return `<div class="footer"><span>The Wavy Rental Uluwatu — PT. Artha Bali Wisata</span><span>Dokumen ini digenerate otomatis oleh sistem</span></div>`
+}
+
+export function buildSimpleTableHtml({
+  title,
+  subtitle = '',
+  period = '-',
+  summary = [],
+  columns = [],
+  rows = [],
+  emptyMessage = 'Tidak ada data'
+}) {
+  const safeColumns = columns.map(col => ({
+    ...col,
+    alignClass: col.align === 'right' ? 'right' : ''
+  }))
+
+  const summaryHtml = summary.length
+    ? `<div class="summary-grid">${summary.map(item => `
+      <div class="summary-card">
+        <div class="label">${esc(item.label)}</div>
+        <div class="value">${esc(item.value)}</div>
+      </div>
+    `).join('')}</div>`
+    : ''
+
+  const headHtml = safeColumns.map(col => `<th class="${col.alignClass}">${esc(col.label)}</th>`).join('')
+  const bodyHtml = rows.length
+    ? rows.map(row => `<tr>${safeColumns.map(col => `<td class="${col.alignClass}">${esc(row[col.key])}</td>`).join('')}</tr>`).join('')
+    : `<tr><td colspan="${Math.max(1, safeColumns.length)}" style="text-align:center;padding:20px;color:#888">${esc(emptyMessage)}</td></tr>`
+
+  return `${headerHtml(title, period, subtitle)}
+    ${summaryHtml}
+    <div class="section-title">Data Tabel</div>
+    <table>
+      <thead><tr>${headHtml}</tr></thead>
+      <tbody>${bodyHtml}</tbody>
+    </table>
+    ${footerHtml()}`
 }
 
 // ─── 1. Laporan Keuangan ───────────────────────────────────────────────────
@@ -181,7 +327,7 @@ export function buildMotorIncomeHtml({ rentals, period, motorName }) {
     <td>${r.customer_name}${r.hotel ? '<br><span style="color:#94a3b8;font-size:10px">' + r.hotel + '</span>' : ''}</td>
     <td>${r.model} <span style="color:#94a3b8">${r.plate_number}</span></td>
     <td class="right">${r.period_days} hari</td>
-    <td><span class="badge badge-blue">${r.payment_method}</span></td>
+    <td><span class="badge badge-blue">${paymentLabel(r.payment_method)}</span></td>
     <td class="right" style="font-weight:700">${rp(r.total_price)}</td>
     <td class="right">${rp(r.wavy_gets)}</td>
     <td class="right">${rp(r.owner_gets)}</td>
@@ -211,7 +357,7 @@ export function buildMotorExpensesHtml({ expenses, period, motorName }) {
     <td><span class="badge badge-orange">${e.type}</span></td>
     <td>${e.category}</td>
     <td>${e.description || '-'}</td>
-    <td><span class="badge badge-blue">${e.payment_method}</span></td>
+    <td><span class="badge badge-blue">${paymentLabel(e.payment_method)}</span></td>
     <td class="right" style="color:#dc2626;font-weight:700">${rp(e.amount)}</td>
   </tr>`).join('')
   return `${headerHtml('Laporan Pengeluaran per Motor', period, motorName || 'Semua Motor')}
@@ -228,42 +374,55 @@ export function buildMotorExpensesHtml({ expenses, period, motorName }) {
 export function printMotorExpensesReport(args) { printWindow(buildMotorExpensesHtml(args)) }
 
 // ─── 4. Laporan Transaksi (Semua) ──────────────────────────────────────────
-export function buildTransactionsHtml({ rentals, expenses, period }) {
+export function buildTransactionsHtml({ rentals, operationalExpenses, motorExpenses, period }) {
   const totalIn = rentals.filter(r => r.status !== 'refunded').reduce((s, r) => s + (r.amount || 0), 0)
-  const totalOut = expenses.reduce((s, e) => s + (e.amount || 0), 0)
+  const totalOperational = operationalExpenses.reduce((s, e) => s + (e.amount || 0), 0)
+  const totalMotor = motorExpenses.reduce((s, e) => s + (e.amount || 0), 0)
+  const totalOut = totalOperational + totalMotor
   const rentalRows = rentals.map(r => `<tr>
     <td>${fmtDateTime(r.date)}</td><td>Pemasukan</td>
     <td>${r.description}</td><td>${r.motor}</td>
-    <td>${r.payment_method}</td>
+    <td>${paymentLabel(r.payment_method)}</td>
     <td class="right">${rp(r.amount)}</td>
     <td>${r.status}</td>
   </tr>`).join('')
-  const expenseRows = expenses.map(e => `<tr>
+  const operationalRows = operationalExpenses.map(e => `<tr>
     <td>${fmtDate(e.date)}</td><td>Pengeluaran</td>
     <td>${e.description}</td><td>${e.motor}</td>
-    <td>${e.payment_method}</td>
+    <td>${paymentLabel(e.payment_method)}</td>
+    <td class="right">${rp(e.amount)}</td>
+    <td>-</td>
+  </tr>`).join('')
+  const motorRows = motorExpenses.map(e => `<tr>
+    <td>${fmtDate(e.date)}</td><td>Pengeluaran Motor</td>
+    <td>${e.description}</td><td>${e.motor}</td>
+    <td>${paymentLabel(e.payment_method)}</td>
     <td class="right">${rp(e.amount)}</td>
     <td>-</td>
   </tr>`).join('')
   return `${headerHtml('Laporan Semua Transaksi', period)}
-  <div class="summary-grid" style="grid-template-columns:repeat(3,1fr)">
+  <div class="summary-grid" style="grid-template-columns:repeat(4,1fr)">
     <div class="summary-card"><div class="label">Total Pemasukan</div><div class="value">${rp(totalIn)}</div></div>
-    <div class="summary-card"><div class="label">Total Pengeluaran</div><div class="value">${rp(totalOut)}</div></div>
+    <div class="summary-card"><div class="label">Pengeluaran Operasional</div><div class="value">${rp(totalOperational)}</div></div>
+    <div class="summary-card"><div class="label">Pengeluaran Motor</div><div class="value">${rp(totalMotor)}</div></div>
     <div class="summary-card"><div class="label">Selisih</div><div class="value">${rp(totalIn - totalOut)}</div></div>
   </div>
   <div class="section-title">Pemasukan (Rental)</div>
   <table><thead><tr><th>Tanggal</th><th>Tipe</th><th>Pelanggan</th><th>Motor</th><th>Pembayaran</th><th class="right">Jumlah</th><th>Status</th></tr></thead>
   <tbody>${rentalRows || '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:16px">Tidak ada data</td></tr>'}</tbody></table>
-  <div class="section-title">Pengeluaran</div>
+  <div class="section-title">Pengeluaran Operasional</div>
   <table><thead><tr><th>Tanggal</th><th>Tipe</th><th>Kategori</th><th>Motor</th><th>Pembayaran</th><th class="right">Jumlah</th><th>Status</th></tr></thead>
-  <tbody>${expenseRows || '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:16px">Tidak ada data</td></tr>'}</tbody></table>
+  <tbody>${operationalRows || '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:16px">Tidak ada data</td></tr>'}</tbody></table>
+  <div class="section-title">Pengeluaran Motor</div>
+  <table><thead><tr><th>Tanggal</th><th>Tipe</th><th>Kategori</th><th>Motor</th><th>Pembayaran</th><th class="right">Jumlah</th><th>Status</th></tr></thead>
+  <tbody>${motorRows || '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:16px">Tidak ada data</td></tr>'}</tbody></table>
   ${footerHtml()}`
 }
 export function printTransactionsReport(args) { printWindow(buildTransactionsHtml(args)) }
 
 // ─── 5. Laporan Komisi Owner (Slip Pembayaran) ─────────────────────────────
 export function buildOwnerCommissionHtml({ data, period }) {
-  const { owner, motors, rentals, payouts, totalOwnerGets, totalPaid, totalUnpaid } = data
+  const { owner, motors, rentals, byMotor = [], payouts, totalOwnerGets, totalPaid, totalUnpaid, totalExpenses = 0, totalNet = 0 } = data
   const motorList = motors.map(m => m.model + ' (' + m.plate_number + ')').join(', ')
   const rentalRows = rentals.map(r => `<tr>
     <td>${fmtDateTime(r.date_time)}</td>
@@ -278,18 +437,47 @@ export function buildOwnerCommissionHtml({ data, period }) {
     <td>${fmtDate(p.date)}</td><td>${p.cash_account_name}</td>
     <td class="right">${rp(p.amount)}</td>
   </tr>`).join('')
-  return `${headerHtml('Laporan Komisi Vendor', period, 'Vendor: ' + owner.name)}
+  const motorBreakdownHtml = byMotor.map(m => {
+    const rentalItems = m.rentals.map(r => `<tr>
+      <td>${fmtDateTime(r.date_time)}</td>
+      <td>Komisi Rental</td>
+      <td>${r.customer_name}</td>
+      <td class="right">${rp(r.owner_gets)}</td>
+    </tr>`).join('')
+    const expenseItems = m.expenses.map(e => `<tr>
+      <td>${fmtDate(e.date)}</td>
+      <td>Pengeluaran${e.category ? ' - ' + e.category : ''}</td>
+      <td>${e.description || '-'}</td>
+      <td class="right">( ${rp(e.amount)} )</td>
+    </tr>`).join('')
+    const itemRows = rentalItems + expenseItems
+    return `
+      <div class="section-title">Rincian Motor - ${m.model} (${m.plate_number})</div>
+      <table>
+        <thead><tr><th>Tanggal</th><th>Uraian</th><th>Keterangan</th><th class="right">Jumlah</th></tr></thead>
+        <tbody>
+          ${itemRows || '<tr><td colspan="4" style="text-align:center;padding:16px;color:#888">Tidak ada rincian</td></tr>'}
+          <tr><td colspan="3" style="font-weight:700">Total Komisi Motor</td><td class="right">${rp(m.rental_total)}</td></tr>
+          <tr><td colspan="3" style="font-weight:700">Total Pengeluaran Motor</td><td class="right">( ${rp(m.expense_total)} )</td></tr>
+          <tr style="font-weight:700;background:#f9f9f9"><td colspan="3">Hasil Bersih Motor</td><td class="right">${rp(m.net_total)}</td></tr>
+        </tbody>
+      </table>
+    `
+  }).join('')
+  return `${headerHtml('Laporan Komisi Mitra', period, 'Mitra: ' + owner.name)}
   <div style="display:flex;gap:20px;margin-bottom:20px">
     <div class="info-box" style="flex:1">
-      <div class="info-label">Data Vendor</div>
+      <div class="info-label">Data Mitra</div>
       <div class="info-name">${owner.name}</div>
       <div class="info-detail">No. HP: ${owner.phone || '-'}<br>Bank: ${owner.bank_name || '-'} &mdash; ${owner.bank_account || '-'}<br>Motor: ${motorList || '-'}</div>
     </div>
     <div style="flex:1">
       <div class="summary-grid" style="grid-template-columns:repeat(2,1fr)">
         <div class="summary-card"><div class="label">Total Komisi</div><div class="value">${rp(totalOwnerGets)}</div></div>
+        <div class="summary-card"><div class="label">Total Pengeluaran</div><div class="value">${rp(totalExpenses)}</div></div>
         <div class="summary-card"><div class="label">Sudah Dibayar</div><div class="value">${rp(totalPaid)}</div></div>
         <div class="summary-card"><div class="label">Belum Dibayar</div><div class="value">${rp(totalUnpaid)}</div></div>
+        <div class="summary-card"><div class="label">Hasil Bersih</div><div class="value">${rp(totalNet)}</div></div>
         <div class="summary-card"><div class="label">Jml Transaksi</div><div class="value">${rentals.length}x</div></div>
       </div>
     </div>
@@ -297,16 +485,63 @@ export function buildOwnerCommissionHtml({ data, period }) {
   <div class="section-title">Rincian Rental</div>
   <table><thead><tr>
     <th>Tanggal</th><th>Motor</th><th>Pelanggan</th><th class="right">Durasi</th>
-    <th class="right">Total Sewa</th><th class="right">Komisi Vendor</th><th>Status</th>
+    <th class="right">Total Sewa</th><th class="right">Bagian Mitra</th><th>Status</th>
   </tr></thead><tbody>${rentalRows || '<tr><td colspan="7" style="text-align:center;padding:16px;color:#888">Tidak ada data</td></tr>'}</tbody></table>
+  ${motorBreakdownHtml}
   ${payouts.length ? '<div class="section-title">Riwayat Pembayaran</div><table><thead><tr><th>Tanggal</th><th>Akun Kas</th><th class="right">Jumlah Dibayar</th></tr></thead><tbody>' + payoutRows + '</tbody></table>' : ''}
   <div class="sign-area"><div class="sign-box">
     <div style="font-size:10px;color:#555">Hormat kami,</div>
-    <div class="sign-line">Wavy CashFlow Monitoring</div>
+    <div class="sign-line">PT. Artha Bali Wisata</div>
   </div></div>
   ${footerHtml()}`
 }
 export function printOwnerCommissionReport(args) { printWindow(buildOwnerCommissionHtml(args)) }
+
+export function buildHotelCommissionHtml({ hotel, rentals = [], period }) {
+  const totalRent = rentals.reduce((sum, item) => sum + Number(item.total_price || 0), 0)
+  const totalCommission = rentals.reduce((sum, item) => sum + Number(item.vendor_fee || 0), 0)
+  const averageCommission = rentals.length ? Math.round(totalCommission / rentals.length) : 0
+
+  const rentalRows = rentals.map(r => `<tr>
+    <td>${fmtDateTime(r.date_time)}</td>
+    <td>${esc(r.customer_name)}</td>
+    <td>${esc(r.model)} ${esc(r.plate_number)}</td>
+    <td class="right">${esc(r.period_days)} hari</td>
+    <td class="right">${rp(r.total_price)}</td>
+    <td class="right">${rp(r.vendor_fee)}</td>
+  </tr>`).join('')
+
+  return `${headerHtml('Slip Komisi Vendor Hotel', period, 'Vendor Hotel: ' + esc(hotel?.name || '-'))}
+  <div style="display:flex;gap:20px;margin-bottom:20px">
+    <div class="info-box" style="flex:1">
+      <div class="info-label">Data Vendor Hotel</div>
+      <div class="info-name">${esc(hotel?.name || '-')}</div>
+      <div class="info-detail">
+        Telepon: ${esc(hotel?.phone || '-')}<br>
+        Bank: ${esc(hotel?.bank_name || '-')} - ${esc(hotel?.bank_account || '-')}<br>
+        Status Dokumen: Komisi vendor yang belum dibayarkan pada periode terpilih
+      </div>
+    </div>
+    <div style="flex:1">
+      <div class="summary-grid" style="grid-template-columns:repeat(2,1fr)">
+        <div class="summary-card"><div class="label">Jumlah Rental</div><div class="value">${rentals.length}x</div></div>
+        <div class="summary-card"><div class="label">Total Omzet Rental</div><div class="value">${rp(totalRent)}</div></div>
+        <div class="summary-card"><div class="label">Total Komisi Vendor</div><div class="value">${rp(totalCommission)}</div></div>
+        <div class="summary-card"><div class="label">Rata-rata Komisi</div><div class="value">${rp(averageCommission)}</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="section-title">Rincian Komisi Vendor</div>
+  <table><thead><tr>
+    <th>Tanggal</th><th>Pelanggan</th><th>Motor</th><th class="right">Durasi</th>
+    <th class="right">Total Sewa</th><th class="right">Komisi Vendor</th>
+  </tr></thead><tbody>${rentalRows || '<tr><td colspan="6" style="text-align:center;padding:16px;color:#888">Tidak ada komisi vendor pada periode ini</td></tr>'}</tbody></table>
+  <div class="sign-area"><div class="sign-box">
+    <div style="font-size:10px;color:#555">Hormat kami,</div>
+    <div class="sign-line">PT. Artha Bali Wisata</div>
+  </div></div>
+  ${footerHtml()}`
+}
 
 // ─── 6. Laporan Laba Rugi ──────────────────────────────────────────────────
 export function buildProfitLossHtml({ data, period }) {
@@ -332,6 +567,41 @@ export function buildProfitLossHtml({ data, period }) {
   ${footerHtml()}`
 }
 export function printProfitLossReport(args) { printWindow(buildProfitLossHtml(args)) }
+export function buildBalanceSheetHtml({ data, period }) {
+  const assetRows = data.assets.current.map(row => `<tr><td>${row.label}</td><td class="right">${rp(row.amount)}</td></tr>`).join('')
+  const liabilityRows = data.liabilities.current.map(row => `<tr><td>${row.label}</td><td class="right">${rp(row.amount)}</td></tr>`).join('')
+  const equityRows = data.equity.rows.map(row => `<tr><td>${row.label}</td><td class="right">${rp(row.amount)}</td></tr>`).join('')
+
+  return `${headerHtml('Laporan Neraca', period, 'Posisi keuangan per ' + fmtDate(data.asOfDate))}
+  <div class="summary-grid" style="grid-template-columns:repeat(3,1fr)">
+    <div class="summary-card"><div class="label">Total Aset</div><div class="value">${rp(data.totals.assets)}</div></div>
+    <div class="summary-card"><div class="label">Total Kewajiban</div><div class="value">${rp(data.totals.liabilities)}</div></div>
+    <div class="summary-card"><div class="label">Total Ekuitas</div><div class="value">${rp(data.totals.equity)}</div></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+    <div>
+      <div class="section-title">Aset</div>
+      <table><thead><tr><th>Keterangan</th><th class="right">Jumlah</th></tr></thead><tbody>
+        ${assetRows || '<tr><td colspan="2" style="text-align:center;padding:16px;color:#888">Tidak ada data</td></tr>'}
+        <tr style="font-weight:700;border-top:2px solid #111;background:#f9f9f9"><td>TOTAL ASET</td><td class="right">${rp(data.assets.total)}</td></tr>
+      </tbody></table>
+    </div>
+    <div>
+      <div class="section-title">Kewajiban & Ekuitas</div>
+      <table><thead><tr><th>Keterangan</th><th class="right">Jumlah</th></tr></thead><tbody>
+        <tr style="background:#f1f5f9"><td colspan="2" style="font-weight:700;padding:8px 10px;font-size:10px;text-transform:uppercase;letter-spacing:1px">Kewajiban</td></tr>
+        ${liabilityRows || '<tr><td colspan="2" style="text-align:center;padding:16px;color:#888">Tidak ada data</td></tr>'}
+        <tr style="font-weight:700"><td>Total Kewajiban</td><td class="right">${rp(data.liabilities.total)}</td></tr>
+        <tr style="background:#f1f5f9"><td colspan="2" style="font-weight:700;padding:8px 10px;font-size:10px;text-transform:uppercase;letter-spacing:1px">Ekuitas</td></tr>
+        ${equityRows}
+        <tr style="font-weight:700"><td>Total Ekuitas</td><td class="right">${rp(data.equity.total)}</td></tr>
+        <tr style="font-weight:700;border-top:2px solid #111;background:#f9f9f9"><td>TOTAL KEWAJIBAN + EKUITAS</td><td class="right">${rp(data.totals.liabilitiesAndEquity)}</td></tr>
+      </tbody></table>
+    </div>
+  </div>
+  ${footerHtml()}`
+}
+export function printBalanceSheetReport(args) { printWindow(buildBalanceSheetHtml(args)) }
 
 // ─── 7. Rekap Tahunan ──────────────────────────────────────────────────────
 export function buildAnnualHtml({ rows, year }) {

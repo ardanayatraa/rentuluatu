@@ -29,6 +29,10 @@ export function registerMotorHandlers() {
     const cols = dbOps.all("PRAGMA table_info(motors)")
     const hasIsActive = cols.some(c => c.name === 'is_active')
 
+    if (!ownerId) {
+      throw new Error('Pemilik motor wajib dipilih.')
+    }
+
     if (hasIsActive) {
       dbOps.runRaw(
         'INSERT INTO motors (model, plate_number, type, owner_id, is_active) VALUES (?, ?, ?, ?, 1)',
@@ -46,9 +50,13 @@ export function registerMotorHandlers() {
   })
 
   ipcMain.handle('motor:update', (_, { id, ...data }) => {
+    const ownerId = data.owner_id ? Number(data.owner_id) : null
+    if (!ownerId) {
+      throw new Error('Pemilik motor wajib dipilih.')
+    }
     dbOps.run(
       'UPDATE motors SET model=?, plate_number=?, type=?, owner_id=? WHERE id=?',
-      [data.model, data.plate_number, data.type, data.owner_id ? Number(data.owner_id) : null, id]
+      [data.model, data.plate_number, data.type, ownerId, id]
     )
     return { success: true }
   })

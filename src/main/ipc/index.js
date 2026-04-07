@@ -10,10 +10,12 @@ import { registerReportHandlers } from './reports'
 import { registerDashboardHandlers } from './dashboard'
 import { registerResetHandlers } from './reset'
 import { registerBackupHandlers } from './backup'
+import { registerLicenseHandlers } from './license'
 import './export'
 
 export function registerAllHandlers() {
   registerAuthHandlers()
+  registerLicenseHandlers()
   registerMotorHandlers()
   registerOwnerHandlers()
   registerHotelHandlers()
