@@ -52,106 +52,24 @@
     <!-- Changelog Modal -->
     <n-modal v-model:show="showChangelog" preset="card" title="Catatan Rilis (Changelog)" class="max-w-2xl" :auto-focus="false" :trap-focus="false">
       <div class="max-h-[60vh] overflow-y-auto pr-4 space-y-6 text-sm text-slate-600">
-        <!-- v1.0.4 -->
-        <div>
+        <div v-for="entry in changelogEntries" :key="entry.version">
           <div class="flex items-center justify-between mb-3">
-            <h3 class="text-lg font-black text-primary font-headline">Versi 1.0.4</h3>
-            <span class="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">Pembaruan Daily Record</span>
+            <div class="min-w-0">
+              <h3 class="text-lg font-black text-primary font-headline">Versi {{ entry.version }}</h3>
+              <p v-if="entry.date" class="text-xs text-slate-400 font-bold mt-0.5">{{ entry.date }}</p>
+            </div>
+            <span
+              v-if="entry.badge?.text"
+              class="text-xs font-bold px-2 py-0.5 rounded whitespace-nowrap"
+              :class="badgeClass(entry.badge.tone)"
+            >{{ entry.badge.text }}</span>
           </div>
-          <p class="mb-3 text-slate-500 font-medium">Rilis ini fokus pada penyempurnaan alur Daily Record dan konsistensi tampilan.</p>
-          <ul class="space-y-3 list-disc pl-5 m-0 marker:text-slate-300">
-            <li>
+          <p v-if="entry.intro" class="mb-3 text-slate-500 font-medium">{{ entry.intro }}</p>
+          <ul v-if="entry.items?.length" class="space-y-3 list-disc pl-5 m-0 marker:text-slate-300">
+            <li v-for="item in entry.items" :key="item.title">
               <div>
-                <strong class="text-slate-700">Tab Daily Record Diselaraskan</strong>
-                <p class="text-xs text-slate-500 mt-0.5">Gaya tab Daily Record kini konsisten dengan halaman Laporan untuk pengalaman UI yang lebih rapi.</p>
-              </div>
-            </li>
-            <li>
-              <div>
-                <strong class="text-slate-700">Alur Extend Dipertegas</strong>
-                <p class="text-xs text-slate-500 mt-0.5">Aksi Extend dibedakan konteksnya antara transaksi rental biasa dan tab Extend (Extend Lagi).</p>
-              </div>
-            </li>
-          </ul>
-        </div>
-
-        <!-- v1.0.3 -->
-        <div>
-          <div class="flex items-center justify-between mb-3">
-            <h3 class="text-lg font-black text-primary font-headline">Versi 1.0.3</h3>
-            <span class="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">Stabilitas & Penyempurnaan</span>
-          </div>
-          <p class="mb-3 text-slate-500 font-medium">Rilis ini berfokus pada penyempurnaan operasional, dokumen, backup, performa, dan kesiapan penggunaan jangka panjang.</p>
-          <ul class="space-y-3 list-disc pl-5 m-0 marker:text-slate-300">
-            <li>
-              <div>
-                <strong class="text-slate-700">Laporan & Dokumen Lebih Profesional</strong>
-                <p class="text-xs text-slate-500 mt-0.5">Penamaan file laporan diperjelas dengan tanggal absolut, preview PDF dirapikan, dan slip hak mitra maupun fee vendor hotel dibuat lebih formal.</p>
-              </div>
-            </li>
-            <li>
-              <div>
-                <strong class="text-slate-700">Alur Hak Mitra dan Fee Vendor Diperkuat</strong>
-                <p class="text-xs text-slate-500 mt-0.5">Perhitungan hak mitra, fee vendor, payout, rincian per motor, serta preview slip dibenahi agar sesuai proses bisnis rental.</p>
-              </div>
-            </li>
-            <li>
-              <div>
-                <strong class="text-slate-700">Unduhan, Backup, dan Restore Workflow</strong>
-                <p class="text-xs text-slate-500 mt-0.5">Riwayat unduhan laporan, backup lokal, dan backup Google Drive ditingkatkan agar lebih aman dan lebih nyaman digunakan admin.</p>
-              </div>
-            </li>
-            <li>
-              <div>
-                <strong class="text-slate-700">Optimasi Performa Data Besar</strong>
-                <p class="text-xs text-slate-500 mt-0.5">Pagination, index database, seed sandbox, dan loading state diperbaiki agar aplikasi lebih stabil saat dipakai dengan data yang banyak.</p>
-              </div>
-            </li>
-            <li>
-              <div>
-                <strong class="text-slate-700">Penyelarasan Istilah dan Tampilan UI</strong>
-                <p class="text-xs text-slate-500 mt-0.5">Istilah vendor, mitra, pemilik motor, hak mitra, fee vendor, dan pengeluaran diseragamkan agar lebih mudah dipahami user operasional.</p>
-              </div>
-            </li>
-          </ul>
-        </div>
-
-        <!-- v1.0.0 -->
-        <div>
-          <div class="flex items-center justify-between mb-3">
-            <h3 class="text-lg font-black text-primary font-headline">Versi 1.0.0</h3>
-            <span class="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">Rilis Perdana</span>
-          </div>
-          <p class="mb-3 text-slate-500 font-medium">Wavy Rental v1.0.0 diluncurkan dengan fitur-fitur dasar operasional:</p>
-          <ul class="space-y-3 list-disc pl-5 m-0 marker:text-slate-300">
-            <li>
-              <div>
-                <strong class="text-slate-700">Dashboard Analitik</strong>
-                <p class="text-xs text-slate-500 mt-0.5">Menampilkan ringkasan pendapatan, pengeluaran, profit, dan performa motor (Paling Untung & Paling Sering Disewa).</p>
-              </div>
-            </li>
-            <li>
-              <div>
-                <strong class="text-slate-700">Manajemen Profil Pemilik Motor</strong>
-                <p class="text-xs text-slate-500 mt-0.5">Pencatatan hak mitra motor titipan dan pelacakan daftar riwayat payout (Lunas / Belum Dibayar).</p>
-              </div>
-            </li>
-            <li>
-              <div>
-                <strong class="text-slate-700">Sistem Payout Hak Mitra</strong>
-                <p class="text-xs text-slate-500 mt-0.5">Pembayaran hak mitra terintegrasi langsung dengan pemotongan saldo kas perusahaan.</p>
-              </div>
-            </li>
-            <li>
-              <div>
-                <strong class="text-slate-700">Manajemen Kas Pribadi & Pengeluaran</strong>
-                <p class="text-xs text-slate-500 mt-0.5">Pencatatan arus kas (masuk/keluar) dengan validasi nominal agar saldo tidak bernada minus.</p>
-              </div>
-            </li>
-            <li>
-              <div>
-                <strong class="text-slate-700">Sistem Rental & Pengembalian Dana</strong>
-                <p class="text-xs text-slate-500 mt-0.5">Pencatatan order sewa dan kalkulasi skema pembatalan sewa (berdasarkan persentase atau Rupiah kustom).</p>
+                <strong class="text-slate-700">{{ item.title }}</strong>
+                <p v-if="item.desc" class="text-xs text-slate-500 mt-0.5">{{ item.desc }}</p>
               </div>
             </li>
           </ul>
@@ -197,12 +115,14 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { useLicenseStore } from '../stores/license'
 import { useRouter } from 'vue-router'
+import { CHANGELOG } from '../changelog'
 
 const auth = useAuthStore()
 const license = useLicenseStore()
 const router = useRouter()
 const showChangelog = ref(false)
 const appVersion = import.meta.env.VITE_APP_VERSION || '1.0.0'
+const changelogEntries = CHANGELOG
 const closingBackup = ref({
   visible: false,
   success: true,
@@ -251,6 +171,12 @@ const navGroups = [
 function handleLogout() {
   auth.logout()
   router.push('/login')
+}
+
+function badgeClass(tone) {
+  if (tone === 'emerald') return 'text-emerald-700 bg-emerald-50'
+  if (tone === 'slate') return 'text-slate-600 bg-slate-100'
+  return 'text-emerald-700 bg-emerald-50'
 }
 
 onMounted(() => {
