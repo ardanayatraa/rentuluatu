@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { dbOps } from '../db'
+import { dbOps, saveDb } from '../db'
 
 export function registerHotelHandlers() {
   const buildDateFilter = (column, startDate, endDate, params) => {
@@ -32,13 +32,21 @@ export function registerHotelHandlers() {
   })
 
   ipcMain.handle('hotel:create', (_, data) => {
+    const name = String(data?.name || '').trim()
+    if (!name) throw new Error('Nama hotel/vendor wajib diisi')
+
     // FIX #4: Cek duplikat nama hotel
-    const existing = dbOps.get('SELECT id FROM hotels WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))', [data.name])
-    if (existing) throw new Error(`Vendor dengan nama "${data.name}" sudah terdaftar`)
+    const existing = dbOps.get('SELECT id FROM hotels WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))', [name])
+    if (existing) throw new Error(`Vendor dengan nama "${name}" sudah terdaftar`)
 
     dbOps.runRaw(
       'INSERT INTO hotels (name, phone, bank_account, bank_name) VALUES (?, ?, ?, ?)',
-      [data.name, data.phone, data.bank_account, data.bank_name]
+      [
+        name,
+        data.phone || null,
+        data.bank_account || null,
+        data.bank_name || null
+      ]
     )
     const row = dbOps.get('SELECT last_insert_rowid() as id')
     saveDb()

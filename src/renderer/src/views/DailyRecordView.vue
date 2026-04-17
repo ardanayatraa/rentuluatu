@@ -93,7 +93,6 @@
           <tr class="bg-slate-50 text-slate-400 text-xs uppercase font-bold">
             <th class="px-6 py-4">Tanggal</th>
             <th class="px-6 py-4">Pelanggan</th>
-            <th class="px-6 py-4">Keterangan</th>
             <th class="px-6 py-4">Hotel / Vendor Hotel</th>
             <th class="px-6 py-4">Motor</th>
             <th class="px-6 py-4">Periode</th>
@@ -120,9 +119,9 @@
               <span class="block text-xs font-medium text-slate-700">{{ formatTime(r.date_time) }}</span>
               <span class="text-xs">{{ formatDate(r.date_time) }}</span>
             </td>
-            <td class="px-6 py-4 font-medium">{{ r.customer_name }}</td>
             <td class="px-6 py-4">
-              <div v-if="rentalRelation(r) === 'extend'" class="flex flex-col items-start gap-1.5">
+              <p class="font-medium">{{ r.customer_name }}</p>
+              <div v-if="rentalRelation(r) === 'extend'" class="mt-1 flex flex-col items-start gap-1.5">
                 <span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
                   <span class="material-symbols-outlined text-[14px]">autorenew</span>
                   Extend
@@ -131,7 +130,7 @@
                   Lihat sumber: {{ parentLabel(r) }}
                 </button>
               </div>
-              <div v-else-if="rentalRelation(r) === 'swap'" class="flex flex-col items-start gap-1.5">
+              <div v-else-if="rentalRelation(r) === 'swap'" class="mt-1 flex flex-col items-start gap-1.5">
                 <span class="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-bold text-violet-700">
                   <span class="material-symbols-outlined text-[14px]">swap_horiz</span>
                   Motor Pengganti
@@ -140,13 +139,18 @@
                   Sumber ganti unit: {{ parentLabel(r) }}
                 </button>
               </div>
-              <div v-else-if="rentalRelation(r) === 'swap_source'" class="flex flex-col items-start gap-1.5">
+              <div v-else-if="rentalRelation(r) === 'swap_source'" class="mt-1 flex flex-col items-start gap-1.5">
                 <span class="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700">
                   <span class="material-symbols-outlined text-[14px]">construction</span>
                   Diganti Unit
                 </span>
               </div>
-              <span v-else class="text-xs text-slate-400">Rental Utama</span>
+              <div v-else class="mt-1">
+                <span class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
+                  <span class="material-symbols-outlined text-[14px]">home_storage</span>
+                  Rental Utama
+                </span>
+              </div>
             </td>
             <td class="px-6 py-4 text-slate-500">{{ r.hotel || '-' }}</td>
             <td class="px-6 py-4">
@@ -741,7 +745,7 @@ const filteredSwapMotorOptions = computed(() => {
 })
 
 const showVendorFeeColumn = computed(() => activeRecordTab.value === 'rental')
-const tableColumnCount = computed(() => (showVendorFeeColumn.value ? 13 : 12))
+const tableColumnCount = computed(() => (showVendorFeeColumn.value ? 12 : 11))
 
 const totalPages = computed(() => Math.max(1, Math.ceil(filteredRentals.value.length / pageSize.value)))
 const pagedRentals = computed(() => {

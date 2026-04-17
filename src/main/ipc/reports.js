@@ -3,13 +3,8 @@ import { dbOps } from '../db'
 
 const COMPANY_EXPENSE_WHERE = `
   FROM expenses e
-  LEFT JOIN motors m ON e.motor_id = m.id
   WHERE e.date BETWEEN ? AND ?
-    AND (
-      e.type != 'motor'
-      OR e.motor_id IS NULL
-      OR m.owner_id IS NULL
-    )
+    AND (e.type IS NULL OR e.type != 'motor')
 `
 
 export function registerReportHandlers() {

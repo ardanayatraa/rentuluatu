@@ -134,16 +134,20 @@
           </form>
         </div>
 
-        <!-- Danger Zone (dev only) -->
-        <div v-if="isDev" class="card border border-red-200 bg-red-50/30">
+        <!-- Danger Zone Reset -->
+        <div v-if="isDev || productionReset.visible" class="card border border-red-200 bg-red-50/30">
           <h3 class="font-bold text-red-600 text-sm mb-2 flex items-center gap-2">
             <span class="material-symbols-outlined text-base">warning</span> Reset Database
           </h3>
-          <p class="text-xs text-red-400 mb-3">Hanya muncul saat development. Hapus semua data permanen.</p>
+          <p class="text-xs text-red-400 mb-3">
+            {{ isDev
+              ? 'Hanya muncul saat development. Hapus semua data permanen.'
+              : 'Mode production: tombol reset hanya bisa dipakai 1 kali di instalasi ini.' }}
+          </p>
           <button @click="handleReset" :disabled="isResetting"
             class="btn-primary !bg-red-600 hover:!bg-red-700 w-full justify-center text-sm">
             <span class="material-symbols-outlined text-sm">{{ isResetting ? 'hourglass_empty' : 'delete_forever' }}</span>
-            {{ isResetting ? 'Mereset...' : 'Hapus Semua Data' }}
+            {{ isResetting ? 'Mereset...' : (isDev ? 'Hapus Semua Data' : 'Reset Data (1x)') }}
           </button>
         </div>
 
@@ -494,6 +498,7 @@ async function changePassword() {
 const isResetting = ref(false)
 const showResetModal = ref(false)
 const resetConfirmText = ref('')
+const productionReset = ref({ visible: false, used: false })
 
 function handleReset() { resetConfirmText.value = ''; showResetModal.value = true }
 
@@ -501,7 +506,12 @@ async function executeReset() {
   if (resetConfirmText.value !== 'RESET') return
   try {
     isResetting.value = true
-    await window.api.resetAllData()
+    if (isDev) {
+      await window.api.resetAllData()
+    } else {
+      await window.api.resetProductionDataOnce()
+      productionReset.value = { visible: false, used: true }
+    }
     window.location.reload()
   } catch (err) {
     alert('Gagal mereset: ' + err.message)
@@ -718,6 +728,13 @@ onMounted(async () => {
   await license.load()
   await checkGdriveStatus()
   await loadBackupList()
+  if (!isDev) {
+    try {
+      productionReset.value = await window.api.getProductionResetStatus()
+    } catch {
+      productionReset.value = { visible: false, used: false }
+    }
+  }
   if (isDev) await loadSandboxStats()
 })
 </script>

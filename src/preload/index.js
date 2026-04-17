@@ -69,6 +69,8 @@ contextBridge.exposeInMainWorld('api', {
   getExpenseCategories: (data) => invoke('dashboard:expense-categories', data),
   // System
   resetAllData: () => invoke('db:reset-all'),
+  getProductionResetStatus: () => invoke('db:production-reset-status'),
+  resetProductionDataOnce: () => invoke('db:production-reset-once'),
   getDevSandboxStats: () => invoke('db:dev-stats'),
   seedDevSandboxData: (data) => invoke('db:dev-seed', data),
   // Backup & Restore

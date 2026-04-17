@@ -1,11 +1,48 @@
 import { ipcMain, app } from 'electron'
 import { dbOps, getDb, saveDb, forceSaveDb } from '../db'
 import { calcCommission } from '../lib/finance'
+import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { join } from 'path'
+
+const RESET_SETTINGS_FILENAME = 'reset-settings.json'
 
 function assertDevOnly() {
   if (app.isPackaged || process.env.NODE_ENV === 'production') {
     throw new Error('Tindakan ini tidak diizinkan di environment Production!')
   }
+}
+
+function isProductionRuntime() {
+  return app.isPackaged || process.env.NODE_ENV === 'production'
+}
+
+function getResetSettingsPath() {
+  return join(app.getPath('userData'), RESET_SETTINGS_FILENAME)
+}
+
+function loadResetSettings() {
+  try {
+    const path = getResetSettingsPath()
+    if (!existsSync(path)) return {}
+    const raw = readFileSync(path, 'utf8')
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function saveResetSettings(nextSettings) {
+  writeFileSync(getResetSettingsPath(), JSON.stringify(nextSettings, null, 2))
+}
+
+function getProductionResetStatus() {
+  if (!isProductionRuntime()) {
+    return { visible: false, used: false }
+  }
+  const settings = loadResetSettings()
+  const used = Boolean(settings.productionResetUsed)
+  return { visible: !used, used }
 }
 
 function randomInt(min, max) {
@@ -419,11 +456,9 @@ function seedSandboxData({ rentalCount = 500, daysBack = 365 }) {
 }
 
 export function registerResetHandlers() {
-  ipcMain.handle('db:reset-all', () => {
-    assertDevOnly()
-
+  const performResetAllData = () => {
     const db = getDb()
-    
+
     // Matikan Foreign Key check sementara agar bisa hapus semua tanpa error urutan
     db.run('PRAGMA foreign_keys = OFF')
 
@@ -461,6 +496,36 @@ export function registerResetHandlers() {
     }
 
     return { success: true }
+  }
+
+  ipcMain.handle('db:reset-all', () => {
+    assertDevOnly()
+    return performResetAllData()
+  })
+
+  ipcMain.handle('db:production-reset-status', () => {
+    return getProductionResetStatus()
+  })
+
+  ipcMain.handle('db:production-reset-once', () => {
+    if (!isProductionRuntime()) {
+      throw new Error('Reset production hanya tersedia pada build production')
+    }
+    const current = loadResetSettings()
+    if (current.productionResetUsed) {
+      throw new Error('Reset production sudah pernah digunakan di instalasi ini')
+    }
+
+    const result = performResetAllData()
+    saveResetSettings({
+      ...current,
+      productionResetUsed: true,
+      productionResetUsedAt: new Date().toISOString()
+    })
+    return {
+      ...result,
+      used: true
+    }
   })
 
   ipcMain.handle('db:dev-stats', () => {

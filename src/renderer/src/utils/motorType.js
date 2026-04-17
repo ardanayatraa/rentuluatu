@@ -26,5 +26,5 @@ export function getSplitLabel(type) {
 }
 
 export function getMotorTypeLabel(type) {
-  return isAsetPt(type) ? 'aset_pt' : 'milik_pemilik'
+  return isAsetPt(type) ? 'Aset PT' : 'Milik Mitra'
 }

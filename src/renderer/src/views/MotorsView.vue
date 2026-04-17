@@ -19,8 +19,8 @@
         class="border border-slate-200 rounded-lg px-3 py-2 text-sm w-64" />
       <select v-model="filterType" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
         <option value="">Semua Tipe</option>
-        <option value="aset_pt">aset_pt</option>
-        <option value="milik_pemilik">milik_pemilik</option>
+        <option value="aset_pt">Aset PT</option>
+        <option value="milik_pemilik">Milik Mitra</option>
       </select>
       <select v-model.number="pageSize" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
         <option :value="10">10 / halaman</option>
@@ -102,8 +102,8 @@
           <div class="col-span-2">
             <label class="block text-xs font-bold text-slate-500 mb-1">Tipe</label>
             <select v-model="form.type" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required>
-              <option value="aset_pt">aset_pt (Wavy 20% / Mitra 80%)</option>
-              <option value="milik_pemilik">milik_pemilik (Wavy 30% / Mitra 70%)</option>
+              <option value="aset_pt">Aset PT (Wavy 20% / Mitra 80%)</option>
+              <option value="milik_pemilik">Milik Mitra (Wavy 30% / Mitra 70%)</option>
             </select>
           </div>
           <div class="col-span-2">
@@ -118,7 +118,11 @@
 
             <!-- Pilih mitra dengan search -->
             <div v-if="!isCreatingOwner">
+              <div v-if="ownersLoading" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-400 bg-slate-50">
+                Loading data mitra...
+              </div>
               <SearchSelect
+                v-else
                 v-model="form.owner_id"
                 :options="ownerOptions"
                 placeholder="Pilih Mitra / Pemilik..."
@@ -142,7 +146,9 @@
         <p v-if="motorError" class="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{{ motorError }}</p>
         <div class="flex justify-end gap-3 pt-2">
           <button type="button" @click="showModal = false" class="btn-secondary">Batal</button>
-          <button type="submit" class="btn-primary">Simpan</button>
+          <button type="submit" :disabled="ownersLoading || isSubmitting" class="btn-primary disabled:opacity-50">
+            {{ isSubmitting ? 'Loading...' : 'Simpan' }}
+          </button>
         </div>
       </form>
     </n-modal>
@@ -156,6 +162,8 @@ import { getMotorTypeLabel, getWavyPctLabel, isAsetPt, normalizeMotorType } from
 
 const motors = ref([])
 const loading = ref(false)
+const ownersLoading = ref(false)
+const isSubmitting = ref(false)
 const owners = ref([])
 const showModal = ref(false)
 const editId = ref(null)
@@ -208,15 +216,22 @@ function openEdit(m) {
 
 async function submitMotor() {
   motorError.value = ''
+  if (ownersLoading.value) {
+    motorError.value = 'Data mitra masih loading, tunggu sebentar.'
+    return
+  }
+  isSubmitting.value = true
 
   // Validasi: jika mode buat mitra baru, nama wajib diisi
   if (isCreatingOwner.value && !ownerForm.value.name.trim()) {
     motorError.value = 'Nama mitra tidak boleh kosong'
+    isSubmitting.value = false
     return
   }
 
   if (!isCreatingOwner.value && !form.value.owner_id) {
     motorError.value = 'Pemilik motor wajib dipilih'
+    isSubmitting.value = false
     return
   }
 
@@ -230,6 +245,7 @@ async function submitMotor() {
       owners.value = await window.api.getOwners({ activeOnly: true })
     } catch (err) {
       motorError.value = 'Gagal membuat mitra: ' + err.message
+      isSubmitting.value = false
       return
     }
   }
@@ -252,6 +268,8 @@ async function submitMotor() {
   } catch (err) {
     motorError.value = err.message.replace("Error invoking remote method 'motor:create': Error: ", '')
       .replace("Error invoking remote method 'motor:update': Error: ", '')
+  } finally {
+    isSubmitting.value = false
   }
 }
 
@@ -268,12 +286,14 @@ async function deleteMotor(id) {
 
 onMounted(async () => {
   loading.value = true
+  ownersLoading.value = true
   try {
     motors.value = await window.api.getMotors()
     owners.value = await window.api.getOwners({ activeOnly: true })
     currentPage.value = 1
   } finally {
     loading.value = false
+    ownersLoading.value = false
   }
 })
 </script>

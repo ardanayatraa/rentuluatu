@@ -466,6 +466,11 @@ async function submitExpense() {
 }
 
 async function deleteExpense(id) {
+  const expense = expenses.value.find((item) => Number(item.id) === Number(id))
+  const label = expense
+    ? `${expense.category || 'pengeluaran'} · ${formatRp(expense.amount || 0)}`
+    : 'pengeluaran ini'
+  if (!confirm(`Yakin ingin menghapus ${label}?\n\nSaldo kas akan dikembalikan.`)) return
   await window.api.deleteExpense(id)
   await loadCashAccounts()
   await loadExpenses()

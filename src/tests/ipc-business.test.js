@@ -28,6 +28,7 @@ import { registerOwnerHandlers } from '../main/ipc/owners.js'
 import { registerHotelHandlers } from '../main/ipc/hotels.js'
 import { registerRefundHandlers } from '../main/ipc/refunds.js'
 import { registerExpenseHandlers } from '../main/ipc/expenses.js'
+import { registerCashHandlers } from '../main/ipc/cash.js'
 
 describe('IPC business logic', () => {
   beforeEach(() => {
@@ -364,6 +365,29 @@ describe('IPC business logic', () => {
     })).toThrow('Pembayaran terpisah fee vendor dinonaktifkan. Fee vendor dibayar tunai saat transaksi rental.')
   })
 
+  it('hotel create menyimpan data vendor baru dan memanggil saveDb', async () => {
+    dbOps.get.mockImplementation((sql, params) => {
+      if (sql.includes('SELECT id FROM hotels WHERE LOWER(TRIM(name))')) return null
+      if (sql.includes('SELECT last_insert_rowid() as id')) return { id: 77 }
+      return null
+    })
+
+    registerHotelHandlers()
+    const result = handlers.get('hotel:create')(null, {
+      name: 'IBIS Kuta',
+      phone: '08123456789',
+      bank_account: '',
+      bank_name: ''
+    })
+
+    expect(result).toEqual({ id: 77 })
+    expect(dbOps.runRaw).toHaveBeenCalledWith(
+      'INSERT INTO hotels (name, phone, bank_account, bank_name) VALUES (?, ?, ?, ?)',
+      ['IBIS Kuta', '08123456789', null, null]
+    )
+    expect(saveDb).toHaveBeenCalled()
+  })
+
   it('hotel payout selalu menolak request payout walau payload valid', async () => {
     registerHotelHandlers()
     expect(() => handlers.get('hotel:payout')(null, {
@@ -405,10 +429,16 @@ describe('IPC business logic', () => {
 
   it('expense create menolak ketika saldo akun kas tidak cukup', async () => {
     dbOps.get.mockImplementation((sql, params) => {
+      if (sql.includes('SELECT COALESCE(SUM(balance), 0) as total FROM cash_accounts')) return { total: 100_000 }
       if (sql.includes('SELECT * FROM cash_accounts WHERE type = ?')) {
         return { id: 3, name: 'QRIS', type: params[0], balance: 1_000 }
       }
       return null
+    })
+    dbOps.all.mockImplementation((sql) => {
+      if (sql.includes('FROM rentals r') && sql.includes('GROUP BY m.owner_id')) return []
+      if (sql.includes('FROM expenses e') && sql.includes('GROUP BY m.owner_id')) return []
+      return []
     })
 
     registerExpenseHandlers()
@@ -427,12 +457,18 @@ describe('IPC business logic', () => {
 
   it('expense create menormalisasi metode qriss menjadi qris', async () => {
     dbOps.get.mockImplementation((sql, params) => {
+      if (sql.includes('SELECT COALESCE(SUM(balance), 0) as total FROM cash_accounts')) return { total: 100_000 }
       if (sql.includes('SELECT * FROM cash_accounts WHERE type = ?')) {
         expect(params[0]).toBe('qris')
         return { id: 4, name: 'QRIS', type: 'qris', balance: 50_000 }
       }
       if (sql.includes('SELECT last_insert_rowid() as id')) return { id: 123 }
       return null
+    })
+    dbOps.all.mockImplementation((sql) => {
+      if (sql.includes('FROM rentals r') && sql.includes('GROUP BY m.owner_id')) return []
+      if (sql.includes('FROM expenses e') && sql.includes('GROUP BY m.owner_id')) return []
+      return []
     })
 
     registerExpenseHandlers()
@@ -453,5 +489,58 @@ describe('IPC business logic', () => {
       expect.stringContaining('INSERT INTO expenses'),
       expect.arrayContaining(['qris'])
     )
+  })
+
+  it('expense create menolak pengeluaran operasional jika melanggar proteksi dana mitra', async () => {
+    dbOps.get.mockImplementation((sql, params) => {
+      if (sql.includes('SELECT COALESCE(SUM(balance), 0) as total FROM cash_accounts')) return { total: 500_000 }
+      if (sql.includes('SELECT * FROM cash_accounts WHERE type = ?')) {
+        return { id: 4, name: 'QRIS', type: params[0], balance: 500_000 }
+      }
+      return null
+    })
+    dbOps.all.mockImplementation((sql) => {
+      if (sql.includes('FROM rentals r') && sql.includes('GROUP BY m.owner_id')) return [{ owner_id: 1, total: 480_000 }]
+      if (sql.includes('FROM expenses e') && sql.includes('GROUP BY m.owner_id')) return [{ owner_id: 1, total: 30_000 }]
+      return []
+    })
+
+    registerExpenseHandlers()
+    const createExpense = handlers.get('expense:create')
+
+    expect(() => createExpense(null, {
+      type: 'operasional',
+      motor_id: null,
+      category: 'lainnya',
+      amount: 100_000,
+      payment_method: 'qris',
+      description: 'Biaya operasional',
+      date: '2026-04-17'
+    })).toThrow('Dana perusahaan tidak cukup. Dana bebas saat ini Rp 50.000 (setelah proteksi hak mitra).')
+  })
+
+  it('cash add expense menolak saat dana bebas perusahaan kurang walau saldo akun cukup', async () => {
+    dbOps.get.mockImplementation((sql, params) => {
+      if (sql.includes('SELECT COALESCE(SUM(balance), 0) as total FROM cash_accounts')) return { total: 300_000 }
+      if (sql.includes('SELECT * FROM cash_accounts WHERE type = ?')) {
+        return { id: 1, name: 'Kas Tunai', type: params[0], balance: 300_000 }
+      }
+      return null
+    })
+    dbOps.all.mockImplementation((sql) => {
+      if (sql.includes('FROM rentals r') && sql.includes('GROUP BY m.owner_id')) return [{ owner_id: 1, total: 260_000 }]
+      if (sql.includes('FROM expenses e') && sql.includes('GROUP BY m.owner_id')) return [{ owner_id: 1, total: 10_000 }]
+      return []
+    })
+
+    registerCashHandlers()
+    const addExpense = handlers.get('cash:add-expense')
+
+    expect(() => addExpense(null, {
+      payment_method: 'tunai',
+      amount: 100_000,
+      description: 'Beli ATK',
+      date: '2026-04-17'
+    })).toThrow('Dana perusahaan tidak cukup. Dana bebas saat ini Rp 50.000 (setelah proteksi hak mitra).')
   })
 })
