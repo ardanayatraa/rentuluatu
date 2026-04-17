@@ -197,6 +197,7 @@ async function exportPdf() {
   return withExporting('pdf', async () => {
     const filtered = filteredOwners.value
     const totalUnpaid = filtered.reduce((s, o) => s + Number(o.unpaid_commission || 0), 0)
+    const totalPaid = filtered.reduce((s, o) => s + Number(o.paid_amount || 0), 0)
     const activeCount = filtered.filter(o => o.is_active).length
     const inactiveCount = filtered.length - activeCount
     const html = buildSimpleTableHtml({
@@ -207,18 +208,21 @@ async function exportPdf() {
         { label: 'Total Mitra', value: `${filtered.length} orang` },
         { label: 'Aktif', value: `${activeCount} orang` },
         { label: 'Nonaktif', value: `${inactiveCount} orang` },
-        { label: 'Hak Mengendap', value: formatRp(totalUnpaid) }
+        { label: 'Hak Mengendap', value: formatRp(totalUnpaid) },
+        { label: 'Sudah Dibayarkan', value: formatRp(totalPaid) }
       ],
       columns: [
         { key: 'name', label: 'Nama' },
         { key: 'phone', label: 'WhatsApp' },
         { key: 'status', label: 'Status' },
+        { key: 'paid', label: 'Sudah Dibayarkan', align: 'right' },
         { key: 'unpaid', label: 'Hak Mitra Mengendap', align: 'right' }
       ],
       rows: filtered.map(o => ({
         name: o.name || '-',
         phone: o.phone || '-',
         status: o.is_active ? 'Aktif' : 'Nonaktif',
+        paid: formatRp(o.paid_amount || 0),
         unpaid: formatRp(o.unpaid_commission || 0)
       })),
       emptyMessage: 'Belum ada data mitra pada filter ini'

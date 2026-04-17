@@ -9,6 +9,9 @@ export function registerOwnerHandlers() {
         (SELECT COALESCE(SUM(r.owner_gets), 0) FROM rentals r 
          JOIN motors m ON r.motor_id = m.id 
          WHERE m.owner_id = o.id AND r.payout_id IS NULL AND r.status != 'refunded') as unpaid_commission
+        ,
+        (SELECT COALESCE(SUM(p.amount), 0) FROM payouts p
+         WHERE p.owner_id = o.id) as paid_amount
       FROM owners o ${where} ORDER BY name ASC
     `)
   })

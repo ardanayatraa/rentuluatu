@@ -258,23 +258,26 @@ export async function saveOwnersExcel({ owners, fileLabel }) {
     { header: 'Nama', key: 'name', width: 22 },
     { header: 'WhatsApp', key: 'phone', width: 18 },
     { header: 'Status', key: 'status', width: 12 },
+    { header: 'Sudah Dibayarkan', key: 'paid_amount', width: 20 },
     { header: 'Hak Mitra Mengendap', key: 'unpaid_commission', width: 20 }
   ]
   const rows = (owners || []).map((o) => ({
     name: o.name || '-',
     phone: o.phone || '-',
     status: o.is_active ? 'Aktif' : 'Nonaktif',
+    paid_amount: Number(o.paid_amount || 0),
     unpaid_commission: Number(o.unpaid_commission || 0)
   }))
   const totals = {
     name: 'TOTAL',
     phone: `${rows.length} mitra`,
     status: '',
+    paid_amount: rows.reduce((s, r) => s + Number(r.paid_amount || 0), 0),
     unpaid_commission: rows.reduce((s, r) => s + Number(r.unpaid_commission || 0), 0)
   }
   return window.api.saveExcel({
     defaultName: `Daftar_Mitra_${fileLabel}.xlsx`,
-    sheets: [{ name: 'Mitra', columns, rows, totals, currencyKeys: ['unpaid_commission'] }]
+    sheets: [{ name: 'Mitra', columns, rows, totals, currencyKeys: ['paid_amount','unpaid_commission'] }]
   })
 }
 
