@@ -236,7 +236,7 @@ function headerHtml(title, period, subtitle = '') {
     <div style="display:flex;align-items:center;gap:12px">
       ${logoImg}
       <div>
-        <div class="brand">The Wavy Rental Uluwatu<span>PT. Artha Bali Wisata</span></div>
+        <div class="brand">PT. Artha Bali Wisata<span>Wavy Rental</span></div>
         <div class="report-title">${title}</div>
         <div class="report-period">${subtitle || ''}</div>
       </div>
@@ -249,7 +249,7 @@ function headerHtml(title, period, subtitle = '') {
 }
 
 function footerHtml() {
-  return `<div class="footer"><span>The Wavy Rental Uluwatu — PT. Artha Bali Wisata</span><span>Dokumen ini digenerate otomatis oleh sistem</span></div>`
+  return `<div class="footer"><span>PT. Artha Bali Wisata - Wavy Rental</span><span>Dokumen ini digenerate otomatis oleh sistem</span></div>`
 }
 
 export function buildSimpleTableHtml({
@@ -691,3 +691,4 @@ export function buildRankingHtml({ rows, period }) {
   </tbody></table>
   ${footerHtml()}`
 }
+
