@@ -109,8 +109,6 @@
         <div class="text-right">
           <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Total Saldo</p>
           <p class="text-2xl font-black text-slate-700 font-headline">{{ formatRp(totalCash) }}</p>
-          <p class="text-[11px] text-slate-400 mt-1">Dana titipan mitra: {{ formatRp(summary.owner_reserved_funds || 0) }}</p>
-          <p class="text-[11px] font-semibold text-emerald-600">Dana bebas operasional: {{ formatRp(summary.available_operational_funds || 0) }}</p>
         </div>
       </div>
       
