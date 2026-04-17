@@ -7,16 +7,14 @@
       </div>
     </div>
 
-    <!-- Tab Jenis Laporan -->
-    <div class="card p-0 mb-6">
-      <div class="flex gap-2 px-4 pt-4 border-b border-slate-200 overflow-x-auto">
-        <button v-for="t in tabs" :key="t.key"
-          @click="activeTab = t.key; loadReport()"
-          :class="['px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors whitespace-nowrap',
-            activeTab === t.key ? 'bg-white border border-b-white border-slate-200 text-primary -mb-px' : 'text-slate-500 hover:text-slate-700']">
-          <span class="material-symbols-outlined text-sm align-middle mr-1">{{ t.icon }}</span>{{ t.label }}
-        </button>
-      </div>
+    <!-- Tab Jenis Laporan (konsisten seperti Daily Record) -->
+    <div class="flex gap-2 mb-6 border-b border-slate-200">
+      <button v-for="t in tabs" :key="t.key"
+        @click="activeTab = t.key; loadReport()"
+        :class="['px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors whitespace-nowrap',
+          activeTab === t.key ? 'bg-white border border-b-white border-slate-200 text-primary -mb-px' : 'text-slate-500 hover:text-slate-700']">
+        <span class="material-symbols-outlined text-sm align-middle mr-1">{{ t.icon }}</span>{{ t.label }}
+      </button>
     </div>
 
     <!-- Filter Bar -->
