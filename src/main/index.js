@@ -25,6 +25,10 @@ function configureStableUserDataPath() {
 configureStableUserDataPath()
 
 async function runSeeder() {
+  // Seeder data demo hanya untuk development.
+  // Production harus mulai dari data kosong (fresh install).
+  if (app.isPackaged || !is.dev) return
+
   const existing = dbOps.get('SELECT COUNT(*) as count FROM motors')
   if (existing && existing.count > 0) return
 
@@ -53,15 +57,15 @@ async function runSeeder() {
 
   const ownerIds = []
   for (let i = 0; i < 15; i++) {
-    dbOps.run('INSERT INTO owners (name, phone, bank_account, bank_name) VALUES (?, ?, ?, ?)', [ownerNames[i], '08' + ri(100000000, 999999999), '' + ri(1000000000, 9999999999), pick(['BCA', 'BNI', 'BRI', 'Mandiri', 'CIMB'])])
+    dbOps.run('INSERT INTO owners (name, phone, bank_account, bank_name) VALUES (?, ?, ?, ?)', [ownerNames[i], '08' + ri(100000000, 999999999), null, null])
     ownerIds.push(dbOps.get('SELECT last_insert_rowid() as id').id)
   }
 
   const motorData = []
   const motorIds = []
   for (let i = 0; i < 50; i++) {
-    const type = Math.random() > 0.4 ? 'titipan' : 'pribadi'
-    const ownerId = type === 'titipan' ? pick(ownerIds) : null
+    const type = Math.random() > 0.4 ? 'milik_pemilik' : 'aset_pt'
+    const ownerId = type === 'milik_pemilik' ? pick(ownerIds) : null
     const plate = 'DK ' + ri(1000, 9999) + ' ' + String.fromCharCode(65 + ri(0, 25)) + String.fromCharCode(65 + ri(0, 25))
     dbOps.run('INSERT INTO motors (model, plate_number, type, owner_id) VALUES (?, ?, ?, ?)', [pick(motorModels), plate, type, ownerId])
     const id = dbOps.get('SELECT last_insert_rowid() as id').id
@@ -81,7 +85,7 @@ async function runSeeder() {
     const dt = rDT(365)
     const gross = price * days
     const sisa = gross - fee
-    const wavyPct = motor.type === 'pribadi' ? 0.20 : 0.30
+    const wavyPct = motor.type === 'aset_pt' ? 0.20 : 0.30
     const status = Math.random() > 0.1 ? 'completed' : 'refunded'
 
     dbOps.run('INSERT INTO rentals (date_time, customer_name, hotel, motor_id, period_days, payment_method, price_per_day, vendor_fee, sisa, wavy_gets, owner_gets, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [dt, pick(customerNames), pick(hotels), motor.id, days, pay, price, fee, sisa, sisa * wavyPct, sisa * (1 - wavyPct), status])

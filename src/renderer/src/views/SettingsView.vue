@@ -33,7 +33,7 @@
           <div class="flex items-center gap-3 mb-4">
             <img src="../assets/logo.png" class="w-10 h-10 rounded-lg object-cover" />
             <div>
-              <p class="font-bold text-slate-800 text-sm leading-tight">The Wavy Rental Uluwatu</p>
+              <p class="font-bold text-slate-800 text-sm leading-tight">The Wavy Rental</p>
               <p class="text-xs text-slate-400">PT. Artha Bali Wisata</p>
             </div>
           </div>

@@ -55,6 +55,7 @@ export function registerCashHandlers() {
     `
     const params = []
     if (filters.accountId) { query += ' AND ct.cash_account_id = ?'; params.push(filters.accountId) }
+    if (filters.type) { query += ' AND ct.type = ?'; params.push(filters.type) }
     if (filters.startDate) { query += ' AND ct.date >= ?'; params.push(filters.startDate) }
     if (filters.endDate) { query += ' AND ct.date <= ?'; params.push(filters.endDate) }
     query += ' ORDER BY ct.created_at DESC'

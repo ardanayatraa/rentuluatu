@@ -236,8 +236,6 @@ export async function saveOwnerReportExcel({ rows, period, fileLabel }) {
   const columns = [
     { header: 'Mitra', key: 'name', width: 22 },
     { header: 'No. HP', key: 'phone', width: 16 },
-    { header: 'Bank', key: 'bank_name', width: 14 },
-    { header: 'No. Rekening', key: 'bank_account', width: 20 },
     { header: 'Jml Motor', key: 'motor_count', width: 12 },
     { header: 'Jml Rental', key: 'rental_count', width: 12 },
     { header: 'Total Omzet', key: 'total_omzet', width: 20 },
@@ -246,14 +244,13 @@ export async function saveOwnerReportExcel({ rows, period, fileLabel }) {
     { header: 'Hak Mitra Bersih', key: 'net_commission', width: 20 }
   ]
   const dataRows = rows.map(o => ({
-    name: o.name, phone: o.phone||'-', bank_name: o.bank_name||'-',
-    bank_account: o.bank_account||'-', motor_count: o.motor_count,
+    name: o.name, phone: o.phone||'-', motor_count: o.motor_count,
     rental_count: o.rental_count, total_omzet: Number(o.total_omzet),
     gross_commission: Number(o.gross_commission), total_expenses: Number(o.total_expenses),
     net_commission: Number(o.gross_commission - o.total_expenses)
   }))
   const totals = {
-    name: `TOTAL (${rows.length} mitra)`, phone:'', bank_name:'', bank_account:'',
+    name: `TOTAL (${rows.length} mitra)`, phone:'',
     motor_count: rows.reduce((s,o)=>s+o.motor_count,0),
     rental_count: rows.reduce((s,o)=>s+o.rental_count,0),
     total_omzet: Number(rows.reduce((s,o)=>s+o.total_omzet,0)),

@@ -57,7 +57,7 @@ export function registerOwnerHandlers() {
   ipcMain.handle('owner:create', (_, data) => {
     dbOps.runRaw(
       'INSERT INTO owners (name, phone, bank_account, bank_name) VALUES (?, ?, ?, ?)',
-      [data.name, data.phone, data.bank_account, data.bank_name]
+      [data.name, data.phone, null, null]
     )
     const row = dbOps.get('SELECT last_insert_rowid() as id')
     saveDb()
@@ -67,7 +67,7 @@ export function registerOwnerHandlers() {
   ipcMain.handle('owner:update', (_, { id, ...data }) => {
     dbOps.run(
       'UPDATE owners SET name=?, phone=?, bank_account=?, bank_name=?, is_active=? WHERE id=?',
-      [data.name, data.phone, data.bank_account, data.bank_name, data.is_active ?? 1, id]
+      [data.name, data.phone, null, null, data.is_active ?? 1, id]
     )
     return { success: true }
   })

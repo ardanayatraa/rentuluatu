@@ -6,14 +6,31 @@
 
 /**
  * Hitung pembagian hasil berdasarkan tipe motor dan vendor fee.
- * @param {'pribadi'|'titipan'} motorType
+ * Mendukung label lama dan baru:
+ * - aset_pt == pribadi (Wavy 20%)
+ * - milik_pemilik == titipan (Wavy 30%)
+ * @param {'pribadi'|'titipan'|'aset_pt'|'milik_pemilik'|string} motorType
  * @param {number} totalPrice - Harga kotor dari pelanggan
  * @param {number} vendorFee  - Fee yang dialokasikan ke hotel/vendor
  * @returns {{ sisa: number, wavy_gets: number, owner_gets: number }}
  */
+export function normalizeMotorType(motorType) {
+  const raw = String(motorType || '').trim().toLowerCase()
+  if (raw === 'aset_pt' || raw === 'asset_pt' || raw === 'pribadi') return 'aset_pt'
+  if (raw === 'milik_pemilik' || raw === 'titipan') return 'milik_pemilik'
+  // fallback aman: jika tipe tidak dikenali, perlakukan sebagai motor mitra (30%)
+  return 'milik_pemilik'
+}
+
+export function getWavyPctByMotorType(motorType) {
+  return normalizeMotorType(motorType) === 'aset_pt' ? 0.20 : 0.30
+}
+
 export function calcCommission(motorType, totalPrice, vendorFee = 0) {
-  const sisa = totalPrice - vendorFee
-  const wavyPct = motorType === 'pribadi' ? 0.20 : 0.30
+  const total = Number(totalPrice || 0)
+  const fee = Number(vendorFee || 0)
+  const sisa = total - fee
+  const wavyPct = getWavyPctByMotorType(motorType)
   return {
     sisa,
     wavy_gets: sisa * wavyPct,

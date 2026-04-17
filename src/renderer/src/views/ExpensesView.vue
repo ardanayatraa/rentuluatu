@@ -246,10 +246,11 @@
           <div>
             <label class="block text-xs font-bold text-slate-500 mb-1">Metode Bayar</label>
             <select v-model="form.payment_method" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
-              <option value="tunai">Tunai</option>
-              <option value="transfer">Transfer</option>
-              <option value="qris">QRIS</option>
-              <option value="debit_card">Debit Card</option>
+              <option value="" disabled v-if="!availablePaymentMethods.length">Saldo tidak cukup</option>
+              <option value="tunai" :disabled="isPaymentMethodDisabled('tunai')">{{ paymentMethodOptionLabel('tunai') }}</option>
+              <option value="transfer" :disabled="isPaymentMethodDisabled('transfer')">{{ paymentMethodOptionLabel('transfer') }}</option>
+              <option value="qris" :disabled="isPaymentMethodDisabled('qris')">{{ paymentMethodOptionLabel('qris') }}</option>
+              <option value="debit_card" :disabled="isPaymentMethodDisabled('debit_card')">{{ paymentMethodOptionLabel('debit_card') }}</option>
             </select>
           </div>
         </div>
@@ -272,7 +273,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { formatRp, formatDate, today } from '../utils/format'
 
 const expenses = ref([])
@@ -286,6 +287,7 @@ const customCategory = ref('')
 const formError = ref('')
 const currentPage = ref(1)
 const pageSize = ref(10)
+const cashAccounts = ref([])
 
 // Motor search
 const motorSearch = ref('')
@@ -369,6 +371,19 @@ const pagedExpenses = computed(() => {
 })
 const pageStart = computed(() => expenses.value.length ? ((currentPage.value - 1) * pageSize.value) + 1 : 0)
 const pageEnd = computed(() => Math.min(currentPage.value * pageSize.value, expenses.value.length))
+const cashBalanceByType = computed(() => {
+  const map = {}
+  for (const account of cashAccounts.value) {
+    map[String(account.type)] = Number(account.balance || 0)
+  }
+  return map
+})
+const availablePaymentMethods = computed(() => {
+  const amount = Number(form.value.amount || 0)
+  const methods = ['tunai', 'transfer', 'qris', 'debit_card']
+  if (!(amount > 0)) return methods
+  return methods.filter(method => Number(cashBalanceByType.value[method] || 0) >= amount)
+})
 
 function paymentMethodLabel(method) {
   return {
@@ -381,6 +396,18 @@ function paymentMethodLabel(method) {
 
 function paymentMethodBadge(method) {
   return method === 'tunai' ? 'badge-neutral' : 'badge-success'
+}
+
+function paymentMethodOptionLabel(method) {
+  const label = paymentMethodLabel(method)
+  const balance = Number(cashBalanceByType.value[method] || 0)
+  return `${label} (Saldo ${formatRp(balance)})`
+}
+
+function isPaymentMethodDisabled(method) {
+  const amount = Number(form.value.amount || 0)
+  if (!(amount > 0)) return false
+  return Number(cashBalanceByType.value[method] || 0) < amount
 }
 
 function openAdd() {
@@ -421,12 +448,17 @@ async function submitExpense() {
     if (!customCategory.value.trim()) { formError.value = 'Nama kategori tidak boleh kosong'; return }
     data.category = customCategory.value.trim()
   }
+  if (!data.payment_method) {
+    formError.value = 'Saldo kas tidak cukup. Pilih metode bayar lain.'
+    return
+  }
   // Kirim motor_id null jika tipe umum
   if (data.type === 'umum') data.motor_id = null
   formError.value = ''
   try {
     await window.api.createExpense(data)
     showModal.value = false
+    await loadCashAccounts()
     await loadExpenses()
   } catch (err) {
     formError.value = err.message.replace("Error invoking remote method 'expense:create': Error: ", '')
@@ -435,10 +467,30 @@ async function submitExpense() {
 
 async function deleteExpense(id) {
   await window.api.deleteExpense(id)
+  await loadCashAccounts()
   await loadExpenses()
 }
 
+async function loadCashAccounts() {
+  const summary = await window.api.getCashSummary()
+  cashAccounts.value = summary.accounts || []
+}
+
+watch(
+  () => [form.value.amount, cashAccounts.value.length, ...Object.values(cashBalanceByType.value)],
+  () => {
+    if (!isPaymentMethodDisabled(form.value.payment_method)) return
+    const fallback = availablePaymentMethods.value[0]
+    if (fallback) {
+      form.value.payment_method = fallback
+      return
+    }
+    form.value.payment_method = ''
+  }
+)
+
 onMounted(async () => {
+  await loadCashAccounts()
   await loadExpenses()
   allMotors.value = await window.api.getMotors()
 })

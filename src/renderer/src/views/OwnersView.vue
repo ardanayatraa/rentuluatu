@@ -38,8 +38,6 @@
           <tr class="bg-slate-50 text-slate-400 text-xs uppercase font-bold">
             <th class="px-6 py-4">Nama</th>
             <th class="px-6 py-4">WhatsApp</th>
-            <th class="px-6 py-4">Bank</th>
-            <th class="px-6 py-4">No. Rekening</th>
             <th class="px-6 py-4">Status</th>
             <th class="px-6 py-4 text-right">Hak Mitra Mengendap</th>
             <th class="px-6 py-4"></th>
@@ -47,15 +45,13 @@
         </thead>
         <tbody class="divide-y divide-slate-50">
           <tr v-if="loading" v-for="index in 6" :key="`sk-${index}`">
-            <td colspan="7" class="px-6 py-4">
+            <td colspan="5" class="px-6 py-4">
               <div class="skeleton h-10 rounded-xl"></div>
             </td>
           </tr>
           <tr v-for="o in pagedOwners" :key="o.id" class="hover:bg-slate-50 transition-colors text-sm">
             <td class="px-6 py-4 font-semibold text-primary">{{ o.name }}</td>
             <td class="px-6 py-4 text-slate-500">{{ o.phone || '-' }}</td>
-            <td class="px-6 py-4 text-slate-500">{{ o.bank_name || '-' }}</td>
-            <td class="px-6 py-4 text-slate-500 font-mono">{{ o.bank_account || '-' }}</td>
             <td class="px-6 py-4">
               <span :class="o.is_active ? 'badge-success' : 'badge-neutral'">{{ o.is_active ? 'Aktif' : 'Nonaktif' }}</span>
             </td>
@@ -77,7 +73,7 @@
             </td>
           </tr>
           <tr v-if="!loading && !filteredOwners.length">
-            <td colspan="7" class="px-6 py-12 text-center text-slate-400">Belum ada data mitra</td>
+            <td colspan="5" class="px-6 py-12 text-center text-slate-400">Belum ada data mitra</td>
           </tr>
         </tbody>
       </table>
@@ -101,16 +97,6 @@
         <div>
           <label class="block text-xs font-bold text-slate-500 mb-1">WhatsApp</label>
           <input v-model="form.phone" type="text" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-        </div>
-        <div class="grid grid-cols-2 gap-4">
-          <div>
-            <label class="block text-xs font-bold text-slate-500 mb-1">Nama Bank</label>
-            <input v-model="form.bank_name" type="text" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label class="block text-xs font-bold text-slate-500 mb-1">No. Rekening</label>
-            <input v-model="form.bank_account" type="text" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-          </div>
         </div>
         <div v-if="editId" class="flex items-center gap-2">
           <input v-model="form.is_active" type="checkbox" id="is_active" class="rounded" />
@@ -138,7 +124,7 @@ const searchQuery = ref('')
 
 const editId = ref(null)
 
-const form = ref({ name: '', phone: '', bank_name: '', bank_account: '', is_active: 1 })
+const form = ref({ name: '', phone: '', is_active: 1 })
 const currentPage = ref(1)
 const pageSize = ref(10)
 const filteredOwners = computed(() => {
@@ -163,13 +149,13 @@ watch([searchQuery, pageSize], () => {
 
 function openAdd() {
   editId.value = null
-  form.value = { name: '', phone: '', bank_name: '', bank_account: '', is_active: 1 }
+  form.value = { name: '', phone: '', is_active: 1 }
   showModal.value = true
 }
 
 function openEdit(o) {
   editId.value = o.id
-  form.value = { name: o.name, phone: o.phone, bank_name: o.bank_name, bank_account: o.bank_account, is_active: o.is_active }
+  form.value = { name: o.name, phone: o.phone, is_active: o.is_active }
   showModal.value = true
 }
 

@@ -19,8 +19,8 @@
         class="border border-slate-200 rounded-lg px-3 py-2 text-sm w-64" />
       <select v-model="filterType" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
         <option value="">Semua Tipe</option>
-        <option value="pribadi">Pribadi</option>
-        <option value="titipan">Titipan</option>
+        <option value="aset_pt">aset_pt</option>
+        <option value="milik_pemilik">milik_pemilik</option>
       </select>
       <select v-model.number="pageSize" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
         <option :value="10">10 / halaman</option>
@@ -54,9 +54,9 @@
             <td class="px-6 py-4 font-semibold text-primary">{{ m.model }}</td>
             <td class="px-6 py-4 text-slate-500 font-mono">{{ m.plate_number }}</td>
             <td class="px-6 py-4">
-              <span :class="m.type === 'pribadi' ? 'badge-neutral' : 'badge-warning'">{{ m.type }}</span>
+              <span :class="isAsetPt(m.type) ? 'badge-neutral' : 'badge-warning'">{{ getMotorTypeLabel(m.type) }}</span>
             </td>
-            <td class="px-6 py-4 font-medium">{{ m.type === 'pribadi' ? '20%' : '30%' }}</td>
+            <td class="px-6 py-4 font-medium">{{ getWavyPctLabel(m.type) }}</td>
             <td class="px-6 py-4 text-slate-500">{{ m.owner_name || '-' }}</td>
             <td class="px-6 py-4 text-right">
               <div class="flex gap-1 justify-end">
@@ -102,8 +102,8 @@
           <div class="col-span-2">
             <label class="block text-xs font-bold text-slate-500 mb-1">Tipe</label>
             <select v-model="form.type" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required>
-              <option value="pribadi">Pribadi (Wavy 20% / Owner 80%)</option>
-              <option value="titipan">Titipan (Wavy 30% / Owner 70%)</option>
+              <option value="aset_pt">aset_pt (Wavy 20% / Mitra 80%)</option>
+              <option value="milik_pemilik">milik_pemilik (Wavy 30% / Mitra 70%)</option>
             </select>
           </div>
           <div class="col-span-2">
@@ -136,12 +136,6 @@
               </div>
               <input v-model="ownerForm.phone" type="text" placeholder="No. HP / WA"
                 class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-              <input v-model="ownerForm.bank_name" type="text" placeholder="Bank (BCA, BNI...)"
-                class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-              <div class="col-span-2">
-                <input v-model="ownerForm.bank_account" type="text" placeholder="No. Rekening"
-                  class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-              </div>
             </div>
           </div>
         </div>
@@ -158,6 +152,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import SearchSelect from '../components/SearchSelect.vue'
+import { getMotorTypeLabel, getWavyPctLabel, isAsetPt, normalizeMotorType } from '../utils/motorType'
 
 const motors = ref([])
 const loading = ref(false)
@@ -166,19 +161,19 @@ const showModal = ref(false)
 const editId = ref(null)
 const search = ref('')
 const filterType = ref('')
-const form = ref({ model: '', plate_number: '', type: 'pribadi', owner_id: '' })
+const form = ref({ model: '', plate_number: '', type: 'aset_pt', owner_id: '' })
 const currentPage = ref(1)
 const pageSize = ref(10)
 
 const isCreatingOwner = ref(false)
-const ownerForm = ref({ name: '', phone: '', bank_name: '', bank_account: '' })
+const ownerForm = ref({ name: '', phone: '' })
 
 const ownerOptions = computed(() => owners.value.map(o => ({ value: o.id, label: o.name, sub: o.phone || '' })))
 
 const motorError = ref('')
 
 const filteredMotors = computed(() => motors.value.filter(m => {
-  if (filterType.value && m.type !== filterType.value) return false
+  if (filterType.value && normalizeMotorType(m.type) !== normalizeMotorType(filterType.value)) return false
   if (search.value) {
     const q = search.value.toLowerCase()
     return m.model.toLowerCase().includes(q) || m.plate_number.toLowerCase().includes(q)
@@ -195,18 +190,18 @@ const pageEnd = computed(() => Math.min(currentPage.value * pageSize.value, filt
 
 function openAdd() {
   editId.value = null
-  form.value = { model: '', plate_number: '', type: 'pribadi', owner_id: '' }
+  form.value = { model: '', plate_number: '', type: 'aset_pt', owner_id: '' }
   isCreatingOwner.value = false
-  ownerForm.value = { name: '', phone: '', bank_name: '', bank_account: '' }
+  ownerForm.value = { name: '', phone: '' }
   motorError.value = ''
   showModal.value = true
 }
 
 function openEdit(m) {
   editId.value = m.id
-  form.value = { model: m.model, plate_number: m.plate_number, type: m.type, owner_id: m.owner_id || '' }
+  form.value = { model: m.model, plate_number: m.plate_number, type: normalizeMotorType(m.type), owner_id: m.owner_id || '' }
   isCreatingOwner.value = false
-  ownerForm.value = { name: '', phone: '', bank_name: '', bank_account: '' }
+  ownerForm.value = { name: '', phone: '' }
   motorError.value = ''
   showModal.value = true
 }
@@ -239,7 +234,11 @@ async function submitMotor() {
     }
   }
 
-  const payload = { ...form.value, owner_id: finalOwnerId ? Number(finalOwnerId) : null }
+  const payload = {
+    ...form.value,
+    type: normalizeMotorType(form.value.type),
+    owner_id: finalOwnerId ? Number(finalOwnerId) : null
+  }
 
   try {
     if (editId.value) {

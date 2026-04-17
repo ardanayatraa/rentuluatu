@@ -429,9 +429,9 @@
           <div class="px-6 pt-5 mb-4 flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
             <div>
               <h3 class="text-sm font-extrabold text-primary">Jejak Extend & Ganti Unit</h3>
-              <p class="text-xs text-slate-400 mt-1">Rantai transaksi per rental: transaksi awal, ganti unit, dan extend</p>
+            <p class="text-xs text-slate-400 mt-1">Riwayat sewa per transaksi: transaksi awal, ganti unit, dan extend</p>
             </div>
-            <span class="badge-neutral text-xs">{{ rentalJourneys.length }} rantai</span>
+            <span class="badge-neutral text-xs">{{ rentalJourneys.length }} riwayat sewa</span>
           </div>
           <div class="px-6 pb-5 space-y-3">
             <div v-for="(journey, index) in rentalJourneys" :key="journey.key || index" class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
@@ -549,7 +549,7 @@
           </div>
           <div class="card mb-4 p-4 bg-slate-50 border border-slate-200 rounded-xl">
             <p class="text-sm font-bold text-slate-700">{{ commissionData.owner.name }}</p>
-            <p class="text-xs text-slate-500">{{ commissionData.owner.bank_name }} — {{ commissionData.owner.bank_account }}</p>
+            <p class="text-xs text-slate-500">Kontak: {{ commissionData.owner.phone || '-' }}</p>
             <p class="text-xs text-slate-500">Motor: {{ commissionData.motors.map(m=>m.model+' ('+m.plate_number+')').join(', ') }}</p>
           </div>
           <div class="card table-card">
@@ -585,7 +585,6 @@
           <table class="table-base text-left">
             <thead><tr class="text-slate-400 text-xs uppercase font-bold border-b border-slate-100">
               <th class="pb-3">Pemilik</th>
-              <th class="pb-3">Bank</th>
               <th class="pb-3 text-right">Motor</th>
               <th class="pb-3 text-right">Rental</th>
               <th class="pb-3 text-right">Total Omzet</th>
@@ -599,10 +598,6 @@
                   <p class="font-semibold text-slate-800">{{ o.name }}</p>
                   <p class="text-xs text-slate-400">{{ o.phone || '-' }}</p>
                 </td>
-                <td class="py-3 text-xs text-slate-500">
-                  {{ o.bank_name || '-' }}<br>
-                  <span class="font-mono">{{ o.bank_account || '-' }}</span>
-                </td>
                 <td class="py-3 text-right">{{ o.motor_count }}</td>
                 <td class="py-3 text-right">{{ o.rental_count }}x</td>
                 <td class="py-3 text-right">{{ formatRp(o.total_omzet) }}</td>
@@ -614,13 +609,13 @@
               </tr>
               <!-- Total row -->
               <tr v-if="ownerReportData.length" class="text-sm font-bold border-t-2 border-slate-300 bg-slate-50">
-                <td class="py-3" colspan="4">TOTAL ({{ ownerReportData.length }} pemilik)</td>
+                <td class="py-3" colspan="3">TOTAL ({{ ownerReportData.length }} pemilik)</td>
                 <td class="py-3 text-right">{{ formatRp(ownerReportData.reduce((s,o)=>s+o.total_omzet,0)) }}</td>
                 <td class="py-3 text-right">{{ formatRp(ownerReportData.reduce((s,o)=>s+o.gross_commission,0)) }}</td>
                 <td class="py-3 text-right text-red-500">{{ formatRp(ownerReportData.reduce((s,o)=>s+o.total_expenses,0)) }}</td>
                 <td class="py-3 text-right text-emerald-600">{{ formatRp(ownerReportData.reduce((s,o)=>s+(o.gross_commission-o.total_expenses),0)) }}</td>
               </tr>
-              <tr v-if="!ownerReportData.length"><td colspan="8" class="py-8 text-center text-slate-400">Belum ada data</td></tr>
+              <tr v-if="!ownerReportData.length"><td colspan="7" class="py-8 text-center text-slate-400">Belum ada data</td></tr>
             </tbody>
           </table>
           </div>
@@ -641,7 +636,7 @@
               <tr v-for="(m, i) in motorRanking" :key="m.id" class="text-sm">
                 <td class="py-3 font-black text-slate-400">{{ i + 1 }}</td>
                 <td class="py-3 font-medium">{{ m.model }} <span class="text-slate-400">· {{ m.plate_number }}</span></td>
-                <td class="py-3"><span :class="m.type === 'pribadi' ? 'badge-neutral' : 'badge-warning'">{{ m.type }}</span></td>
+                <td class="py-3"><span :class="isAsetPt(m.type) ? 'badge-neutral' : 'badge-warning'">{{ getMotorTypeLabel(m.type) }}</span></td>
                 <td class="py-3 text-right">{{ m.total_rentals }}x</td>
                 <td class="py-3 text-right">{{ m.total_days }} hari</td>
                 <td class="py-3 text-right font-bold text-primary">{{ formatRp(m.total_wavy) }}</td>
@@ -661,6 +656,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { formatRp, formatDate, formatDateTime, today } from '../utils/format'
 import SearchSelect from '../components/SearchSelect.vue'
+import { getMotorTypeLabel, isAsetPt } from '../utils/motorType'
 import {
   buildFinancialHtml, buildMotorIncomeHtml, buildMotorExpensesHtml,
   buildTransactionsHtml, buildOwnerCommissionHtml, previewReport,

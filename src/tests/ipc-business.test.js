@@ -27,6 +27,7 @@ import { registerRentalHandlers } from '../main/ipc/rentals.js'
 import { registerOwnerHandlers } from '../main/ipc/owners.js'
 import { registerHotelHandlers } from '../main/ipc/hotels.js'
 import { registerRefundHandlers } from '../main/ipc/refunds.js'
+import { registerExpenseHandlers } from '../main/ipc/expenses.js'
 
 describe('IPC business logic', () => {
   beforeEach(() => {
@@ -158,13 +159,15 @@ describe('IPC business logic', () => {
     expect(() => createRental(null, {
       motor_id: 1,
       total_price: 300_000,
-      vendor_fee: -1
+      vendor_fee: -1,
+      payment_method: 'tunai'
     })).toThrow('Vendor fee tidak boleh negatif')
 
     expect(() => createRental(null, {
       motor_id: 1,
       total_price: 300_000,
-      vendor_fee: 400_000
+      vendor_fee: 400_000,
+      payment_method: 'tunai'
     })).toThrow('Vendor fee tidak boleh melebihi total harga sewa')
   })
 
@@ -185,7 +188,7 @@ describe('IPC business logic', () => {
       hotel_id: 3,
       motor_id: 1,
       period_days: 2,
-      payment_method: 'cash',
+      payment_method: 'tunai',
       total_price: 500_000,
       vendor_fee: 100_000
     })
@@ -200,10 +203,10 @@ describe('IPC business logic', () => {
         3,
         1,
         2,
-        'cash',
-        500_000,
-        250_000,
-        100_000,
+          'tunai',
+          500_000,
+          250_000,
+          100_000,
         400_000,
         120_000,
         280_000,
@@ -220,6 +223,69 @@ describe('IPC business logic', () => {
       [500_000, 7]
     )
     expect(saveDb).toHaveBeenCalled()
+  })
+
+  it('rental update merekonsiliasi saldo kas lama lalu menulis transaksi kas baru', async () => {
+    dbOps.get.mockImplementation((sql, params) => {
+      if (sql.includes('SELECT * FROM rentals WHERE id = ?')) {
+        return {
+          id: params[0],
+          payout_id: null,
+          hotel_payout_id: null,
+          relation_type: 'rental',
+          status: 'completed'
+        }
+      }
+      if (sql.includes('SELECT * FROM motors WHERE id = ?')) return { id: 2, type: 'titipan', model: 'NMax' }
+      if (sql.includes("SELECT * FROM cash_transactions WHERE reference_type = 'rental'")) {
+        return { id: 70, cash_account_id: 1, type: 'in', amount: 300_000 }
+      }
+      if (sql.includes('SELECT * FROM cash_accounts WHERE type = ?')) return { id: 3, type: params[0], name: 'QRIS' }
+      return null
+    })
+
+    registerRentalHandlers()
+    const result = handlers.get('rental:update')(null, {
+      id: 99,
+      date_time: '2026-04-08T10:00:00',
+      customer_name: 'Dian',
+      hotel: null,
+      hotel_id: null,
+      motor_id: 2,
+      period_days: 2,
+      payment_method: 'qris',
+      total_price: 450_000,
+      vendor_fee: 50_000
+    })
+
+    expect(result).toEqual({ success: true })
+    expect(dbOps.run).toHaveBeenCalledWith(
+      'UPDATE cash_accounts SET balance = balance + ? WHERE id = ?',
+      [-300_000, 1]
+    )
+    expect(dbOps.run).toHaveBeenCalledWith(
+      'UPDATE cash_accounts SET balance = balance + ? WHERE id = ?',
+      [450_000, 3]
+    )
+    expect(dbOps.run).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO cash_transactions'),
+      [3, 450_000, 99, 'Sewa NMax - Dian', '2026-04-08']
+    )
+    expect(saveDb).toHaveBeenCalled()
+  })
+
+  it('rental delete menolak hapus data yang terkait rantai ganti unit', async () => {
+    dbOps.get.mockImplementation((sql) => {
+      if (sql.includes('SELECT * FROM rentals WHERE id = ?')) {
+        return { id: 11, payout_id: null, hotel_payout_id: null, status: 'completed' }
+      }
+      if (sql.includes('SELECT id FROM rental_swaps')) return { id: 5 }
+      return null
+    })
+
+    registerRentalHandlers()
+    expect(() => handlers.get('rental:delete')(null, 11))
+      .toThrow('Rental terkait ganti unit tidak bisa dihapus satuan. Batalkan data ganti unit dari menu Ganti Unit.')
   })
 
   it('owner payout tetap bisa diproses saat net payout Rp 0 tanpa akun kas', async () => {
@@ -286,62 +352,28 @@ describe('IPC business logic', () => {
     })).toThrow('Jumlah payout tidak sesuai. Server menghitung Rp 200.000')
   })
 
-  it('hotel payout memvalidasi amount di server dan menolak manipulasi client', async () => {
-    dbOps.get.mockImplementation((sql, params) => {
-      if (sql.includes('SELECT * FROM cash_accounts WHERE id = ?')) return { id: params[0], name: 'Kas Utama', balance: 1_000_000 }
-      return null
-    })
-    dbOps.all.mockImplementation((sql) => {
-      if (sql.includes('SELECT id, vendor_fee FROM rentals')) {
-        return [
-          { id: 1, vendor_fee: 50_000 },
-          { id: 2, vendor_fee: 75_000 }
-        ]
-      }
-      return []
-    })
-
+  it('hotel payout dinonaktifkan karena fee vendor dibayar tunai saat transaksi', async () => {
     registerHotelHandlers()
     expect(() => handlers.get('hotel:payout')(null, {
       hotel_id: 3,
       hotel_name: 'Hotel A',
-      rental_ids: [1, 2],
-      net_amount: 999_999,
+      rental_ids: [1],
+      net_amount: 50_000,
       cash_account_id: 7,
       date: '2026-04-07'
-    })).toThrow('Jumlah payout tidak sesuai. Server menghitung Rp 125.000')
+    })).toThrow('Pembayaran terpisah fee vendor dinonaktifkan. Fee vendor dibayar tunai saat transaksi rental.')
   })
 
-  it('hotel payout hanya membayar rental ids yang dipreview', async () => {
-    dbOps.get.mockImplementation((sql, params) => {
-      if (sql.includes('SELECT * FROM cash_accounts WHERE id = ?')) return { id: params[0], name: 'Kas Utama', balance: 1_000_000 }
-      if (sql.includes('SELECT last_insert_rowid() as id')) return { id: 88 }
-      return null
-    })
-    dbOps.all.mockImplementation((sql, params) => {
-      if (sql.includes('SELECT id, vendor_fee FROM rentals')) {
-        expect(params).toEqual([3, 2])
-        return [{ id: 2, vendor_fee: 75_000 }]
-      }
-      return []
-    })
-
+  it('hotel payout selalu menolak request payout walau payload valid', async () => {
     registerHotelHandlers()
-    const result = handlers.get('hotel:payout')(null, {
+    expect(() => handlers.get('hotel:payout')(null, {
       hotel_id: 3,
       hotel_name: 'Hotel A',
       rental_ids: [2],
       net_amount: 75_000,
       cash_account_id: 7,
       date: '2026-04-07'
-    })
-
-    expect(result).toEqual({ success: true, payoutId: 88 })
-    expect(dbOps.run).toHaveBeenCalledWith(
-      'UPDATE cash_accounts SET balance = balance - ? WHERE id = ?',
-      [75_000, 7]
-    )
-    expect(saveDb).toHaveBeenCalled()
+    })).toThrow('Pembayaran terpisah fee vendor dinonaktifkan. Fee vendor dibayar tunai saat transaksi rental.')
   })
 
   it('refund create menolak nominal nol atau melebihi total rental', async () => {
@@ -369,5 +401,57 @@ describe('IPC business logic', () => {
       refund_amount: 400_000,
       remaining_days: 1
     })).toThrow('Nominal refund tidak boleh melebihi total harga rental')
+  })
+
+  it('expense create menolak ketika saldo akun kas tidak cukup', async () => {
+    dbOps.get.mockImplementation((sql, params) => {
+      if (sql.includes('SELECT * FROM cash_accounts WHERE type = ?')) {
+        return { id: 3, name: 'QRIS', type: params[0], balance: 1_000 }
+      }
+      return null
+    })
+
+    registerExpenseHandlers()
+    const createExpense = handlers.get('expense:create')
+
+    expect(() => createExpense(null, {
+      type: 'umum',
+      motor_id: null,
+      category: 'lainnya',
+      amount: 10_000,
+      payment_method: 'qris',
+      description: 'Test overspend',
+      date: '2026-04-17'
+    })).toThrow('Saldo Kas QRIS tidak cukup! (Sisa: Rp 1.000)')
+  })
+
+  it('expense create menormalisasi metode qriss menjadi qris', async () => {
+    dbOps.get.mockImplementation((sql, params) => {
+      if (sql.includes('SELECT * FROM cash_accounts WHERE type = ?')) {
+        expect(params[0]).toBe('qris')
+        return { id: 4, name: 'QRIS', type: 'qris', balance: 50_000 }
+      }
+      if (sql.includes('SELECT last_insert_rowid() as id')) return { id: 123 }
+      return null
+    })
+
+    registerExpenseHandlers()
+    const createExpense = handlers.get('expense:create')
+
+    const result = createExpense(null, {
+      type: 'umum',
+      motor_id: null,
+      category: 'lainnya',
+      amount: 10_000,
+      payment_method: 'qriss',
+      description: 'Normalisasi qris',
+      date: '2026-04-17'
+    })
+
+    expect(result).toEqual({ id: 123 })
+    expect(dbOps.runRaw).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO expenses'),
+      expect.arrayContaining(['qris'])
+    )
   })
 })

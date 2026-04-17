@@ -46,8 +46,8 @@ function ensureSandboxMasterData({ rentalCount = 500 } = {}) {
     dbOps.run('INSERT INTO owners (name, phone, bank_account, bank_name) VALUES (?, ?, ?, ?)', [
         ownerName,
         `08123${randomInt(100000, 999999)}`,
-        `1000${randomInt(100000, 999999)}`,
-        ['BCA', 'BRI', 'BNI'][index % 3]
+        null,
+        null
       ])
     created.owners += 1
   }
@@ -76,7 +76,7 @@ function ensureSandboxMasterData({ rentalCount = 500 } = {}) {
   if (targetMotors > motorCount) {
     for (let index = motorCount; index < targetMotors; index += 1) {
       const owner = owners[index % owners.length]
-      const type = index % 4 === 0 ? 'pribadi' : 'titipan'
+      const type = index % 4 === 0 ? 'aset_pt' : 'milik_pemilik'
       dbOps.run('INSERT INTO motors (model, plate_number, type, owner_id) VALUES (?, ?, ?, ?)', [
         motorModels[index % motorModels.length],
         `DK ${randomInt(1000, 9999)} ${String.fromCharCode(65 + (index % 26))}${String.fromCharCode(65 + ((index + 7) % 26))}`,
@@ -247,8 +247,8 @@ function seedSandboxData({ rentalCount = 500, daysBack = 365 }) {
     const extendDays = randomInt(1, 4)
     const extendPricePerDay = pick([75000, 85000, 100000, 125000, 150000])
     const extendTotal = extendDays * extendPricePerDay
-    const vendorRatio = parent.totalPrice > 0 ? Number(parent.vendorFee || 0) / Number(parent.totalPrice || 1) : 0
-    const extendVendorFee = Math.min(extendTotal, Math.max(0, Math.round(extendTotal * vendorRatio)))
+    // Aturan bisnis: extend tidak membawa fee vendor.
+    const extendVendorFee = 0
     const extendCommission = calcCommission(parent.motorType, extendTotal, extendVendorFee)
     const extendDateTime = randomDateTimeWithinDays(daysBack)
     const extendInvoice = `EXT-${extendDateTime.slice(0, 10).replace(/-/g, '')}-${String(parent.id).padStart(5, '0')}-${index + 1}`
@@ -324,7 +324,8 @@ function seedSandboxData({ rentalCount = 500, daysBack = 365 }) {
     if (!replacementMotor) continue
     const replacementPricePerDay = pick([75000, 85000, 100000, 125000, 150000, 175000])
     const replacementTotal = Math.round(replacementPricePerDay * remainingDays)
-    const replacementVendorFee = Math.round(Math.min(replacementTotal, Math.max(0, replacementTotal * sourceVendorRatio)))
+    // Aturan bisnis: motor pengganti tidak membawa fee vendor.
+    const replacementVendorFee = 0
     const replacementCommission = calcCommission(replacementMotor.type, replacementTotal, replacementVendorFee)
     const switchDateTime = randomDateTimeWithinDays(daysBack)
     const replacementInvoice = `SWP-${switchDateTime.slice(0, 10).replace(/-/g, '')}-${String(source.id).padStart(5, '0')}-${index + 1}`

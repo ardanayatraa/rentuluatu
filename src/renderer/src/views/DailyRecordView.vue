@@ -99,7 +99,7 @@
             <th class="px-6 py-4">Periode</th>
             <th class="px-6 py-4">Bayar</th>
             <th class="px-6 py-4 text-right">Harga Kotor</th>
-            <th class="px-6 py-4 text-right">Fee Vendor</th>
+            <th v-if="showVendorFeeColumn" class="px-6 py-4 text-right">Fee Vendor</th>
             <th class="px-6 py-4 text-right">Wavy Gets</th>
             <th class="px-6 py-4 text-right">Bagian Mitra</th>
             <th class="px-6 py-4 text-right">Status</th>
@@ -108,7 +108,7 @@
         </thead>
         <tbody class="divide-y divide-slate-50">
           <tr v-if="loading" v-for="index in 6" :key="`sk-${index}`">
-            <td colspan="13" class="px-6 py-4">
+            <td :colspan="tableColumnCount" class="px-6 py-4">
               <div class="skeleton h-10 rounded-xl"></div>
             </td>
           </tr>
@@ -158,7 +158,7 @@
               <span :class="paymentMethodBadge(r.payment_method)">{{ paymentMethodLabel(r.payment_method) }}</span>
             </td>
             <td class="px-6 py-4 text-right font-semibold">{{ formatRp(r.total_price) }}</td>
-            <td class="px-6 py-4 text-right text-amber-600">{{ r.vendor_fee > 0 ? formatRp(r.vendor_fee) : '-' }}</td>
+            <td v-if="showVendorFeeColumn" class="px-6 py-4 text-right text-amber-600">{{ r.vendor_fee > 0 ? formatRp(r.vendor_fee) : '-' }}</td>
             <td class="px-6 py-4 text-right font-bold text-primary">{{ formatRp(r.wavy_gets) }}</td>
             <td class="px-6 py-4 text-right text-slate-600">{{ formatRp(r.owner_gets) }}</td>
             <td class="px-6 py-4 text-right">
@@ -185,16 +185,18 @@
                   class="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-500 transition-colors" title="Refund">
                   <span class="material-symbols-outlined text-base">undo</span>
                 </button>
-                <button v-if="!r.payout_id && !r.hotel_payout_id"
+                <button
                   @click="deleteRental(r)"
-                  class="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-500 transition-colors" title="Hapus">
+                  class="p-1.5 rounded transition-colors hover:bg-red-50 text-slate-400 hover:text-red-500"
+                  title="Hapus"
+                >
                   <span class="material-symbols-outlined text-base">delete</span>
                 </button>
               </div>
             </td>
           </tr>
           <tr v-if="!loading && !filteredRentals.length">
-            <td colspan="13" class="px-6 py-12 text-center text-slate-400">Belum ada data rental</td>
+            <td :colspan="tableColumnCount" class="px-6 py-12 text-center text-slate-400">Belum ada data rental</td>
           </tr>
         </tbody>
       </table>
@@ -257,7 +259,7 @@
             <!-- Selected motor info -->
             <div v-if="selectedMotor" class="mt-2 bg-primary/5 border border-primary/20 rounded-lg px-3 py-2 text-sm flex justify-between">
               <span class="font-semibold text-primary">{{ selectedMotor.model }} · {{ selectedMotor.plate_number }}</span>
-              <span class="text-slate-500 text-xs">{{ selectedMotor.type === 'pribadi' ? '20/80' : '30/70' }}{{ selectedMotor.owner_name ? ' · ' + selectedMotor.owner_name : '' }}</span>
+              <span class="text-slate-500 text-xs">{{ getSplitLabel(selectedMotor.type) }}{{ selectedMotor.owner_name ? ' · ' + selectedMotor.owner_name : '' }}</span>
             </div>
           </div>
           <div class="col-span-2">
@@ -346,11 +348,11 @@
             <span class="font-bold">{{ formatRp(form.total_price - (form.vendor_fee || 0)) }}</span>
           </div>
           <div class="flex justify-between text-primary">
-            <span>Wavy Gets ({{ selectedMotor.type === 'pribadi' ? '20%' : '30%' }})</span>
+            <span>Wavy Gets ({{ getWavyPctLabel(selectedMotor.type) }})</span>
             <span class="font-bold">{{ formatRp(calcWavy()) }}</span>
           </div>
           <div class="flex justify-between text-slate-600">
-            <span>Bagian Mitra ({{ selectedMotor.type === 'pribadi' ? '80%' : '70%' }})</span>
+            <span>Bagian Mitra ({{ `${Math.round(getOwnerPct(selectedMotor.type) * 100)}%` }})</span>
             <span class="font-bold">{{ formatRp(calcOwner()) }}</span>
           </div>
         </div>
@@ -570,6 +572,7 @@
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { formatRp, formatDate, nowDateTime } from '../utils/format'
+import { getOwnerPct, getSplitLabel, getWavyPct, getWavyPctLabel } from '../utils/motorType'
 
 function formatTime(dateStr) {
   if (!dateStr) return '-'
@@ -648,6 +651,10 @@ function canSwapRental(rental) {
     !rental.hotel_payout_id &&
     Number(rental.period_days || 0) > 1 &&
     (relation === 'rental' || relation === 'swap')
+}
+
+function canDeleteRental(rental) {
+  return !rental?.payout_id && !rental?.hotel_payout_id
 }
 
 const filteredRentals = computed(() => {
@@ -732,6 +739,9 @@ const filteredSwapMotorOptions = computed(() => {
     return model.includes(keyword) || plate.includes(keyword) || owner.includes(keyword)
   })
 })
+
+const showVendorFeeColumn = computed(() => activeRecordTab.value === 'rental')
+const tableColumnCount = computed(() => (showVendorFeeColumn.value ? 13 : 12))
 
 const totalPages = computed(() => Math.max(1, Math.ceil(filteredRentals.value.length / pageSize.value)))
 const pagedRentals = computed(() => {
@@ -972,13 +982,13 @@ function paymentMethodBadge(method) {
 function calcWavy() {
   if (!selectedMotor.value) return 0
   const sisa = form.value.total_price - (form.value.vendor_fee || 0)
-  return sisa * (selectedMotor.value.type === 'pribadi' ? 0.20 : 0.30)
+  return sisa * getWavyPct(selectedMotor.value.type)
 }
 
 function calcOwner() {
   if (!selectedMotor.value) return 0
   const sisa = form.value.total_price - (form.value.vendor_fee || 0)
-  return sisa * (selectedMotor.value.type === 'pribadi' ? 0.80 : 0.70)
+  return sisa * getOwnerPct(selectedMotor.value.type)
 }
 
 function calcRefundAmount() {
@@ -1065,6 +1075,15 @@ async function submitSwap() {
 }
 
 async function deleteRental(rental) {
+  if (!canDeleteRental(rental)) {
+    const steps = []
+    if (rental?.payout_id) steps.push('Batalkan dulu pencairan hak mitra untuk transaksi ini.')
+    if (rental?.hotel_payout_id) steps.push('Batalkan dulu pencairan fee vendor untuk transaksi ini.')
+    const numberedSteps = steps.map((item, index) => `${index + 1}. ${item}`).join('\n')
+    alert(`Transaksi ini belum bisa dihapus.\n\nSilakan selesaikan dulu:\n${numberedSteps}\n\nSetelah itu, baru hapus transaksi ini.`)
+    return
+  }
+
   const label = `${rental.customer_name} - ${rental.model} (${rental.invoice_number || 'no invoice'})`
   if (!confirm(`Hapus rental "${label}"?\n\nSaldo kas akan dikembalikan. Tindakan ini tidak bisa dibatalkan.`)) return
   try {

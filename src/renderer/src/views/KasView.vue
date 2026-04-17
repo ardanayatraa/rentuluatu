@@ -43,9 +43,22 @@
       <div class="p-6 border-b border-slate-100 flex justify-between items-center">
         <h3 class="text-lg font-extrabold text-primary font-headline">Riwayat Mutasi</h3>
         <div class="flex gap-3">
+          <button @click="exportPdf" :disabled="exporting" class="btn-secondary text-xs py-2 disabled:opacity-60">
+            <span class="material-symbols-outlined text-sm">visibility</span>
+            Lihat Laporan
+          </button>
+          <button @click="exportExcel" :disabled="exporting" class="btn-secondary text-xs py-2 disabled:opacity-60">
+            <span class="material-symbols-outlined text-sm">table_view</span>
+            Simpan Excel
+          </button>
           <select v-model="filterAccount" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
             <option value="">Semua Akun</option>
             <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.name }}</option>
+          </select>
+          <select v-model="filterType" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+            <option value="">Semua Tipe</option>
+            <option value="in">Pemasukan</option>
+            <option value="out">Pengeluaran</option>
           </select>
           <input v-model="filterDate" type="date" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
           <select v-model.number="pageSize" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
@@ -163,6 +176,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { formatRp, formatDate } from '../utils/format'
+import { buildSimpleTableHtml, previewReport } from '../utils/pdf'
 
 const accounts = ref([])
 const total = ref(0)
@@ -172,9 +186,11 @@ const showOpeningModal = ref(false)
 const showIncomeModal = ref(false)
 const openingBalances = ref({})
 const filterAccount = ref('')
+const filterType = ref('')
 const filterDate = ref('')
 const currentPage = ref(1)
 const pageSize = ref(10)
+const exporting = ref(false)
 
 const incomeForm = ref({
   description: '',
@@ -189,6 +205,19 @@ const pagedTransactions = computed(() => {
 })
 const pageStart = computed(() => transactions.value.length ? ((currentPage.value - 1) * pageSize.value) + 1 : 0)
 const pageEnd = computed(() => Math.min(currentPage.value * pageSize.value, transactions.value.length))
+const totalIncome = computed(() => transactions.value.filter(t => t.type === 'in').reduce((sum, t) => sum + Number(t.amount || 0), 0))
+const totalExpense = computed(() => transactions.value.filter(t => t.type === 'out').reduce((sum, t) => sum + Number(t.amount || 0), 0))
+const netFlow = computed(() => totalIncome.value - totalExpense.value)
+const selectedAccountName = computed(() => {
+  if (!filterAccount.value) return 'Semua Akun'
+  return accounts.value.find(a => Number(a.id) === Number(filterAccount.value))?.name || 'Semua Akun'
+})
+const selectedTypeLabel = computed(() => {
+  if (filterType.value === 'in') return 'Pemasukan'
+  if (filterType.value === 'out') return 'Pengeluaran'
+  return 'Semua Tipe'
+})
+const periodLabel = computed(() => filterDate.value ? formatDate(filterDate.value) : 'Semua Tanggal')
 
 function kasCardClass(type) {
   if (type === 'transfer') return 'bg-primary text-white'
@@ -252,6 +281,7 @@ async function submitIncome() {
 async function loadTransactions() {
   const filters = {}
   if (filterAccount.value) filters.accountId = filterAccount.value
+  if (filterType.value) filters.type = filterType.value
   if (filterDate.value) { filters.startDate = filterDate.value; filters.endDate = filterDate.value }
   loading.value = true
   try {
@@ -276,6 +306,90 @@ async function saveOpeningBalance() {
   }
   showOpeningModal.value = false
   await reloadCash()
+}
+
+function getExportFileLabel() {
+  const account = selectedAccountName.value.replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, '_')
+  const type = selectedTypeLabel.value.replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, '_')
+  const date = filterDate.value ? filterDate.value : 'Semua_Tanggal'
+  return `${account}_${type}_${date}`
+}
+
+async function exportPdf() {
+  exporting.value = true
+  try {
+    const html = buildSimpleTableHtml({
+      title: 'Laporan Mutasi Kas & Keuangan',
+      subtitle: `Akun: ${selectedAccountName.value} · Tipe: ${selectedTypeLabel.value}`,
+      period: periodLabel.value,
+      summary: [
+        { label: 'Total Pemasukan', value: formatRp(totalIncome.value) },
+        { label: 'Total Pengeluaran', value: formatRp(totalExpense.value) },
+        { label: 'Selisih Arus Kas', value: formatRp(netFlow.value) },
+        { label: 'Jumlah Mutasi', value: `${transactions.value.length}x` }
+      ],
+      columns: [
+        { key: 'date', label: 'Tanggal' },
+        { key: 'description', label: 'Deskripsi' },
+        { key: 'account', label: 'Akun Kas' },
+        { key: 'type', label: 'Tipe' },
+        { key: 'amount', label: 'Jumlah', align: 'right' }
+      ],
+      rows: transactions.value.map(item => ({
+        date: formatDate(item.date),
+        description: item.description || '-',
+        account: item.account_name || '-',
+        type: item.type === 'in' ? 'Pemasukan' : 'Pengeluaran',
+        amount: `${item.type === 'in' ? '+' : '-'}${formatRp(item.amount)}`
+      })),
+      emptyMessage: 'Belum ada mutasi pada filter ini'
+    })
+    await previewReport(html, `Kas_Keuangan_${getExportFileLabel()}.pdf`)
+  } finally {
+    exporting.value = false
+  }
+}
+
+async function exportExcel() {
+  exporting.value = true
+  try {
+    const columns = [
+      { header: 'Tanggal', key: 'date', width: 18 },
+      { header: 'Deskripsi', key: 'description', width: 34 },
+      { header: 'Akun Kas', key: 'account', width: 18 },
+      { header: 'Tipe', key: 'type', width: 14 },
+      { header: 'Pemasukan', key: 'income', width: 18 },
+      { header: 'Pengeluaran', key: 'expense', width: 18 }
+    ]
+    const rows = transactions.value.map(item => ({
+      date: formatDate(item.date),
+      description: item.description || '-',
+      account: item.account_name || '-',
+      type: item.type === 'in' ? 'Pemasukan' : 'Pengeluaran',
+      income: item.type === 'in' ? Number(item.amount || 0) : 0,
+      expense: item.type === 'out' ? Number(item.amount || 0) : 0
+    }))
+    const totals = {
+      date: 'TOTAL',
+      description: `${transactions.value.length} mutasi`,
+      account: '',
+      type: '',
+      income: Number(totalIncome.value),
+      expense: Number(totalExpense.value)
+    }
+    await window.api.saveExcel({
+      defaultName: `Kas_Keuangan_${getExportFileLabel()}.xlsx`,
+      sheets: [{
+        name: 'Mutasi Kas',
+        columns,
+        rows,
+        totals,
+        currencyKeys: ['income', 'expense']
+      }]
+    })
+  } finally {
+    exporting.value = false
+  }
 }
 
 onMounted(async () => {

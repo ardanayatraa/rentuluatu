@@ -37,14 +37,6 @@
           <p class="text-base font-bold text-slate-800">{{ owner.phone || '-' }}</p>
         </div>
         <div class="space-y-1">
-          <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Bank</p>
-          <p class="text-base font-bold text-slate-800">{{ owner.bank_name || '-' }}</p>
-        </div>
-        <div class="space-y-1">
-          <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">No. Rekening</p>
-          <p class="text-base font-mono font-bold text-slate-800 break-all">{{ owner.bank_account || '-' }}</p>
-        </div>
-        <div class="space-y-1">
           <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Total Mengendap</p>
           <p class="text-[1.8rem] font-black text-orange-500">{{ formatRp(totalUnpaid) }}</p>
         </div>

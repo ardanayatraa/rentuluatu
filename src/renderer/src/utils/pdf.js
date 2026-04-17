@@ -470,7 +470,7 @@ export function buildOwnerCommissionHtml({ data, period }) {
     <div class="info-box" style="flex:1">
       <div class="info-label">Data Mitra</div>
       <div class="info-name">${owner.name}</div>
-      <div class="info-detail">No. HP: ${owner.phone || '-'}<br>Bank: ${owner.bank_name || '-'} &mdash; ${owner.bank_account || '-'}<br>Motor: ${motorList || '-'}</div>
+      <div class="info-detail">No. HP: ${owner.phone || '-'}<br>Motor: ${motorList || '-'}</div>
     </div>
     <div style="flex:1">
       <div class="summary-grid" style="grid-template-columns:repeat(2,1fr)">
@@ -644,7 +644,6 @@ export function printAnnualReport(args) { printWindow(buildAnnualHtml(args)) }
 export function buildOwnerReportHtml({ rows, period }) {
   const rowsHtml = rows.map(o => `<tr>
     <td>${o.name}<br><span style="color:#888;font-size:9px">${o.phone||'-'}</span></td>
-    <td>${o.bank_name||'-'}<br><span style="font-family:monospace;font-size:9px">${o.bank_account||'-'}</span></td>
     <td class="right">${o.motor_count}</td>
     <td class="right">${o.rental_count}x</td>
     <td class="right">${rp(o.total_omzet)}</td>
@@ -654,12 +653,12 @@ export function buildOwnerReportHtml({ rows, period }) {
   </tr>`).join('')
   return `${headerHtml('Laporan per Mitra', period)}
   <table><thead><tr>
-    <th>Mitra</th><th>Bank</th><th class="right">Motor</th><th class="right">Rental</th>
+    <th>Mitra</th><th class="right">Motor</th><th class="right">Rental</th>
     <th class="right">Omzet</th><th class="right">Hak Mitra Kotor</th><th class="right">Pengeluaran</th><th class="right">Hak Mitra Bersih</th>
   </tr></thead><tbody>
     ${rowsHtml}
     <tr style="font-weight:700;border-top:2px solid #111;background:#f9f9f9">
-      <td colspan="4">TOTAL (${rows.length} mitra)</td>
+      <td colspan="3">TOTAL (${rows.length} mitra)</td>
       <td class="right">${rp(rows.reduce((s,o)=>s+o.total_omzet,0))}</td>
       <td class="right">${rp(rows.reduce((s,o)=>s+o.gross_commission,0))}</td>
       <td class="right">${rp(rows.reduce((s,o)=>s+o.total_expenses,0))}</td>

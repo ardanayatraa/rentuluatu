@@ -48,6 +48,20 @@ describe('calcCommission — pembagian komisi sewa', () => {
     expect(result.owner_gets).toBe(360_000)
   })
 
+  it('motor aset_pt diperlakukan sama seperti pribadi (20/80)', () => {
+    const result = calcCommission('aset_pt', 500_000, 50_000)
+    expect(result.sisa).toBe(450_000)
+    expect(result.wavy_gets).toBe(90_000)
+    expect(result.owner_gets).toBe(360_000)
+  })
+
+  it('motor milik_pemilik diperlakukan sama seperti titipan (30/70)', () => {
+    const result = calcCommission('milik_pemilik', 500_000, 50_000)
+    expect(result.sisa).toBe(450_000)
+    expect(result.wavy_gets).toBe(135_000)
+    expect(result.owner_gets).toBe(315_000)
+  })
+
   it('vendor_fee = 0 default → tidak berpengaruh ke pembagian', () => {
     const withZero  = calcCommission('titipan', 300_000, 0)
     const withUndef = calcCommission('titipan', 300_000)

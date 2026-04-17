@@ -5,7 +5,7 @@
       <!-- Logo + Nama PT -->
       <div class="flex flex-col items-center mb-8">
         <img src="../assets/logo.png" alt="Wavy Logo" class="w-16 h-16 rounded-xl object-cover mb-4 shadow-md" />
-        <h1 class="text-2xl font-black text-primary italic font-headline leading-tight">The Wavy Rental Uluwatu</h1>
+        <h1 class="text-2xl font-black text-primary italic font-headline leading-tight">The Wavy Rental</h1>
         <p class="text-xs text-slate-400 font-medium mt-1">PT. Artha Bali Wisata</p>
         <div class="w-8 h-0.5 bg-primary/20 rounded mt-3"></div>
       </div>
