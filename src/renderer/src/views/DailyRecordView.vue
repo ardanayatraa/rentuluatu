@@ -5,10 +5,14 @@
         <h2 class="page-title">Daily Record</h2>
         <p class="text-slate-500 text-sm mt-1">Pencatatan transaksi penyewaan</p>
       </div>
-        <div v-if="activeRecordTab === 'rental'" class="flex gap-3">
-          <button @click="openAdd" class="btn-primary">
+        <div class="flex gap-3">
+          <button v-if="activeRecordTab === 'rental'" @click="openAdd" class="btn-primary">
             <span class="material-symbols-outlined">add</span>
             Tambah Rental
+          </button>
+          <button v-else @click="openExtendFromTab" class="btn-primary">
+            <span class="material-symbols-outlined">autorenew</span>
+            Tambah Extend
           </button>
         </div>
     </div>
@@ -306,6 +310,13 @@
     <n-modal v-model:show="showExtendModal" preset="card" :title="extendModalTitle" style="max-width: 520px" :auto-focus="false" :trap-focus="false">
       <form @submit.prevent="submitExtend" class="space-y-4">
         <div class="grid grid-cols-2 gap-4">
+          <div class="col-span-2">
+            <label class="block text-xs font-bold text-slate-500 mb-1">Transaksi Sumber</label>
+            <select v-model.number="extendForm.parent_rental_id" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required>
+              <option :value="null" disabled>Pilih transaksi sumber</option>
+              <option v-for="r in extendSourceOptions" :key="r.id" :value="r.id">{{ formatExtendSourceLabel(r) }}</option>
+            </select>
+          </div>
           <div>
             <label class="block text-xs font-bold text-slate-500 mb-1">Tgl</label>
             <input v-model="extendForm.date_time" type="datetime-local" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required />
@@ -465,6 +476,9 @@ const filteredRentals = computed(() => {
     return customer.includes(keyword) || plate.includes(keyword) || model.includes(keyword)
   })
 })
+const extendSourceOptions = computed(() => rentals.value
+  .filter(r => r.status === 'completed' && !r.payout_id && !r.hotel_payout_id)
+  .sort((a, b) => new Date(b.date_time) - new Date(a.date_time)))
 
 const totalPages = computed(() => Math.max(1, Math.ceil(filteredRentals.value.length / pageSize.value)))
 const pagedRentals = computed(() => {
@@ -488,6 +502,14 @@ watch(pageSize, () => {
 
 watch(totalPages, (value) => {
   if (currentPage.value > value) currentPage.value = value
+})
+
+watch(() => extendForm.value.parent_rental_id, (value) => {
+  if (!value) return
+  const parent = rentals.value.find(r => Number(r.id) === Number(value))
+  if (!parent) return
+  extendForm.value.motor_id = parent.motor_id
+  extendForm.value.payment_method = parent.payment_method || 'tunai'
 })
 
 // Filter motor by search (model atau plat)
@@ -577,6 +599,22 @@ function openExtend(rental) {
     total_price: 0,
     payment_method: rental.payment_method || 'tunai'
   }
+}
+
+function openExtendFromTab() {
+  showExtendModal.value = true
+  extendForm.value = {
+    parent_rental_id: null,
+    date_time: nowDateTime(),
+    motor_id: '',
+    period_days: 1,
+    total_price: 0,
+    payment_method: 'tunai'
+  }
+}
+
+function formatExtendSourceLabel(rental) {
+  return `${formatDate(rental.date_time)} - ${rental.customer_name} - ${rental.plate_number}`
 }
 
 function statusBadge(s) {
