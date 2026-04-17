@@ -6,11 +6,11 @@
         <p class="text-slate-500 text-sm mt-1">Data mitra pemilik motor titipan</p>
       </div>
       <div class="flex gap-3">
-        <button @click="exportPdf" :disabled="exporting" class="btn-secondary disabled:opacity-60">
-          <span class="material-symbols-outlined">visibility</span>
-          {{ exporting === 'pdf' ? 'Memuat...' : 'Lihat Laporan' }}
+        <button @click="exportPdf" :disabled="exporting !== ''" class="btn-secondary disabled:opacity-60">
+          <span class="material-symbols-outlined">print</span>
+          {{ exporting === 'pdf' ? 'Memuat...' : 'Cetak' }}
         </button>
-        <button @click="exportExcel" :disabled="exporting" class="btn-secondary disabled:opacity-60">
+        <button @click="exportExcel" :disabled="exporting !== ''" class="btn-secondary disabled:opacity-60">
           <span class="material-symbols-outlined">table_view</span>
           {{ exporting === 'excel' ? 'Menyimpan...' : 'Simpan Excel' }}
         </button>
@@ -173,9 +173,28 @@ function getExportFileLabel() {
   return `${todayValue()}_${toFileNamePart(searchQuery.value || 'Semua')}`
 }
 
-async function exportPdf() {
-  exporting.value = 'pdf'
+async function withExporting(kind, work) {
+  exporting.value = kind
+
+  let warned = false
+  const timer = setTimeout(() => {
+    if (exporting.value !== '') {
+      exporting.value = ''
+      warned = true
+      alert('Proses cetak lebih lama dari biasanya. Jika jendela preview tidak muncul, silakan klik Cetak lagi.')
+    }
+  }, 15000)
+
   try {
+    return await work()
+  } finally {
+    clearTimeout(timer)
+    if (!warned) exporting.value = ''
+  }
+}
+
+async function exportPdf() {
+  return withExporting('pdf', async () => {
     const filtered = filteredOwners.value
     const totalUnpaid = filtered.reduce((s, o) => s + Number(o.unpaid_commission || 0), 0)
     const activeCount = filtered.filter(o => o.is_active).length
@@ -205,18 +224,13 @@ async function exportPdf() {
       emptyMessage: 'Belum ada data mitra pada filter ini'
     })
     await previewReport(html, `Daftar_Mitra_${getExportFileLabel()}.pdf`)
-  } finally {
-    exporting.value = ''
-  }
+  })
 }
 
 async function exportExcel() {
-  exporting.value = 'excel'
-  try {
+  return withExporting('excel', async () => {
     await saveOwnersExcel({ owners: filteredOwners.value, fileLabel: getExportFileLabel() })
-  } finally {
-    exporting.value = ''
-  }
+  })
 }
 
 function openAdd() {
