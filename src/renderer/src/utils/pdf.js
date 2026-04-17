@@ -311,7 +311,7 @@ export function buildFinancialHtml({ summary, rows, period, groupLabel }) {
   <div class="section-title">Rincian per ${groupLabel}</div>
   <table><thead><tr>
     <th>Periode</th><th class="right">Rental</th><th class="right">Pemasukan</th>
-    <th class="right">Pengeluaran</th><th class="right">Wavy Gets</th><th class="right">Owner Gets</th><th class="right">Profit</th>
+    <th class="right">Pengeluaran</th><th class="right">Wavy Gets</th><th class="right">Bagian Mitra</th><th class="right">Profit</th>
   </tr></thead><tbody>${rowsHtml}</tbody></table>
   ${footerHtml()}`
 }
@@ -337,12 +337,12 @@ export function buildMotorIncomeHtml({ rentals, period, motorName }) {
     <div class="summary-card"><div class="label">Total Transaksi</div><div class="value">${rentals.length}x</div></div>
     <div class="summary-card"><div class="label">Total Pendapatan</div><div class="value">${rp(total)}</div></div>
     <div class="summary-card"><div class="label">Wavy Gets</div><div class="value">${rp(totalWavy)}</div></div>
-    <div class="summary-card"><div class="label">Owner Gets</div><div class="value">${rp(totalOwner)}</div></div>
+<div class="summary-card"><div class="label">Bagian Mitra</div><div class="value">${rp(totalOwner)}</div></div>
   </div>
   <div class="section-title">Detail Transaksi Rental</div>
   <table><thead><tr>
     <th>Tanggal</th><th>Pelanggan</th><th>Motor</th><th class="right">Durasi</th>
-    <th>Pembayaran</th><th class="right">Total</th><th class="right">Wavy Gets</th><th class="right">Owner Gets</th>
+    <th>Pembayaran</th><th class="right">Total</th><th class="right">Wavy Gets</th><th class="right">Bagian Mitra</th>
   </tr></thead><tbody>${rowsHtml || '<tr><td colspan="8" style="text-align:center;padding:20px;color:#888">Tidak ada data</td></tr>'}</tbody></table>
   ${footerHtml()}`
 }
@@ -374,7 +374,7 @@ export function buildMotorExpensesHtml({ expenses, period, motorName }) {
 export function printMotorExpensesReport(args) { printWindow(buildMotorExpensesHtml(args)) }
 
 // ─── 4. Laporan Transaksi (Semua) ──────────────────────────────────────────
-export function buildTransactionsHtml({ rentals, operationalExpenses, motorExpenses, period }) {
+export function buildTransactionsHtml({ rentals, operationalExpenses, motorExpenses, journeys = [], period }) {
   const totalIn = rentals.filter(r => r.status !== 'refunded').reduce((s, r) => s + (r.amount || 0), 0)
   const totalOperational = operationalExpenses.reduce((s, e) => s + (e.amount || 0), 0)
   const totalMotor = motorExpenses.reduce((s, e) => s + (e.amount || 0), 0)
@@ -400,6 +400,10 @@ export function buildTransactionsHtml({ rentals, operationalExpenses, motorExpen
     <td class="right">${rp(e.amount)}</td>
     <td>-</td>
   </tr>`).join('')
+  const journeyRows = journeys.map(j => `<tr>
+    <td>${esc(j.root)}</td>
+    <td>${(j.steps || []).map(step => `&rarr; ${esc(step)}`).join('<br>')}</td>
+  </tr>`).join('')
   return `${headerHtml('Laporan Semua Transaksi', period)}
   <div class="summary-grid" style="grid-template-columns:repeat(4,1fr)">
     <div class="summary-card"><div class="label">Total Pemasukan</div><div class="value">${rp(totalIn)}</div></div>
@@ -410,6 +414,9 @@ export function buildTransactionsHtml({ rentals, operationalExpenses, motorExpen
   <div class="section-title">Pemasukan (Rental)</div>
   <table><thead><tr><th>Tanggal</th><th>Tipe</th><th>Pelanggan</th><th>Motor</th><th>Pembayaran</th><th class="right">Jumlah</th><th>Status</th></tr></thead>
   <tbody>${rentalRows || '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:16px">Tidak ada data</td></tr>'}</tbody></table>
+  <div class="section-title">Jejak Extend & Ganti Unit</div>
+  <table><thead><tr><th>Transaksi Awal</th><th>Riwayat</th></tr></thead>
+  <tbody>${journeyRows || '<tr><td colspan="2" style="text-align:center;color:#94a3b8;padding:16px">Tidak ada data extend / ganti unit</td></tr>'}</tbody></table>
   <div class="section-title">Pengeluaran Operasional</div>
   <table><thead><tr><th>Tanggal</th><th>Tipe</th><th>Kategori</th><th>Motor</th><th>Pembayaran</th><th class="right">Jumlah</th><th>Status</th></tr></thead>
   <tbody>${operationalRows || '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:16px">Tidak ada data</td></tr>'}</tbody></table>
@@ -420,7 +427,7 @@ export function buildTransactionsHtml({ rentals, operationalExpenses, motorExpen
 }
 export function printTransactionsReport(args) { printWindow(buildTransactionsHtml(args)) }
 
-// ─── 5. Laporan Komisi Owner (Slip Pembayaran) ─────────────────────────────
+// ─── 5. Laporan Hak Mitra (Slip Pembayaran) ─────────────────────────────
 export function buildOwnerCommissionHtml({ data, period }) {
   const { owner, motors, rentals, byMotor = [], payouts, totalOwnerGets, totalPaid, totalUnpaid, totalExpenses = 0, totalNet = 0 } = data
   const motorList = motors.map(m => m.model + ' (' + m.plate_number + ')').join(', ')
@@ -438,33 +445,27 @@ export function buildOwnerCommissionHtml({ data, period }) {
     <td class="right">${rp(p.amount)}</td>
   </tr>`).join('')
   const motorBreakdownHtml = byMotor.map(m => {
-    const rentalItems = m.rentals.map(r => `<tr>
-      <td>${fmtDateTime(r.date_time)}</td>
-      <td>Komisi Rental</td>
-      <td>${r.customer_name}</td>
-      <td class="right">${rp(r.owner_gets)}</td>
-    </tr>`).join('')
     const expenseItems = m.expenses.map(e => `<tr>
       <td>${fmtDate(e.date)}</td>
       <td>Pengeluaran${e.category ? ' - ' + e.category : ''}</td>
       <td>${e.description || '-'}</td>
       <td class="right">( ${rp(e.amount)} )</td>
     </tr>`).join('')
-    const itemRows = rentalItems + expenseItems
+    const itemRows = expenseItems
     return `
       <div class="section-title">Rincian Motor - ${m.model} (${m.plate_number})</div>
       <table>
         <thead><tr><th>Tanggal</th><th>Uraian</th><th>Keterangan</th><th class="right">Jumlah</th></tr></thead>
         <tbody>
-          ${itemRows || '<tr><td colspan="4" style="text-align:center;padding:16px;color:#888">Tidak ada rincian</td></tr>'}
-          <tr><td colspan="3" style="font-weight:700">Total Komisi Motor</td><td class="right">${rp(m.rental_total)}</td></tr>
+          ${itemRows || '<tr><td colspan="4" style="text-align:center;padding:16px;color:#888">Tidak ada pengeluaran motor</td></tr>'}
+          <tr><td colspan="3" style="font-weight:700">Total Hak Motor</td><td class="right">${rp(m.rental_total)}</td></tr>
           <tr><td colspan="3" style="font-weight:700">Total Pengeluaran Motor</td><td class="right">( ${rp(m.expense_total)} )</td></tr>
           <tr style="font-weight:700;background:#f9f9f9"><td colspan="3">Hasil Bersih Motor</td><td class="right">${rp(m.net_total)}</td></tr>
         </tbody>
       </table>
     `
   }).join('')
-  return `${headerHtml('Laporan Komisi Mitra', period, 'Mitra: ' + owner.name)}
+  return `${headerHtml('Laporan Hak Mitra', period, 'Mitra: ' + owner.name)}
   <div style="display:flex;gap:20px;margin-bottom:20px">
     <div class="info-box" style="flex:1">
       <div class="info-label">Data Mitra</div>
@@ -473,7 +474,7 @@ export function buildOwnerCommissionHtml({ data, period }) {
     </div>
     <div style="flex:1">
       <div class="summary-grid" style="grid-template-columns:repeat(2,1fr)">
-        <div class="summary-card"><div class="label">Total Komisi</div><div class="value">${rp(totalOwnerGets)}</div></div>
+        <div class="summary-card"><div class="label">Total Hak Mitra</div><div class="value">${rp(totalOwnerGets)}</div></div>
         <div class="summary-card"><div class="label">Total Pengeluaran</div><div class="value">${rp(totalExpenses)}</div></div>
         <div class="summary-card"><div class="label">Sudah Dibayar</div><div class="value">${rp(totalPaid)}</div></div>
         <div class="summary-card"><div class="label">Belum Dibayar</div><div class="value">${rp(totalUnpaid)}</div></div>
@@ -511,7 +512,7 @@ export function buildHotelCommissionHtml({ hotel, rentals = [], period }) {
     <td class="right">${rp(r.vendor_fee)}</td>
   </tr>`).join('')
 
-  return `${headerHtml('Slip Komisi Vendor Hotel', period, 'Vendor Hotel: ' + esc(hotel?.name || '-'))}
+  return `${headerHtml('Slip Fee Vendor Hotel', period, 'Vendor Hotel: ' + esc(hotel?.name || '-'))}
   <div style="display:flex;gap:20px;margin-bottom:20px">
     <div class="info-box" style="flex:1">
       <div class="info-label">Data Vendor Hotel</div>
@@ -519,23 +520,23 @@ export function buildHotelCommissionHtml({ hotel, rentals = [], period }) {
       <div class="info-detail">
         Telepon: ${esc(hotel?.phone || '-')}<br>
         Bank: ${esc(hotel?.bank_name || '-')} - ${esc(hotel?.bank_account || '-')}<br>
-        Status Dokumen: Komisi vendor yang belum dibayarkan pada periode terpilih
+        Status Dokumen: Fee vendor yang belum dibayarkan pada periode terpilih
       </div>
     </div>
     <div style="flex:1">
       <div class="summary-grid" style="grid-template-columns:repeat(2,1fr)">
         <div class="summary-card"><div class="label">Jumlah Rental</div><div class="value">${rentals.length}x</div></div>
         <div class="summary-card"><div class="label">Total Omzet Rental</div><div class="value">${rp(totalRent)}</div></div>
-        <div class="summary-card"><div class="label">Total Komisi Vendor</div><div class="value">${rp(totalCommission)}</div></div>
-        <div class="summary-card"><div class="label">Rata-rata Komisi</div><div class="value">${rp(averageCommission)}</div></div>
+        <div class="summary-card"><div class="label">Total Fee Vendor</div><div class="value">${rp(totalCommission)}</div></div>
+        <div class="summary-card"><div class="label">Rata-rata Fee Vendor</div><div class="value">${rp(averageCommission)}</div></div>
       </div>
     </div>
   </div>
-  <div class="section-title">Rincian Komisi Vendor</div>
+  <div class="section-title">Rincian Fee Vendor</div>
   <table><thead><tr>
     <th>Tanggal</th><th>Pelanggan</th><th>Motor</th><th class="right">Durasi</th>
-    <th class="right">Total Sewa</th><th class="right">Komisi Vendor</th>
-  </tr></thead><tbody>${rentalRows || '<tr><td colspan="6" style="text-align:center;padding:16px;color:#888">Tidak ada komisi vendor pada periode ini</td></tr>'}</tbody></table>
+    <th class="right">Total Sewa</th><th class="right">Fee Vendor</th>
+  </tr></thead><tbody>${rentalRows || '<tr><td colspan="6" style="text-align:center;padding:16px;color:#888">Tidak ada fee vendor pada periode ini</td></tr>'}</tbody></table>
   <div class="sign-area"><div class="sign-box">
     <div style="font-size:10px;color:#555">Hormat kami,</div>
     <div class="sign-line">PT. Artha Bali Wisata</div>
@@ -654,7 +655,7 @@ export function buildOwnerReportHtml({ rows, period }) {
   return `${headerHtml('Laporan per Mitra', period)}
   <table><thead><tr>
     <th>Mitra</th><th>Bank</th><th class="right">Motor</th><th class="right">Rental</th>
-    <th class="right">Omzet</th><th class="right">Komisi Kotor</th><th class="right">Pengeluaran</th><th class="right">Komisi Bersih</th>
+    <th class="right">Omzet</th><th class="right">Hak Mitra Kotor</th><th class="right">Pengeluaran</th><th class="right">Hak Mitra Bersih</th>
   </tr></thead><tbody>
     ${rowsHtml}
     <tr style="font-weight:700;border-top:2px solid #111;background:#f9f9f9">
@@ -684,7 +685,7 @@ export function buildRankingHtml({ rows, period }) {
   <table><thead><tr>
     <th>#</th><th>Motor</th><th>Tipe</th>
     <th class="right">Total Rental</th><th class="right">Total Hari</th>
-    <th class="right">Wavy Gets</th><th class="right">Owner Gets</th>
+<th class="right">Wavy Gets</th><th class="right">Bagian Mitra</th>
   </tr></thead><tbody>
     ${rowsHtml || '<tr><td colspan="7" style="text-align:center;padding:20px;color:#888">Tidak ada data</td></tr>'}
   </tbody></table>

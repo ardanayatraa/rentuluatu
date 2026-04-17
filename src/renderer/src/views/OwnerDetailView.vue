@@ -22,7 +22,7 @@
         <div class="flex flex-wrap gap-2">
           <button @click="openSlipModal" class="btn-secondary">
             <span class="material-symbols-outlined text-sm">picture_as_pdf</span>
-            Slip Komisi
+            Slip Hak Mitra
           </button>
           <button v-if="totalUnpaid > 0" @click="openPayout(null)" class="btn-primary !bg-orange-500 hover:!bg-orange-600">
             <span class="material-symbols-outlined text-sm">payments</span>
@@ -119,7 +119,7 @@
         <!-- Finansial per motor -->
         <div class="grid grid-cols-3 gap-3">
           <div class="rounded-xl bg-emerald-50 border border-emerald-100 px-3 py-2">
-            <p class="text-[11px] font-bold uppercase tracking-wide text-emerald-700/70">Komisi</p>
+            <p class="text-[11px] font-bold uppercase tracking-wide text-emerald-700/70">Hak Mitra</p>
             <p class="mt-1 text-base font-black text-emerald-600">{{ formatRp(m.pending_commission) }}</p>
           </div>
           <div class="rounded-xl bg-red-50 border border-red-100 px-3 py-2">
@@ -178,7 +178,7 @@
             <span class="material-symbols-outlined text-base">date_range</span>
             Filter Periode
           </h3>
-          <p class="text-xs text-slate-400 mt-1">Dipakai untuk riwayat sewa dan riwayat pencairan komisi.</p>
+          <p class="text-xs text-slate-400 mt-1">Dipakai untuk riwayat sewa dan riwayat pencairan hak mitra.</p>
         </div>
         <div class="flex flex-wrap items-end gap-2">
           <select v-model="periodFilter.mode" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
@@ -280,7 +280,7 @@
         <div>
           <h3 class="font-bold text-slate-700 text-sm flex items-center gap-2">
             <span class="material-symbols-outlined">receipt_long</span>
-            Riwayat Pencairan Komisi
+            Riwayat Pencairan Hak Mitra
           </h3>
           <p class="text-xs text-slate-400 mt-1">{{ filteredPayoutHistory.length }} pencairan tercatat</p>
         </div>
@@ -326,7 +326,7 @@
         <div v-if="openIdx === payoutPageStartIndex + idx" class="bg-slate-50 border-t border-slate-100 px-6 py-4 text-xs">
           <div class="grid grid-cols-2 gap-6">
             <div v-if="p.rentals.length">
-              <p class="font-bold text-slate-500 uppercase tracking-wider mb-2">Asal Komisi</p>
+              <p class="font-bold text-slate-500 uppercase tracking-wider mb-2">Asal Hak Mitra</p>
               <div class="space-y-1">
                 <div v-for="r in p.rentals" :key="r.date_time + r.model"
                   class="flex justify-between py-1.5 px-2 rounded bg-white border border-slate-100">
@@ -467,7 +467,7 @@
     </n-modal>
 
     <!-- Modal Payout -->
-    <n-modal v-model:show="showPayoutModal" preset="card" title="Konfirmasi Pembayaran Komisi" class="max-w-lg" :auto-focus="false" :trap-focus="false">
+    <n-modal v-model:show="showPayoutModal" preset="card" title="Konfirmasi Pembayaran Hak Mitra" class="max-w-lg" :auto-focus="false" :trap-focus="false">
       <div v-if="payoutPreview" class="space-y-4">
 
         <!-- Breakdown per motor -->
@@ -503,7 +503,7 @@
 
           <div class="divide-y divide-slate-100">
             <div class="flex justify-between px-4 py-3 bg-slate-50">
-              <span class="text-sm text-slate-600">Total Komisi Kotor</span>
+              <span class="text-sm text-slate-600">Total Hak Mitra Kotor</span>
               <span class="font-bold text-slate-800">{{ formatRp(payoutPreview.grossCommission) }}</span>
             </div>
             <div v-if="payoutPreview.totalDeductions > 0" class="flex justify-between px-4 py-3 bg-slate-50">
@@ -518,7 +518,7 @@
         </div>
 
         <div v-if="payoutPreview.netAmount === 0" class="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg p-3">
-          Komisi habis dipotong pengeluaran. Tidak ada yang perlu dibayarkan.
+          Hak mitra habis dipotong pengeluaran. Tidak ada yang perlu dibayarkan.
         </div>
 
         <div>
@@ -548,13 +548,13 @@
       <div v-else class="py-8 text-center text-slate-400">Memuat preview...</div>
     </n-modal>
 
-    <n-modal v-model:show="showSlipModal" preset="card" title="Preview Slip Komisi" class="max-w-xl" :auto-focus="false" :trap-focus="false">
+    <n-modal v-model:show="showSlipModal" preset="card" title="Preview Slip Hak Mitra" class="max-w-xl" :auto-focus="false" :trap-focus="false">
       <div class="space-y-4">
         <div>
           <label class="block text-xs font-bold text-slate-500 mb-1">Periode Slip</label>
           <select v-model="slipFilter.mode" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
-            <option value="all">Semua Komisi Sampai Hari Ini</option>
-            <option value="month">Komisi Per Bulan</option>
+            <option value="all">Semua Hak Mitra Sampai Hari Ini</option>
+            <option value="month">Hak Mitra Per Bulan</option>
             <option value="custom">Rentang Tanggal Kustom</option>
           </select>
         </div>
@@ -743,7 +743,7 @@ const slipPeriodText = computed(() => {
 })
 
 const slipDefaultFileName = computed(() =>
-  `Slip_Komisi_${toFileNamePart(owner.value?.name || 'Mitra')}_${getSlipFilePeriodLabel()}.pdf`
+  `Slip_Hak_Mitra_${toFileNamePart(owner.value?.name || 'Mitra')}_${getSlipFilePeriodLabel()}.pdf`
 )
 
 function formatShortDate(dateStr) {
@@ -903,7 +903,7 @@ async function previewMotorSlip() {
   })
   await previewReport(
     html,
-    `Slip_Komisi_${toFileNamePart(owner.value?.name || 'Mitra')}_${toFileNamePart(selectedMotor.value.plate_number)}_${toFileNamePart(motorDetailFilter.value.month)}.pdf`
+    `Slip_Hak_Mitra_${toFileNamePart(owner.value?.name || 'Mitra')}_${toFileNamePart(selectedMotor.value.plate_number)}_${toFileNamePart(motorDetailFilter.value.month)}.pdf`
   )
 }
 
@@ -984,7 +984,7 @@ async function submitPayout() {
       date: today()
     })
     showPayoutModal.value = false
-    payoutSuccessMsg.value = 'Pembayaran komisi berhasil dicatat!'
+    payoutSuccessMsg.value = 'Pembayaran hak mitra berhasil dicatat!'
     setTimeout(() => { payoutSuccessMsg.value = '' }, 4000)
     await loadData()
   } catch (err) {
@@ -997,7 +997,7 @@ async function previewSlip() {
     slipError.value = ''
     const { startDate, endDate } = getSlipRange()
     if (!startDate || !endDate) {
-      slipError.value = 'Tanggal slip komisi belum lengkap.'
+      slipError.value = 'Tanggal slip hak mitra belum lengkap.'
       return
     }
     if (startDate > endDate) {
@@ -1016,7 +1016,7 @@ async function previewSlip() {
     })
     await previewReport(html, slipDefaultFileName.value)
   } catch (e) {
-    slipError.value = e.message || 'Gagal membuat preview slip komisi.'
+    slipError.value = e.message || 'Gagal membuat preview slip hak mitra.'
   }
 }
 

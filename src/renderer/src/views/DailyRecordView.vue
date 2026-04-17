@@ -10,9 +10,13 @@
             <span class="material-symbols-outlined">add</span>
             Tambah Rental
           </button>
-          <button v-else @click="openExtendFromTab" class="btn-primary">
+          <button v-else-if="activeRecordTab === 'extend'" @click="openExtendFromTab" class="btn-primary">
             <span class="material-symbols-outlined">autorenew</span>
             Tambah Extend
+          </button>
+          <button v-else @click="openSwapFromTab" class="btn-primary">
+            <span class="material-symbols-outlined">swap_horiz</span>
+            Ganti Unit
           </button>
         </div>
     </div>
@@ -43,6 +47,18 @@
         <span class="material-symbols-outlined text-sm align-middle mr-1">autorenew</span>
         Extend
       </button>
+      <button
+        @click="activeRecordTab = 'swap'"
+        :class="[
+          'px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors',
+          activeRecordTab === 'swap'
+            ? 'bg-white border border-b-white border-slate-200 text-primary -mb-px'
+            : 'text-slate-500 hover:text-slate-700'
+        ]"
+      >
+        <span class="material-symbols-outlined text-sm align-middle mr-1">swap_horiz</span>
+        Ganti Unit
+      </button>
     </div>
     <div class="card mb-6 flex gap-4 items-center flex-wrap">
       <input v-model="filters.startDate" type="date" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
@@ -57,6 +73,10 @@
       <button @click="loadRentals" class="btn-secondary">
         <span class="material-symbols-outlined">filter_list</span>
         Filter
+      </button>
+      <button @click="resetFilters" class="btn-secondary">
+        <span class="material-symbols-outlined">restart_alt</span>
+        Reset
       </button>
       <select v-model.number="pageSize" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
         <option :value="10">10 / halaman</option>
@@ -73,12 +93,13 @@
           <tr class="bg-slate-50 text-slate-400 text-xs uppercase font-bold">
             <th class="px-6 py-4">Tanggal</th>
             <th class="px-6 py-4">Pelanggan</th>
+            <th class="px-6 py-4">Keterangan</th>
             <th class="px-6 py-4">Hotel / Vendor Hotel</th>
             <th class="px-6 py-4">Motor</th>
             <th class="px-6 py-4">Periode</th>
             <th class="px-6 py-4">Bayar</th>
             <th class="px-6 py-4 text-right">Harga Kotor</th>
-            <th class="px-6 py-4 text-right">Komisi Hotel</th>
+            <th class="px-6 py-4 text-right">Fee Vendor</th>
             <th class="px-6 py-4 text-right">Wavy Gets</th>
             <th class="px-6 py-4 text-right">Bagian Mitra</th>
             <th class="px-6 py-4 text-right">Status</th>
@@ -87,16 +108,46 @@
         </thead>
         <tbody class="divide-y divide-slate-50">
           <tr v-if="loading" v-for="index in 6" :key="`sk-${index}`">
-            <td colspan="12" class="px-6 py-4">
+            <td colspan="13" class="px-6 py-4">
               <div class="skeleton h-10 rounded-xl"></div>
             </td>
           </tr>
-          <tr v-for="r in pagedRentals" :key="r.id" class="hover:bg-slate-50 transition-colors text-sm">
+          <tr v-for="r in pagedRentals" :id="`rental-row-${r.id}`" :key="r.id" :class="[
+            'transition-colors text-sm',
+            highlightedRentalId === r.id ? 'bg-amber-50' : 'hover:bg-slate-50'
+          ]">
             <td class="px-6 py-4 text-slate-500">
               <span class="block text-xs font-medium text-slate-700">{{ formatTime(r.date_time) }}</span>
               <span class="text-xs">{{ formatDate(r.date_time) }}</span>
             </td>
             <td class="px-6 py-4 font-medium">{{ r.customer_name }}</td>
+            <td class="px-6 py-4">
+              <div v-if="rentalRelation(r) === 'extend'" class="flex flex-col items-start gap-1.5">
+                <span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
+                  <span class="material-symbols-outlined text-[14px]">autorenew</span>
+                  Extend
+                </span>
+                <button v-if="r.parent_rental_id" @click="goToParentRental(r)" class="text-xs text-primary hover:underline font-semibold">
+                  Lihat sumber: {{ parentLabel(r) }}
+                </button>
+              </div>
+              <div v-else-if="rentalRelation(r) === 'swap'" class="flex flex-col items-start gap-1.5">
+                <span class="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-bold text-violet-700">
+                  <span class="material-symbols-outlined text-[14px]">swap_horiz</span>
+                  Motor Pengganti
+                </span>
+                <button v-if="r.parent_rental_id" @click="goToParentRental(r)" class="text-xs text-primary hover:underline font-semibold">
+                  Sumber ganti unit: {{ parentLabel(r) }}
+                </button>
+              </div>
+              <div v-else-if="rentalRelation(r) === 'swap_source'" class="flex flex-col items-start gap-1.5">
+                <span class="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700">
+                  <span class="material-symbols-outlined text-[14px]">construction</span>
+                  Diganti Unit
+                </span>
+              </div>
+              <span v-else class="text-xs text-slate-400">Rental Utama</span>
+            </td>
             <td class="px-6 py-4 text-slate-500">{{ r.hotel || '-' }}</td>
             <td class="px-6 py-4">
               <span class="font-medium">{{ r.model }}</span>
@@ -120,6 +171,11 @@
                   class="p-1.5 hover:bg-emerald-50 rounded text-slate-400 hover:text-emerald-600 transition-colors" :title="extendActionLabel">
                   <span class="material-symbols-outlined text-base">autorenew</span>
                 </button>
+                <button v-if="canSwapRental(r)"
+                  @click="openSwap(r)"
+                  class="p-1.5 hover:bg-violet-50 rounded text-slate-400 hover:text-violet-600 transition-colors" title="Ganti Unit">
+                  <span class="material-symbols-outlined text-base">swap_horiz</span>
+                </button>
                 <button v-if="r.status === 'completed' && !r.payout_id && !r.hotel_payout_id"
                   @click="openEdit(r)"
                   class="p-1.5 hover:bg-blue-50 rounded text-slate-400 hover:text-blue-500 transition-colors" title="Edit">
@@ -138,7 +194,7 @@
             </td>
           </tr>
           <tr v-if="!loading && !filteredRentals.length">
-            <td colspan="12" class="px-6 py-12 text-center text-slate-400">Belum ada data rental</td>
+            <td colspan="13" class="px-6 py-12 text-center text-slate-400">Belum ada data rental</td>
           </tr>
         </tbody>
       </table>
@@ -236,7 +292,7 @@
             </div>
             <div v-else-if="form.hotel && form.vendor_fee > 0" class="mt-2 bg-amber-50 text-amber-600 rounded-lg border border-amber-200 px-3 py-2 text-xs flex items-center gap-1.5">
               <span class="material-symbols-outlined text-sm">warning</span>
-              Nama ini belum ada di master data hotel. Komisi hotel tidak akan masuk ke pencairan mana pun.
+              Nama ini belum ada di master data hotel. Fee vendor tidak akan masuk ke pencairan mana pun.
             </div>
           </div>
           <div>
@@ -248,7 +304,7 @@
             <input v-model.number="form.total_price" type="number" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required />
           </div>
           <div v-if="form.hotel_id">
-            <label class="block text-xs font-bold text-slate-500 mb-1">Komisi Hotel</label>
+            <label class="block text-xs font-bold text-slate-500 mb-1">Fee Vendor</label>
             <input v-model.number="form.vendor_fee" type="number" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
           </div>
           <div class="col-span-2">
@@ -274,7 +330,7 @@
           </div>
         </div>
 
-        <!-- Preview komisi -->
+        <!-- Preview fee vendor -->
         <div v-if="selectedMotor && form.total_price"
           class="bg-slate-50 rounded-lg p-4 text-sm space-y-1.5 border border-slate-200">
           <div class="flex justify-between">
@@ -282,7 +338,7 @@
             <span class="font-bold">{{ formatRp(form.total_price) }}</span>
           </div>
           <div class="flex justify-between">
-            <span class="text-slate-500">Komisi Hotel</span>
+            <span class="text-slate-500">Fee Vendor</span>
             <span class="text-red-500">- {{ formatRp(form.vendor_fee || 0) }}</span>
           </div>
           <div class="flex justify-between border-t border-slate-200 pt-1.5">
@@ -366,6 +422,107 @@
       </form>
     </n-modal>
 
+    <!-- Swap Unit Modal -->
+    <n-modal v-model:show="showSwapModal" preset="card" title="Ganti Unit Rental" style="max-width: 680px" :auto-focus="false" :trap-focus="false">
+      <form @submit.prevent="submitSwap" class="space-y-4">
+        <div class="grid grid-cols-2 gap-4">
+          <div v-if="!swapSourceLocked" class="col-span-2">
+            <label class="block text-xs font-bold text-slate-500 mb-1">Transaksi Sumber</label>
+            <input
+              v-model="swapSourceKeyword"
+              type="text"
+              placeholder="Cari pelanggan, plat, model, atau invoice..."
+              class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm mb-2"
+            />
+            <select v-model.number="swapForm.source_rental_id" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required>
+              <option :value="null" disabled>{{ filteredSwapSourceOptions.length ? 'Pilih transaksi sumber' : 'Tidak ada transaksi yang cocok' }}</option>
+              <option v-for="r in filteredSwapSourceOptions" :key="r.id" :value="r.id">{{ formatExtendSourceLabel(r) }} · {{ r.period_days }} hari · {{ formatRp(r.total_price) }}</option>
+            </select>
+            <p v-if="filteredSwapSourceOptions.length" class="text-xs text-slate-400 mt-1">Menampilkan {{ filteredSwapSourceOptions.length }} transaksi (terbaru di atas)</p>
+          </div>
+          <div v-else class="col-span-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+            <p class="text-xs font-bold text-slate-500 mb-1">Transaksi Sumber</p>
+            <p class="font-semibold text-slate-700">
+              {{ selectedSwapSource ? `${formatExtendSourceLabel(selectedSwapSource)} · ${selectedSwapSource.period_days} hari · ${formatRp(selectedSwapSource.total_price)}` : '-' }}
+            </p>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-500 mb-1">Tanggal Ganti Unit</label>
+            <input v-model="swapForm.switch_date_time" type="datetime-local" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-500 mb-1">Sisa Hari Dialihkan</label>
+            <input v-model.number="swapForm.remaining_days" type="number" min="1" :max="swapMaxRemainingDays" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-500 mb-1">Motor Pengganti</label>
+            <input
+              v-model="swapMotorKeyword"
+              type="text"
+              placeholder="Cari plat, model, atau pemilik..."
+              class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm mb-2"
+            />
+            <select v-model="swapForm.new_motor_id" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required>
+              <option value="" disabled>{{ filteredSwapMotorOptions.length ? 'Pilih motor pengganti' : 'Tidak ada motor yang cocok' }}</option>
+              <option v-for="m in filteredSwapMotorOptions" :key="m.id" :value="m.id">{{ m.plate_number }} — {{ m.model }}</option>
+            </select>
+            <p v-if="filteredSwapMotorOptions.length" class="text-xs text-slate-400 mt-1">Menampilkan {{ filteredSwapMotorOptions.length }} motor (pilih manual)</p>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-500 mb-1">Tarif Motor Pengganti / Hari</label>
+            <input v-model.number="swapForm.new_price_per_day" type="number" min="1" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required />
+          </div>
+        </div>
+
+        <div v-if="selectedSwapSource" class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm space-y-2">
+          <div class="flex justify-between gap-4">
+            <span class="text-slate-500">Segmen Motor Awal (dipakai)</span>
+            <span class="font-semibold text-slate-700">{{ swapUsedDays }} hari · {{ formatRp(swapUsedTotal) }}</span>
+          </div>
+          <div class="flex justify-between gap-4">
+            <span class="text-slate-500">Kredit Sisa Hari Motor Awal</span>
+            <span class="font-semibold text-slate-700">{{ formatRp(swapOldRemainingCredit) }}</span>
+          </div>
+          <div class="flex justify-between gap-4">
+            <span class="text-slate-500">Biaya Motor Pengganti</span>
+            <span class="font-semibold text-slate-700">{{ formatRp(swapNewTotal) }}</span>
+          </div>
+          <div class="flex justify-between gap-4 border-t border-slate-200 pt-2">
+            <span class="font-semibold text-slate-600">Selisih Customer</span>
+            <span class="font-black" :class="swapDelta > 0 ? 'text-emerald-600' : swapDelta < 0 ? 'text-red-600' : 'text-slate-600'">
+              {{ swapDelta > 0 ? '+ ' : swapDelta < 0 ? '- ' : '' }}{{ formatRp(Math.abs(swapDelta)) }}
+              <span v-if="swapDelta > 0" class="font-medium text-xs ml-1">(Top Up)</span>
+              <span v-else-if="swapDelta < 0" class="font-medium text-xs ml-1">(Refund)</span>
+              <span v-else class="font-medium text-xs ml-1">(Pas)</span>
+            </span>
+          </div>
+        </div>
+
+        <div v-if="swapDelta !== 0">
+          <label class="block text-xs font-bold text-slate-500 mb-1">Metode Bayar Selisih</label>
+          <select v-model="swapForm.settlement_payment_method" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required>
+            <option value="" disabled>Pilih metode bayar selisih</option>
+            <option v-for="account in cashAccounts" :key="account.id" :value="account.type">{{ account.name }}</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-500 mb-1">Catatan (Opsional)</label>
+          <input v-model="swapForm.settlement_note" type="text" placeholder="Contoh: Scoopy rusak, diganti NMAX" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+        </div>
+
+        <p v-if="swapError" class="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{{ swapError }}</p>
+
+        <div class="flex justify-end gap-3 pt-2">
+          <button type="button" @click="showSwapModal = false" class="btn-secondary">Batal</button>
+          <button type="submit" class="btn-primary" :disabled="!swapForm.source_rental_id || !swapForm.new_motor_id">
+            Proses Ganti Unit
+          </button>
+        </div>
+      </form>
+    </n-modal>
+
     <!-- Refund Modal -->
     <n-modal v-model:show="showRefundModal" preset="card" title="Proses Refund" style="max-width: 420px" :auto-focus="false" :trap-focus="false">
       <div class="space-y-4">
@@ -411,7 +568,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { formatRp, formatDate, nowDateTime } from '../utils/format'
 
 function formatTime(dateStr) {
@@ -423,9 +580,14 @@ const rentals = ref([])
 const loading = ref(false)
 const allMotors = ref([])
 const allVendors = ref([])
+const cashAccounts = ref([])
 const showModal = ref(false)
 const showRefundModal = ref(false)
 const showExtendModal = ref(false)
+const showSwapModal = ref(false)
+const swapSourceLocked = ref(false)
+const swapSourceKeyword = ref('')
+const swapMotorKeyword = ref('')
 const activeRecordTab = ref('rental')
 const extendActionLabel = computed(() => activeRecordTab.value === 'extend' ? 'Extend Lagi' : 'Extend')
 const extendModalTitle = computed(() => activeRecordTab.value === 'extend' ? 'Extend Lagi' : 'Extend Rental')
@@ -438,8 +600,10 @@ const showMotorDropdown = ref(false)
 const showVendorDropdown = ref(false)
 const currentPage = ref(1)
 const pageSize = ref(10)
+const highlightedRentalId = ref(null)
 
-const filters = ref({ startDate: '', endDate: '', status: '', keyword: '' })
+const defaultFilters = Object.freeze({ startDate: '', endDate: '', status: '', keyword: '' })
+const filters = ref({ ...defaultFilters })
 const form = ref({
   date_time: nowDateTime(),
   customer_name: '',
@@ -460,11 +624,38 @@ const extendForm = ref({
   total_price: 0,
   payment_method: 'tunai'
 })
+const swapForm = ref({
+  source_rental_id: null,
+  switch_date_time: nowDateTime(),
+  remaining_days: 1,
+  new_motor_id: '',
+  new_price_per_day: 0,
+  settlement_payment_method: '',
+  settlement_note: ''
+})
 const refundError = ref('')
+const swapError = ref('')
+
+function rentalRelation(rental) {
+  if (rental?.relation_type) return String(rental.relation_type)
+  return Number(rental?.is_extension || 0) === 1 ? 'extend' : 'rental'
+}
+
+function canSwapRental(rental) {
+  const relation = rentalRelation(rental)
+  return rental.status === 'completed' &&
+    !rental.payout_id &&
+    !rental.hotel_payout_id &&
+    Number(rental.period_days || 0) > 1 &&
+    (relation === 'rental' || relation === 'swap')
+}
+
 const filteredRentals = computed(() => {
   const byTab = rentals.value.filter(r => {
-    const isExtend = Number(r.is_extension || 0) === 1
-    return activeRecordTab.value === 'extend' ? isExtend : !isExtend
+    const relation = rentalRelation(r)
+    if (activeRecordTab.value === 'extend') return relation === 'extend'
+    if (activeRecordTab.value === 'swap') return relation === 'swap' || relation === 'swap_source'
+    return relation !== 'extend' && relation !== 'swap' && relation !== 'swap_source'
   })
 
   const keyword = String(filters.value.keyword || '').toLowerCase().trim()
@@ -473,12 +664,74 @@ const filteredRentals = computed(() => {
     const customer = String(r.customer_name || '').toLowerCase()
     const plate = String(r.plate_number || '').toLowerCase()
     const model = String(r.model || '').toLowerCase()
-    return customer.includes(keyword) || plate.includes(keyword) || model.includes(keyword)
+    const invoice = String(r.invoice_number || '').toLowerCase()
+    return customer.includes(keyword) || plate.includes(keyword) || model.includes(keyword) || invoice.includes(keyword)
   })
 })
 const extendSourceOptions = computed(() => rentals.value
   .filter(r => r.status === 'completed' && !r.payout_id && !r.hotel_payout_id)
   .sort((a, b) => new Date(b.date_time) - new Date(a.date_time)))
+const swapSourceOptions = computed(() => rentals.value
+  .filter((r) => canSwapRental(r))
+  .sort((a, b) => new Date(b.date_time) - new Date(a.date_time)))
+const filteredSwapSourceOptions = computed(() => {
+  const keyword = String(swapSourceKeyword.value || '').toLowerCase().trim()
+  if (!keyword) return swapSourceOptions.value
+  return swapSourceOptions.value.filter((r) => {
+    const customer = String(r.customer_name || '').toLowerCase()
+    const plate = String(r.plate_number || '').toLowerCase()
+    const model = String(r.model || '').toLowerCase()
+    const invoice = String(r.invoice_number || '').toLowerCase()
+    return customer.includes(keyword) || plate.includes(keyword) || model.includes(keyword) || invoice.includes(keyword)
+  })
+})
+const selectedSwapSource = computed(() =>
+  rentals.value.find((r) => Number(r.id) === Number(swapForm.value.source_rental_id))
+)
+const swapMaxRemainingDays = computed(() => {
+  const source = selectedSwapSource.value
+  if (!source) return 1
+  return Math.max(1, Number(source.period_days || 1) - 1)
+})
+const swapUsedDays = computed(() => {
+  const source = selectedSwapSource.value
+  if (!source) return 0
+  return Math.max(0, Number(source.period_days || 0) - Number(swapForm.value.remaining_days || 0))
+})
+const swapOldRemainingCredit = computed(() => {
+  const source = selectedSwapSource.value
+  if (!source) return 0
+  const period = Number(source.period_days || 0)
+  if (!period) return 0
+  return Math.round(Number(source.total_price || 0) * (Number(swapForm.value.remaining_days || 0) / period))
+})
+const swapUsedTotal = computed(() => {
+  const source = selectedSwapSource.value
+  if (!source) return 0
+  return Math.max(0, Math.round(Number(source.total_price || 0) - swapOldRemainingCredit.value))
+})
+const swapNewTotal = computed(() => {
+  const remaining = Number(swapForm.value.remaining_days || 0)
+  const ppd = Number(swapForm.value.new_price_per_day || 0)
+  if (!remaining || !ppd) return 0
+  return Math.round(remaining * ppd)
+})
+const swapDelta = computed(() => Math.round(swapNewTotal.value - swapOldRemainingCredit.value))
+const swapMotorOptions = computed(() => {
+  const source = selectedSwapSource.value
+  if (!source) return allMotors.value
+  return allMotors.value.filter((m) => Number(m.id) !== Number(source.motor_id))
+})
+const filteredSwapMotorOptions = computed(() => {
+  const keyword = String(swapMotorKeyword.value || '').toLowerCase().trim()
+  if (!keyword) return swapMotorOptions.value
+  return swapMotorOptions.value.filter((m) => {
+    const model = String(m.model || '').toLowerCase()
+    const plate = String(m.plate_number || '').toLowerCase()
+    const owner = String(m.owner_name || '').toLowerCase()
+    return model.includes(keyword) || plate.includes(keyword) || owner.includes(keyword)
+  })
+})
 
 const totalPages = computed(() => Math.max(1, Math.ceil(filteredRentals.value.length / pageSize.value)))
 const pagedRentals = computed(() => {
@@ -510,6 +763,18 @@ watch(() => extendForm.value.parent_rental_id, (value) => {
   if (!parent) return
   extendForm.value.motor_id = parent.motor_id
   extendForm.value.payment_method = parent.payment_method || 'tunai'
+})
+
+watch(() => swapForm.value.source_rental_id, (value) => {
+  if (!value) return
+  const source = rentals.value.find((r) => Number(r.id) === Number(value))
+  if (!source) return
+  swapForm.value.remaining_days = Math.max(1, Number(source.period_days || 1) - 1)
+  swapForm.value.new_motor_id = ''
+  swapMotorKeyword.value = ''
+  swapForm.value.new_price_per_day = Number(source.price_per_day || 0)
+  swapForm.value.settlement_payment_method = source.payment_method || ''
+  swapForm.value.settlement_note = ''
 })
 
 // Filter motor by search (model atau plat)
@@ -613,8 +878,78 @@ function openExtendFromTab() {
   }
 }
 
+function openSwap(rental) {
+  swapError.value = ''
+  swapSourceLocked.value = true
+  swapSourceKeyword.value = ''
+  swapMotorKeyword.value = ''
+  const maxRemaining = Math.max(1, Number(rental?.period_days || 1) - 1)
+  showSwapModal.value = true
+  swapForm.value = {
+    source_rental_id: rental?.id || null,
+    switch_date_time: nowDateTime(),
+    remaining_days: maxRemaining,
+    new_motor_id: '',
+    new_price_per_day: Number(rental?.price_per_day || 0),
+    settlement_payment_method: rental?.payment_method || '',
+    settlement_note: ''
+  }
+}
+
+function openSwapFromTab() {
+  swapError.value = ''
+  swapSourceLocked.value = false
+  swapSourceKeyword.value = ''
+  swapMotorKeyword.value = ''
+  showSwapModal.value = true
+  swapForm.value = {
+    source_rental_id: null,
+    switch_date_time: nowDateTime(),
+    remaining_days: 1,
+    new_motor_id: '',
+    new_price_per_day: 0,
+    settlement_payment_method: '',
+    settlement_note: ''
+  }
+}
+
 function formatExtendSourceLabel(rental) {
   return `${formatDate(rental.date_time)} - ${rental.customer_name} - ${rental.plate_number}`
+}
+
+function parentLabel(rental) {
+  const invoice = rental.parent_invoice_number ? `#${rental.parent_invoice_number}` : ''
+  const plate = rental.parent_plate_number || ''
+  const customer = rental.parent_customer_name || ''
+  return [invoice, plate, customer].filter(Boolean).join(' · ')
+}
+
+async function goToParentRental(rental) {
+  const parentId = Number(rental.parent_rental_id || 0)
+  if (!parentId) return
+
+  highlightedRentalId.value = parentId
+  const parentRelation = String(rental.parent_relation_type || '').toLowerCase()
+  if (parentRelation === 'extend' || Number(rental.parent_is_extension || 0) === 1) {
+    activeRecordTab.value = 'extend'
+  } else if (parentRelation === 'swap' || parentRelation === 'swap_source') {
+    activeRecordTab.value = 'swap'
+  } else {
+    activeRecordTab.value = 'rental'
+  }
+  const suggestedKeyword = rental.parent_invoice_number || rental.parent_plate_number || rental.parent_customer_name || ''
+  filters.value.keyword = suggestedKeyword
+
+  await nextTick()
+
+  const el = document.getElementById(`rental-row-${parentId}`)
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+
+  setTimeout(() => {
+    if (highlightedRentalId.value === parentId) highlightedRentalId.value = null
+  }, 2200)
 }
 
 function statusBadge(s) {
@@ -665,6 +1000,12 @@ async function loadRentals() {
   }
 }
 
+async function resetFilters() {
+  filters.value = { ...defaultFilters }
+  currentPage.value = 1
+  await loadRentals()
+}
+
 async function submitRental() {
   const vendorFee = form.value.vendor_fee || 0
   if (vendorFee < 0) return alert('Vendor fee tidak boleh negatif')
@@ -688,6 +1029,39 @@ async function submitExtend() {
   await window.api.extendRental({ ...extendForm.value })
   showExtendModal.value = false
   await loadRentals()
+}
+
+async function submitSwap() {
+  swapError.value = ''
+  try {
+    const source = selectedSwapSource.value
+    if (!source) throw new Error('Transaksi sumber tidak ditemukan')
+    const remainingDays = Number(swapForm.value.remaining_days || 0)
+    if (!remainingDays || remainingDays < 1) throw new Error('Sisa hari minimal 1')
+    if (remainingDays >= Number(source.period_days || 0)) throw new Error('Sisa hari harus lebih kecil dari periode sewa awal')
+    if (!swapForm.value.new_motor_id) throw new Error('Motor pengganti wajib dipilih')
+    if (!swapForm.value.switch_date_time) throw new Error('Tanggal ganti unit wajib diisi')
+    const newPricePerDay = Number(swapForm.value.new_price_per_day || 0)
+    if (!newPricePerDay || newPricePerDay <= 0) throw new Error('Tarif motor pengganti per hari harus lebih dari 0')
+    if (swapDelta.value !== 0 && !swapForm.value.settlement_payment_method) {
+      throw new Error('Metode bayar selisih wajib dipilih')
+    }
+
+    await window.api.swapRentalUnit({
+      source_rental_id: Number(swapForm.value.source_rental_id),
+      switch_date_time: swapForm.value.switch_date_time,
+      remaining_days: remainingDays,
+      new_motor_id: Number(swapForm.value.new_motor_id),
+      new_price_per_day: newPricePerDay,
+      settlement_payment_method: swapDelta.value === 0 ? null : swapForm.value.settlement_payment_method,
+      settlement_note: swapForm.value.settlement_note || null
+    })
+
+    showSwapModal.value = false
+    await loadRentals()
+  } catch (err) {
+    swapError.value = String(err?.message || err).replace("Error invoking remote method 'rental:swap-unit': Error: ", '')
+  }
 }
 
 async function deleteRental(rental) {
@@ -729,5 +1103,6 @@ onMounted(async () => {
   await loadRentals()
   allMotors.value = await window.api.getMotors()
   allVendors.value = await window.api.getHotels()
+  cashAccounts.value = await window.api.getCashAccounts()
 })
 </script>

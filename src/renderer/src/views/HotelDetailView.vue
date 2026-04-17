@@ -13,14 +13,14 @@
                 {{ hotel.is_active ? 'Aktif' : 'Nonaktif' }}
               </span>
             </div>
-            <p class="text-slate-500 text-sm mt-1">Detail vendor hotel, komisi pending, dan riwayat pembayaran</p>
+            <p class="text-slate-500 text-sm mt-1">Detail vendor hotel, fee vendor tunai per transaksi, dan riwayat pembayaran lama</p>
           </div>
         </div>
 
         <div class="flex flex-wrap gap-2">
           <button @click="openSlipModal" class="btn-secondary">
             <span class="material-symbols-outlined text-sm">picture_as_pdf</span>
-            Slip Komisi
+            Slip Fee Vendor
           </button>
           <button
             v-if="previewData.netAmount > 0"
@@ -64,19 +64,19 @@
 
     <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
       <div class="card">
-        <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Komisi Pending</p>
+        <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Fee Vendor (Periode Ini)</p>
         <p class="mt-2 text-2xl font-black text-orange-500">{{ formatRp(previewData.grossCommission) }}</p>
       </div>
       <div class="card">
-        <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Rental Pending</p>
+        <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Jumlah Transaksi Vendor</p>
         <p class="mt-2 text-2xl font-black text-primary">{{ previewData.rentals.length }}</p>
       </div>
       <div class="card">
-        <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Omzet Pending</p>
+        <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Omzet Rental Vendor</p>
         <p class="mt-2 text-2xl font-black text-slate-800">{{ formatRp(totalPendingRentalValue) }}</p>
       </div>
       <div class="card">
-        <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Total Sudah Dibayar</p>
+        <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Total Dibayar (Periode Ini)</p>
         <p class="mt-2 text-2xl font-black text-emerald-600">{{ formatRp(totalPaidHistorical) }}</p>
       </div>
     </div>
@@ -88,7 +88,7 @@
             <span class="material-symbols-outlined text-base">date_range</span>
             Filter Periode
           </h3>
-          <p class="text-xs text-slate-400 mt-1">Dipakai untuk komisi pending, slip komisi, dan riwayat pembayaran vendor hotel.</p>
+          <p class="text-xs text-slate-400 mt-1">Dipakai untuk rekap fee vendor tunai, slip fee vendor, dan riwayat pembayaran vendor hotel.</p>
         </div>
         <div class="flex flex-wrap items-end gap-2">
           <select v-model="periodFilter.mode" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
@@ -124,10 +124,10 @@
         <div>
           <h3 class="font-bold text-slate-700 text-sm flex items-center gap-2">
             <span class="material-symbols-outlined text-base">payments</span>
-            Komisi Vendor Belum Dibayar
+            Rekap Fee Vendor (Tunai Saat Transaksi)
           </h3>
           <p class="text-xs text-slate-400 mt-1">
-            {{ pendingRentals.length }} transaksi pending dengan total {{ formatRp(previewData.grossCommission) }}
+            {{ pendingRentals.length }} transaksi vendor dengan total fee {{ formatRp(previewData.grossCommission) }}
           </p>
         </div>
         <div class="flex items-center gap-2">
@@ -146,7 +146,7 @@
       </div>
 
       <div v-if="!pendingRentals.length" class="py-10 text-center text-slate-400 text-sm">
-        Belum ada komisi vendor hotel yang menunggu pembayaran pada periode ini
+        Belum ada transaksi vendor hotel pada periode ini
       </div>
 
       <div v-else class="table-scroll">
@@ -158,7 +158,7 @@
             <th class="px-6 py-4">Motor</th>
             <th class="px-6 py-4 text-right">Durasi</th>
             <th class="px-6 py-4 text-right">Total Sewa</th>
-            <th class="px-6 py-4 text-right">Komisi Vendor</th>
+            <th class="px-6 py-4 text-right">Fee Vendor</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-50">
@@ -192,7 +192,7 @@
         <div>
           <h3 class="font-bold text-slate-700 text-sm flex items-center gap-2">
             <span class="material-symbols-outlined text-base">receipt_long</span>
-            Riwayat Pembayaran Komisi
+            Riwayat Pembayaran Fee Vendor
           </h3>
           <p class="text-xs text-slate-400 mt-1">{{ filteredPayouts.length }} pembayaran tercatat untuk periode aktif</p>
         </div>
@@ -280,7 +280,7 @@
     <n-modal
       v-model:show="showSlipModal"
       preset="card"
-      title="Preview Slip Komisi Vendor"
+      title="Preview Slip Fee Vendor"
       class="max-w-xl"
       :auto-focus="false"
       :trap-focus="false"
@@ -307,7 +307,7 @@
             <p class="mt-2 text-lg font-black text-slate-800">{{ formatRp(totalPendingRentalValue) }}</p>
           </div>
           <div class="rounded-xl border border-slate-200 px-4 py-3">
-            <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Komisi Vendor</p>
+            <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Fee Vendor</p>
             <p class="mt-2 text-lg font-black text-orange-500">{{ formatRp(previewData.grossCommission) }}</p>
           </div>
         </div>
@@ -327,7 +327,7 @@
     <n-modal
       v-model:show="showPayoutModal"
       preset="card"
-      title="Konfirmasi Pembayaran Komisi Vendor Hotel"
+      title="Konfirmasi Pembayaran Fee Vendor Hotel"
       class="max-w-3xl"
       :auto-focus="false"
       :trap-focus="false"
@@ -358,7 +358,7 @@
               <p class="mt-2 text-xl font-black text-slate-800">{{ formatRp(totalPendingRentalValue) }}</p>
             </div>
             <div class="px-4 py-4">
-              <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Komisi Pending</p>
+              <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Fee Vendor Pending</p>
               <p class="mt-2 text-xl font-black text-orange-500">{{ formatRp(previewData.grossCommission) }}</p>
             </div>
             <div class="px-4 py-4">
@@ -380,7 +380,7 @@
                   <th class="px-4 py-3">Tanggal</th>
                   <th class="px-4 py-3">Pelanggan</th>
                   <th class="px-4 py-3">Motor</th>
-                  <th class="px-4 py-3 text-right">Komisi</th>
+                  <th class="px-4 py-3 text-right">Fee Vendor</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100">
@@ -391,7 +391,7 @@
                   <td class="px-4 py-3 text-right font-bold text-emerald-600">{{ formatRp(r.vendor_fee) }}</td>
                 </tr>
                 <tr v-if="!previewData.rentals.length">
-                  <td colspan="4" class="px-4 py-8 text-center text-slate-400">Tidak ada komisi vendor yang perlu dibayar</td>
+                  <td colspan="4" class="px-4 py-8 text-center text-slate-400">Tidak ada fee vendor yang perlu dibayar</td>
                 </tr>
               </tbody>
             </table>
@@ -537,7 +537,7 @@ const slipFileName = computed(() => {
       ? `${toFileNamePart(startDate)}_sd_${toFileNamePart(endDate)}`
       : toFileNamePart(endDate || startDate)
   }
-  return `Slip_Komisi_Vendor_${toFileNamePart(hotel.value?.name || 'Vendor')}_${periodLabel}.pdf`
+  return `Slip_Fee_Vendor_${toFileNamePart(hotel.value?.name || 'Vendor')}_${periodLabel}.pdf`
 })
 
 const totalPendingRentalValue = computed(() =>
@@ -636,7 +636,7 @@ async function previewSlip() {
     })
     await previewReport(html, slipFileName.value)
   } catch (err) {
-    slipError.value = err.message || 'Gagal membuat preview slip komisi vendor.'
+    slipError.value = err.message || 'Gagal membuat preview slip fee vendor.'
   }
 }
 
@@ -660,7 +660,7 @@ async function submitPayout() {
       date: nowDateTime().split('T')[0]
     })
     showPayoutModal.value = false
-    successMessage.value = `Pembayaran komisi vendor untuk ${hotel.value.name} berhasil diproses.`
+    successMessage.value = `Pembayaran fee vendor untuk ${hotel.value.name} berhasil diproses.`
     await loadData()
   } catch (err) {
     payoutError.value = err.message.replace("Error invoking remote method 'hotel:payout': Error: ", '')

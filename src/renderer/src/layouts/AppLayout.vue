@@ -86,13 +86,13 @@
             <li>
               <div>
                 <strong class="text-slate-700">Laporan & Dokumen Lebih Profesional</strong>
-                <p class="text-xs text-slate-500 mt-0.5">Penamaan file laporan diperjelas dengan tanggal absolut, preview PDF dirapikan, dan slip komisi mitra maupun vendor hotel dibuat lebih formal.</p>
+                <p class="text-xs text-slate-500 mt-0.5">Penamaan file laporan diperjelas dengan tanggal absolut, preview PDF dirapikan, dan slip hak mitra maupun fee vendor hotel dibuat lebih formal.</p>
               </div>
             </li>
             <li>
               <div>
-                <strong class="text-slate-700">Alur Komisi Mitra dan Vendor Hotel Diperkuat</strong>
-                <p class="text-xs text-slate-500 mt-0.5">Perhitungan komisi, payout, rincian per motor, serta preview slip dibenahi agar lebih sesuai proses bisnis rental.</p>
+                <strong class="text-slate-700">Alur Hak Mitra dan Fee Vendor Diperkuat</strong>
+                <p class="text-xs text-slate-500 mt-0.5">Perhitungan hak mitra, fee vendor, payout, rincian per motor, serta preview slip dibenahi agar sesuai proses bisnis rental.</p>
               </div>
             </li>
             <li>
@@ -110,7 +110,7 @@
             <li>
               <div>
                 <strong class="text-slate-700">Penyelarasan Istilah dan Tampilan UI</strong>
-                <p class="text-xs text-slate-500 mt-0.5">Istilah vendor, mitra, pemilik motor, komisi, dan pengeluaran diseragamkan agar lebih mudah dipahami user operasional.</p>
+                <p class="text-xs text-slate-500 mt-0.5">Istilah vendor, mitra, pemilik motor, hak mitra, fee vendor, dan pengeluaran diseragamkan agar lebih mudah dipahami user operasional.</p>
               </div>
             </li>
           </ul>
@@ -133,13 +133,13 @@
             <li>
               <div>
                 <strong class="text-slate-700">Manajemen Profil Pemilik Motor</strong>
-                <p class="text-xs text-slate-500 mt-0.5">Pencatatan bagi hasil motor titipan dan pelacakan daftar riwayat komisi (Lunas / Belum Dibayar).</p>
+                <p class="text-xs text-slate-500 mt-0.5">Pencatatan hak mitra motor titipan dan pelacakan daftar riwayat payout (Lunas / Belum Dibayar).</p>
               </div>
             </li>
             <li>
               <div>
-                <strong class="text-slate-700">Sistem Payout Komisi</strong>
-                <p class="text-xs text-slate-500 mt-0.5">Pembayaran klaim komisi ke mitra terintegrasi langsung dengan pemotongan saldo kas perusahaan.</p>
+                <strong class="text-slate-700">Sistem Payout Hak Mitra</strong>
+                <p class="text-xs text-slate-500 mt-0.5">Pembayaran hak mitra terintegrasi langsung dengan pemotongan saldo kas perusahaan.</p>
               </div>
             </li>
             <li>

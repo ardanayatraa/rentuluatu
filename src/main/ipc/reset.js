@@ -1,5 +1,6 @@
 import { ipcMain, app } from 'electron'
 import { dbOps, getDb, saveDb, forceSaveDb } from '../db'
+import { calcCommission } from '../lib/finance'
 
 function assertDevOnly() {
   if (app.isPackaged || process.env.NODE_ENV === 'production') {
@@ -95,6 +96,7 @@ function getSandboxStats() {
     ['motors', 'Motor'],
     ['hotels', 'Hotel'],
     ['rentals', 'Rental'],
+    ['rental_swaps', 'Ganti Unit'],
     ['expenses', 'Pengeluaran'],
     ['refunds', 'Refund'],
     ['payouts', 'Pencairan Mitra'],
@@ -128,6 +130,7 @@ function seedSandboxData({ rentalCount = 500, daysBack = 365 }) {
   const customerNames = ['Budi', 'Sarah', 'Kevin', 'Anita', 'Dian', 'Michael', 'Putu', 'Raka']
 
   let maxRentalId = Number(dbOps.get('SELECT COALESCE(MAX(id), 0) as id FROM rentals')?.id || 0)
+  const completedBaseRentals = []
 
   for (let index = 0; index < rentalCount; index += 1) {
     const motor = pick(motors)
@@ -136,8 +139,7 @@ function seedSandboxData({ rentalCount = 500, daysBack = 365 }) {
     const pricePerDay = pick([75000, 85000, 100000, 125000, 150000])
     const totalPrice = periodDays * pricePerDay
     const vendorFee = hotel ? pick([0, 10000, 15000, 20000]) : 0
-    const net = totalPrice - vendorFee
-    const wavyPercentage = motor.type === 'pribadi' ? 0.2 : 0.3
+    const { sisa, wavy_gets, owner_gets } = calcCommission(motor.type, totalPrice, vendorFee)
     const paymentMethod = pick(['tunai', 'transfer', 'qris', 'debit_card'])
     const cashAccount = cashAccountByType[paymentMethod] || cashAccounts[0]
     const dateTime = randomDateTimeWithinDays(daysBack)
@@ -148,8 +150,8 @@ function seedSandboxData({ rentalCount = 500, daysBack = 365 }) {
     dbOps.run(`
       INSERT INTO rentals (
         date_time, customer_name, hotel, hotel_id, motor_id, period_days, payment_method,
-        total_price, price_per_day, vendor_fee, sisa, wavy_gets, owner_gets, status, invoice_number
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        total_price, price_per_day, vendor_fee, sisa, wavy_gets, owner_gets, status, invoice_number, relation_type
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       dateTime,
       pick(customerNames),
@@ -161,11 +163,12 @@ function seedSandboxData({ rentalCount = 500, daysBack = 365 }) {
       totalPrice,
       pricePerDay,
       vendorFee,
-      net,
-      net * wavyPercentage,
-      net * (1 - wavyPercentage),
+      sisa,
+      wavy_gets,
+      owner_gets,
       status,
-      invoiceNumber
+      invoiceNumber,
+      'rental'
     ])
 
     const rentalId = Number(dbOps.get('SELECT last_insert_rowid() as id')?.id || 0)
@@ -175,6 +178,23 @@ function seedSandboxData({ rentalCount = 500, daysBack = 365 }) {
       ) VALUES (?, 'in', ?, 'rental', ?, ?, ?)
     `, [cashAccount.id, totalPrice, rentalId, `Sewa ${invoiceNumber}`, dateTime.slice(0, 10)])
     dbOps.run('UPDATE cash_accounts SET balance = COALESCE(balance, 0) + ? WHERE id = ?', [totalPrice, cashAccount.id])
+
+    if (status === 'completed') {
+      completedBaseRentals.push({
+        id: rentalId,
+        dateTime,
+        customerName: pick(customerNames),
+        hotelName: hotel?.name || '',
+        hotelId: hotel?.id || null,
+        motorId: motor.id,
+        motorType: motor.type,
+        periodDays,
+        totalPrice,
+        pricePerDay,
+        vendorFee,
+        paymentMethod
+      })
+    }
 
     if (status === 'refunded') {
       const refundDays = randomInt(1, periodDays)
@@ -220,6 +240,169 @@ function seedSandboxData({ rentalCount = 500, daysBack = 365 }) {
     }
   }
 
+  // Seed sample EXTEND agar tab extend terisi realistis
+  const extendTarget = Math.min(Math.max(1, Math.round(rentalCount * 0.08)), completedBaseRentals.length)
+  for (let index = 0; index < extendTarget; index += 1) {
+    const parent = pick(completedBaseRentals)
+    const extendDays = randomInt(1, 4)
+    const extendPricePerDay = pick([75000, 85000, 100000, 125000, 150000])
+    const extendTotal = extendDays * extendPricePerDay
+    const vendorRatio = parent.totalPrice > 0 ? Number(parent.vendorFee || 0) / Number(parent.totalPrice || 1) : 0
+    const extendVendorFee = Math.min(extendTotal, Math.max(0, Math.round(extendTotal * vendorRatio)))
+    const extendCommission = calcCommission(parent.motorType, extendTotal, extendVendorFee)
+    const extendDateTime = randomDateTimeWithinDays(daysBack)
+    const extendInvoice = `EXT-${extendDateTime.slice(0, 10).replace(/-/g, '')}-${String(parent.id).padStart(5, '0')}-${index + 1}`
+    const extendPaymentMethod = pick(['tunai', 'transfer', 'qris', 'debit_card'])
+    const extendCashAccount = cashAccountByType[extendPaymentMethod] || cashAccounts[0]
+
+    dbOps.run(`
+      INSERT INTO rentals (
+        date_time, customer_name, hotel, hotel_id, motor_id, period_days, payment_method,
+        total_price, price_per_day, vendor_fee, sisa, wavy_gets, owner_gets, status,
+        invoice_number, is_extension, relation_type, parent_rental_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, 1, 'extend', ?)
+    `, [
+      extendDateTime,
+      parent.customerName,
+      parent.hotelName,
+      parent.hotelId,
+      parent.motorId,
+      extendDays,
+      extendPaymentMethod,
+      extendTotal,
+      extendPricePerDay,
+      extendVendorFee,
+      extendCommission.sisa,
+      extendCommission.wavy_gets,
+      extendCommission.owner_gets,
+      extendInvoice,
+      parent.id
+    ])
+
+    const extendRentalId = Number(dbOps.get('SELECT last_insert_rowid() as id')?.id || 0)
+    dbOps.run(`
+      INSERT INTO cash_transactions (
+        cash_account_id, type, amount, reference_type, reference_id, description, date
+      ) VALUES (?, 'in', ?, 'rental', ?, ?, ?)
+    `, [extendCashAccount.id, extendTotal, extendRentalId, `Extend ${extendInvoice}`, extendDateTime.slice(0, 10)])
+    dbOps.run('UPDATE cash_accounts SET balance = COALESCE(balance, 0) + ? WHERE id = ?', [extendTotal, extendCashAccount.id])
+  }
+
+  // Seed sample GANTI UNIT agar tab swap terisi realistis
+  const swapCandidates = completedBaseRentals.filter((item) => Number(item.periodDays || 0) >= 2)
+  const swapTarget = Math.min(Math.max(1, Math.round(rentalCount * 0.04)), swapCandidates.length)
+  const usedSwapSources = new Set()
+  for (let index = 0; index < swapTarget; index += 1) {
+    const source = pick(swapCandidates.filter((item) => !usedSwapSources.has(item.id)))
+    if (!source) break
+    usedSwapSources.add(source.id)
+
+    const remainingDays = randomInt(1, Math.max(1, source.periodDays - 1))
+    const usedDays = source.periodDays - remainingDays
+    const oldRemainingCredit = Math.round(source.totalPrice * (remainingDays / source.periodDays))
+    const sourceUsedTotal = Math.max(0, Math.round(source.totalPrice - oldRemainingCredit))
+    const sourceVendorRatio = source.totalPrice > 0 ? Number(source.vendorFee || 0) / Number(source.totalPrice || 1) : 0
+    const sourceUsedVendorFee = Math.round(sourceVendorRatio * sourceUsedTotal)
+    const sourceUsedCommission = calcCommission(source.motorType, sourceUsedTotal, sourceUsedVendorFee)
+
+    dbOps.run(`
+      UPDATE rentals
+      SET period_days = ?, total_price = ?, price_per_day = ?, vendor_fee = ?, sisa = ?, wavy_gets = ?, owner_gets = ?, relation_type = 'swap_source'
+      WHERE id = ?
+    `, [
+      usedDays,
+      sourceUsedTotal,
+      usedDays > 0 ? sourceUsedTotal / usedDays : sourceUsedTotal,
+      sourceUsedVendorFee,
+      sourceUsedCommission.sisa,
+      sourceUsedCommission.wavy_gets,
+      sourceUsedCommission.owner_gets,
+      source.id
+    ])
+
+    const replacementMotor = pick(motors.filter((item) => Number(item.id) !== Number(source.motorId)))
+    if (!replacementMotor) continue
+    const replacementPricePerDay = pick([75000, 85000, 100000, 125000, 150000, 175000])
+    const replacementTotal = Math.round(replacementPricePerDay * remainingDays)
+    const replacementVendorFee = Math.round(Math.min(replacementTotal, Math.max(0, replacementTotal * sourceVendorRatio)))
+    const replacementCommission = calcCommission(replacementMotor.type, replacementTotal, replacementVendorFee)
+    const switchDateTime = randomDateTimeWithinDays(daysBack)
+    const replacementInvoice = `SWP-${switchDateTime.slice(0, 10).replace(/-/g, '')}-${String(source.id).padStart(5, '0')}-${index + 1}`
+
+    dbOps.run(`
+      INSERT INTO rentals (
+        date_time, customer_name, hotel, hotel_id, motor_id, period_days, payment_method,
+        total_price, price_per_day, vendor_fee, sisa, wavy_gets, owner_gets, status,
+        invoice_number, relation_type, parent_rental_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, 'swap', ?)
+    `, [
+      switchDateTime,
+      source.customerName,
+      source.hotelName,
+      source.hotelId,
+      replacementMotor.id,
+      remainingDays,
+      source.paymentMethod,
+      replacementTotal,
+      replacementPricePerDay,
+      replacementVendorFee,
+      replacementCommission.sisa,
+      replacementCommission.wavy_gets,
+      replacementCommission.owner_gets,
+      replacementInvoice,
+      source.id
+    ])
+
+    const replacementRentalId = Number(dbOps.get('SELECT last_insert_rowid() as id')?.id || 0)
+    const settlementDelta = Math.round(replacementTotal - oldRemainingCredit)
+    const settlementType = settlementDelta > 0 ? 'topup' : settlementDelta < 0 ? 'refund' : 'none'
+    const settlementAmount = Math.abs(settlementDelta)
+    const settlementPaymentMethod = settlementType === 'none' ? null : pick(['tunai', 'transfer', 'qris', 'debit_card'])
+    const settlementAccount = settlementPaymentMethod ? (cashAccountByType[settlementPaymentMethod] || cashAccounts[0]) : null
+
+    if (settlementType !== 'none' && settlementAccount) {
+      const txType = settlementType === 'topup' ? 'in' : 'out'
+      dbOps.run(`
+        INSERT INTO cash_transactions (
+          cash_account_id, type, amount, reference_type, reference_id, description, date
+        ) VALUES (?, ?, ?, 'rental_swap_settlement', ?, ?, ?)
+      `, [
+        settlementAccount.id,
+        txType,
+        settlementAmount,
+        replacementRentalId,
+        settlementType === 'topup' ? 'Sandbox swap topup' : 'Sandbox swap refund',
+        switchDateTime.slice(0, 10)
+      ])
+      dbOps.run('UPDATE cash_accounts SET balance = COALESCE(balance, 0) + ? WHERE id = ?', [
+        settlementType === 'topup' ? settlementAmount : -settlementAmount,
+        settlementAccount.id
+      ])
+    }
+
+    dbOps.run(`
+      INSERT INTO rental_swaps (
+        source_rental_id, replacement_rental_id, switch_date_time, used_days, remaining_days,
+        original_price_per_day, original_remaining_credit, replacement_price_per_day, replacement_total_price,
+        settlement_type, settlement_amount, settlement_payment_method, settlement_note
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      source.id,
+      replacementRentalId,
+      switchDateTime,
+      usedDays,
+      remainingDays,
+      source.pricePerDay,
+      oldRemainingCredit,
+      replacementPricePerDay,
+      replacementTotal,
+      settlementType,
+      settlementAmount,
+      settlementPaymentMethod,
+      'Sandbox swap'
+    ])
+  }
+
   const owners = dbOps.all('SELECT id FROM owners ORDER BY id ASC')
   const orphanMotors = dbOps.all('SELECT id FROM motors WHERE owner_id IS NULL ORDER BY id ASC')
   orphanMotors.forEach((motor, index) => {
@@ -245,6 +428,7 @@ export function registerResetHandlers() {
 
     try {
       // Hapus data transaksi
+      db.run('DELETE FROM rental_swaps')
       db.run('DELETE FROM payout_deductions')
       db.run('DELETE FROM refunds')
       db.run('DELETE FROM cash_transactions')
@@ -264,7 +448,7 @@ export function registerResetHandlers() {
       // Reset autoincrement ID kembali ke 1
       db.run(`DELETE FROM sqlite_sequence WHERE name IN (
         'payout_deductions', 'refunds', 'cash_transactions',
-        'hotel_payouts', 'rentals', 'expenses', 'payouts',
+        'hotel_payouts', 'rentals', 'rental_swaps', 'expenses', 'payouts',
         'hotels', 'motors', 'owners'
       )`)
 

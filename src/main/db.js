@@ -13,7 +13,7 @@ const SAVE_DEBOUNCE_MS = 250
 // Versi schema — naikkan angka ini setiap kali ada perubahan struktur database.
 // Sistem akan otomatis jalankan migrasi yang belum pernah dijalankan.
 // ─────────────────────────────────────────────────────────────────────────────
-const SCHEMA_VERSION = 11
+const SCHEMA_VERSION = 12
 
 export async function initDb() {
   const wasmPath = join(
@@ -203,7 +203,27 @@ function createBaseSchema() {
       payout_id INTEGER,
       invoice_number TEXT,
       is_extension INTEGER DEFAULT 0,
+      relation_type TEXT DEFAULT 'rental',
       parent_rental_id INTEGER REFERENCES rentals(id),
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    )
+  `)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS rental_swaps (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_rental_id INTEGER NOT NULL REFERENCES rentals(id),
+      replacement_rental_id INTEGER NOT NULL REFERENCES rentals(id),
+      switch_date_time TEXT NOT NULL,
+      used_days INTEGER NOT NULL,
+      remaining_days INTEGER NOT NULL,
+      original_price_per_day REAL NOT NULL,
+      original_remaining_credit REAL NOT NULL,
+      replacement_price_per_day REAL NOT NULL,
+      replacement_total_price REAL NOT NULL,
+      settlement_type TEXT NOT NULL,
+      settlement_amount REAL NOT NULL,
+      settlement_payment_method TEXT,
+      settlement_note TEXT,
       created_at TEXT DEFAULT (datetime('now','localtime'))
     )
   `)
@@ -298,6 +318,9 @@ function createBaseIndexes() {
     'CREATE INDEX IF NOT EXISTS idx_rentals_hotel_payout ON rentals(hotel_id, hotel_payout_id, status)',
     'CREATE INDEX IF NOT EXISTS idx_rentals_invoice_number ON rentals(invoice_number)',
     'CREATE INDEX IF NOT EXISTS idx_rentals_extension_parent ON rentals(parent_rental_id, is_extension)',
+    'CREATE INDEX IF NOT EXISTS idx_rentals_relation_type ON rentals(relation_type)',
+    'CREATE INDEX IF NOT EXISTS idx_rental_swaps_source ON rental_swaps(source_rental_id)',
+    'CREATE INDEX IF NOT EXISTS idx_rental_swaps_replacement ON rental_swaps(replacement_rental_id)',
     'CREATE INDEX IF NOT EXISTS idx_expenses_date_type_motor ON expenses(date, type, motor_id)',
     'CREATE INDEX IF NOT EXISTS idx_expenses_payout ON expenses(payout_id)',
     'CREATE INDEX IF NOT EXISTS idx_cash_transactions_date_ref ON cash_transactions(date, reference_type)',
@@ -478,6 +501,37 @@ const migrations = [
       try { db.run("ALTER TABLE rentals ADD COLUMN is_extension INTEGER DEFAULT 0") } catch (_) {}
       try { db.run("ALTER TABLE rentals ADD COLUMN parent_rental_id INTEGER REFERENCES rentals(id)") } catch (_) {}
       try { db.run("UPDATE rentals SET is_extension = 0 WHERE is_extension IS NULL") } catch (_) {}
+    }
+  },
+  // v12 — penanda relasi rental + log ganti unit
+  {
+    version: 12,
+    up() {
+      try { db.run("ALTER TABLE rentals ADD COLUMN relation_type TEXT DEFAULT 'rental'") } catch (_) {}
+      try { db.run("UPDATE rentals SET relation_type = 'extend' WHERE is_extension = 1") } catch (_) {}
+      try { db.run("UPDATE rentals SET relation_type = 'rental' WHERE relation_type IS NULL OR TRIM(relation_type) = ''") } catch (_) {}
+      try {
+        db.run(`
+          CREATE TABLE IF NOT EXISTS rental_swaps (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_rental_id INTEGER NOT NULL REFERENCES rentals(id),
+            replacement_rental_id INTEGER NOT NULL REFERENCES rentals(id),
+            switch_date_time TEXT NOT NULL,
+            used_days INTEGER NOT NULL,
+            remaining_days INTEGER NOT NULL,
+            original_price_per_day REAL NOT NULL,
+            original_remaining_credit REAL NOT NULL,
+            replacement_price_per_day REAL NOT NULL,
+            replacement_total_price REAL NOT NULL,
+            settlement_type TEXT NOT NULL,
+            settlement_amount REAL NOT NULL,
+            settlement_payment_method TEXT,
+            settlement_note TEXT,
+            created_at TEXT DEFAULT (datetime('now','localtime'))
+          )
+        `)
+      } catch (_) {}
+      createBaseIndexes()
     }
   },
   // Contoh untuk update fitur berikutnya:

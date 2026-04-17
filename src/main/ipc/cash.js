@@ -1,6 +1,31 @@
 import { ipcMain } from 'electron'
 import { dbOps } from '../db'
 
+function assertValidManualCashInput(data = {}, mode = 'income') {
+  const amount = Number(data.amount || 0)
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error('Jumlah harus lebih dari 0')
+  }
+
+  const description = String(data.description || '').trim()
+  if (!description) {
+    throw new Error('Catatan transaksi wajib diisi')
+  }
+
+  const paymentMethod = String(data.payment_method || '').trim()
+  if (!paymentMethod) {
+    throw new Error('Metode bayar wajib dipilih')
+  }
+
+  return {
+    amount,
+    description,
+    paymentMethod,
+    date: data.date || new Date().toISOString().split('T')[0],
+    mode
+  }
+}
+
 export function registerCashHandlers() {
   ipcMain.handle('cash:get-accounts', () => {
     return dbOps.all('SELECT * FROM cash_accounts ORDER BY type ASC')
@@ -45,30 +70,30 @@ export function registerCashHandlers() {
 
   // Tambah pemasukan manual (misal jual SIM card, dll)
   ipcMain.handle('cash:add-income', (_, data) => {
-    const account = dbOps.get('SELECT * FROM cash_accounts WHERE type = ?', [data.payment_method])
+    const payload = assertValidManualCashInput(data, 'income')
+    const account = dbOps.get('SELECT * FROM cash_accounts WHERE type = ?', [payload.paymentMethod])
     if (!account) throw new Error('Akun kas tidak ditemukan')
-    const today = data.date || new Date().toISOString().split('T')[0]
     dbOps.run(`
       INSERT INTO cash_transactions (cash_account_id, type, amount, reference_type, description, date)
       VALUES (?, 'in', ?, 'manual_income', ?, ?)
-    `, [account.id, data.amount, data.description || 'Pemasukan Manual', today])
-    dbOps.run('UPDATE cash_accounts SET balance = balance + ? WHERE id = ?', [data.amount, account.id])
+    `, [account.id, payload.amount, payload.description, payload.date])
+    dbOps.run('UPDATE cash_accounts SET balance = balance + ? WHERE id = ?', [payload.amount, account.id])
     return { success: true }
   })
 
   // Tambah pengeluaran manual dari kas
   ipcMain.handle('cash:add-expense', (_, data) => {
-    const account = dbOps.get('SELECT * FROM cash_accounts WHERE type = ?', [data.payment_method])
+    const payload = assertValidManualCashInput(data, 'expense')
+    const account = dbOps.get('SELECT * FROM cash_accounts WHERE type = ?', [payload.paymentMethod])
     if (!account) throw new Error('Akun kas tidak ditemukan')
-    if (account.balance < data.amount) {
+    if (account.balance < payload.amount) {
       throw new Error(`Saldo Kas ${account.name} tidak cukup! (Sisa: Rp ${account.balance.toLocaleString('id-ID')})`)
     }
-    const today = data.date || new Date().toISOString().split('T')[0]
     dbOps.run(`
       INSERT INTO cash_transactions (cash_account_id, type, amount, reference_type, description, date)
       VALUES (?, 'out', ?, 'manual_expense', ?, ?)
-    `, [account.id, data.amount, data.description || 'Pengeluaran Manual', today])
-    dbOps.run('UPDATE cash_accounts SET balance = balance - ? WHERE id = ?', [data.amount, account.id])
+    `, [account.id, payload.amount, payload.description, payload.date])
+    dbOps.run('UPDATE cash_accounts SET balance = balance - ? WHERE id = ?', [payload.amount, account.id])
     return { success: true }
   })
 }

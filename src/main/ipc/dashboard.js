@@ -54,7 +54,7 @@ export function registerDashboardHandlers() {
     const totalIncome = income.total + manualIncome.total
     const totalExpenses = expenses.total + manualExpense.total
     // FIX: wavy_gets hanya dari rental, bukan ditambah manual income
-    // manual income adalah pemasukan Wavy tapi bukan komisi rental
+  // manual income adalah pemasukan Wavy tapi bukan bagi hasil rental
     const totalWavyGets = wavyGets.total
     // FIX: profit = (wavy_gets dari rental + manual income) - (expenses + manual expense)
     const wavyTotal = wavyGets.total + manualIncome.total

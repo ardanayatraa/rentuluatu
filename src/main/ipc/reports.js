@@ -105,8 +105,14 @@ export function registerReportHandlers() {
       SELECT r.id, r.date_time as date, 'rental' as type,
              r.customer_name as description,
              m.model || ' (' || m.plate_number || ')' as motor,
-             r.payment_method, r.total_price as amount, r.status
+             r.payment_method, r.total_price as amount, r.status,
+             r.invoice_number, r.relation_type, r.parent_rental_id, r.period_days,
+             m.model as motor_model, m.plate_number,
+             pr.invoice_number as parent_invoice_number,
+             pm.model as parent_motor_model, pm.plate_number as parent_plate_number
       FROM rentals r JOIN motors m ON r.motor_id = m.id
+      LEFT JOIN rentals pr ON pr.id = r.parent_rental_id
+      LEFT JOIN motors pm ON pm.id = pr.motor_id
       WHERE r.date_time BETWEEN ? AND ?
       ORDER BY r.date_time DESC
     `, [startDate, endDate])
@@ -136,7 +142,7 @@ export function registerReportHandlers() {
     return { rentals, operationalExpenses, motorExpenses }
   })
 
-  // Laporan komisi owner (untuk cetak PDF pembayaran komisi)
+  // Laporan hak mitra owner (untuk cetak PDF pembayaran hak mitra)
   ipcMain.handle('report:owner-commission', (_, { ownerId, startDate, endDate, motorId = null }) => {
     const owner = dbOps.get('SELECT * FROM owners WHERE id = ?', [ownerId])
     const motors = dbOps.all(
@@ -417,8 +423,8 @@ export function registerReportHandlers() {
     ].filter(row => Math.abs(row.amount) > 0.0001)
 
     const liabilityRows = [
-      { label: 'Utang Komisi Mitra / Pemilik Motor', amount: Number(ownerPayable?.total || 0) },
-      { label: 'Utang Komisi Hotel / Vendor Hotel', amount: Number(hotelPayable?.total || 0) },
+      { label: 'Utang Hak Mitra / Pemilik Motor', amount: Number(ownerPayable?.total || 0) },
+      { label: 'Utang Fee Vendor Hotel', amount: Number(hotelPayable?.total || 0) },
       { label: 'Utang Pengeluaran Motor ke Mitra', amount: Number(ownerExpensePayable?.total || 0) }
     ].filter(row => Math.abs(row.amount) > 0.0001)
 

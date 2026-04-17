@@ -41,7 +41,7 @@
             <th class="px-6 py-4">Bank</th>
             <th class="px-6 py-4">No. Rekening</th>
             <th class="px-6 py-4">Status</th>
-            <th class="px-6 py-4 text-right">Komisi Mengendap</th>
+            <th class="px-6 py-4 text-right">Hak Mitra Mengendap</th>
             <th class="px-6 py-4"></th>
           </tr>
         </thead>

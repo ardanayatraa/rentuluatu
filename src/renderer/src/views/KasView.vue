@@ -104,8 +104,8 @@
     <n-modal v-model:show="showIncomeModal" preset="card" title="Tambah Pemasukan" class="max-w-sm" :auto-focus="false" :trap-focus="false">
       <form @submit.prevent="submitIncome" class="space-y-4">
         <div>
-          <label class="block text-xs font-bold text-slate-500 mb-1">Deskripsi</label>
-          <input v-model="incomeForm.description" type="text" placeholder="Misal: Jual SIM Card, Jual Helm..."
+          <label class="block text-xs font-bold text-slate-500 mb-1">Catatan Transaksi</label>
+          <input v-model="incomeForm.description" type="text" placeholder="Contoh: Penjualan aksesoris"
             class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required />
         </div>
         <div>
@@ -230,10 +230,23 @@ function openIncome() {
 }
 
 async function submitIncome() {
-  await window.api.addCashIncome({ ...incomeForm.value })
-  showIncomeModal.value = false
-  await reloadCash()
-  await loadTransactions()
+  const description = String(incomeForm.value.description || '').trim()
+  if (!description) {
+    alert('Catatan transaksi wajib diisi')
+    return
+  }
+  if (!(Number(incomeForm.value.amount) > 0)) {
+    alert('Jumlah harus lebih dari 0')
+    return
+  }
+  try {
+    await window.api.addCashIncome({ ...incomeForm.value, description })
+    showIncomeModal.value = false
+    await reloadCash()
+    await loadTransactions()
+  } catch (err) {
+    alert(String(err?.message || err).replace("Error invoking remote method 'cash:add-income': Error: ", ''))
+  }
 }
 
 async function loadTransactions() {

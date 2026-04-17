@@ -199,7 +199,7 @@ export function registerOwnerHandlers() {
     return dbOps.all(query, params)
   })
 
-  // Preview payout: hitung komisi kotor, pengeluaran motor belum dipotong, dan bersih
+  // Preview payout: hitung hak mitra kotor, pengeluaran motor belum dipotong, dan bersih
   ipcMain.handle('owner:payout-preview', (_, { ownerId, motorIds = null }) => {
     const hasFilter = motorIds && motorIds.length > 0
     const motorFilter = hasFilter ? `AND m.id IN (${motorIds.map(() => '?').join(',')})` : ''
@@ -323,7 +323,7 @@ export function registerOwnerHandlers() {
         INSERT INTO cash_transactions (cash_account_id, type, amount, reference_type, reference_id, description, date)
         VALUES (?, 'out', ?, 'owner_payout', ?, ?, ?)
       `, [data.cash_account_id, serverNetAmount, payoutId,
-          `Komisi ${data.owner_name || 'Vendor'} (Kotor: ${serverGross.toLocaleString('id-ID')} - Potongan: ${serverDeductions.toLocaleString('id-ID')})`,
+          `Hak Mitra ${data.owner_name || 'Vendor'} (Kotor: ${serverGross.toLocaleString('id-ID')} - Potongan: ${serverDeductions.toLocaleString('id-ID')})`,
           data.date])
       dbOps.run('UPDATE cash_accounts SET balance = balance - ? WHERE id = ?', [serverNetAmount, data.cash_account_id])
     }

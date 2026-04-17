@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('api', {
   getRental: (id) => invoke('rental:get-by-id', id),
   createRental: (data) => invoke('rental:create', data),
   extendRental: (data) => invoke('rental:extend', data),
+  swapRentalUnit: (data) => invoke('rental:swap-unit', data),
   updateRental: (data) => invoke('rental:update', data),
   deleteRental: (id) => invoke('rental:delete', id),
   completeRental: (id) => invoke('rental:complete', id),

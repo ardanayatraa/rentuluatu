@@ -5,7 +5,7 @@
  */
 
 /**
- * Hitung pembagian komisi berdasarkan tipe motor dan vendor fee.
+ * Hitung pembagian hasil berdasarkan tipe motor dan vendor fee.
  * @param {'pribadi'|'titipan'} motorType
  * @param {number} totalPrice - Harga kotor dari pelanggan
  * @param {number} vendorFee  - Fee yang dialokasikan ke hotel/vendor

@@ -39,7 +39,7 @@
             <th class="px-6 py-4">Nama Hotel / Vendor Hotel</th>
             <th class="px-6 py-4">Kontak / Telepon</th>
             <th class="px-6 py-4">Info Rekening</th>
-            <th class="px-6 py-4 text-right">Komisi Belum Dibayar</th>
+            <th class="px-6 py-4 text-right">Fee Vendor (Tunai)</th>
             <th class="px-6 py-4 text-right">Status</th>
             <th class="px-6 py-4 text-right">Aksi</th>
           </tr>
@@ -77,7 +77,7 @@
             </td>
             <td class="px-6 py-4 text-right">
               <div class="flex justify-end gap-2">
-                <button @click="goToDetail(h.id)" class="p-1.5 hover:bg-emerald-50 rounded text-slate-400 hover:text-emerald-600 transition-colors" title="Detail Komisi Hotel">
+                <button @click="goToDetail(h.id)" class="p-1.5 hover:bg-emerald-50 rounded text-slate-400 hover:text-emerald-600 transition-colors" title="Detail Fee Vendor">
                   <span class="material-symbols-outlined text-base">monetization_on</span>
                 </button>
                 <button @click="openEdit(h)" class="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-blue-500 transition-colors">

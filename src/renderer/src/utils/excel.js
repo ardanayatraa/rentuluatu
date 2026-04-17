@@ -151,8 +151,8 @@ export async function saveCommissionExcel({ data, period, fileLabel }) {
     total: rp(rentals.reduce((s,r)=>s+r.total_price,0)),
     commission: rp(rentals.reduce((s,r)=>s+r.owner_gets,0)), status:'' }
   return window.api.saveExcel({
-    defaultName: `Komisi_${owner.name.replace(/\s/g,'_')}_${fileLabel || period.replace(/\//g,'-')}.xlsx`,
-    sheets: [{ name: 'Komisi Mitra', columns, rows: dataRows, totals, currencyKeys: ['total','commission'] }]
+    defaultName: `Hak_Mitra_${owner.name.replace(/\s/g,'_')}_${fileLabel || period.replace(/\//g,'-')}.xlsx`,
+    sheets: [{ name: 'Hak Mitra', columns, rows: dataRows, totals, currencyKeys: ['total','commission'] }]
   })
 }
 
@@ -241,9 +241,9 @@ export async function saveOwnerReportExcel({ rows, period, fileLabel }) {
     { header: 'Jml Motor', key: 'motor_count', width: 12 },
     { header: 'Jml Rental', key: 'rental_count', width: 12 },
     { header: 'Total Omzet', key: 'total_omzet', width: 20 },
-    { header: 'Komisi Kotor', key: 'gross_commission', width: 20 },
+    { header: 'Hak Mitra Kotor', key: 'gross_commission', width: 20 },
     { header: 'Total Pengeluaran', key: 'total_expenses', width: 20 },
-    { header: 'Komisi Bersih', key: 'net_commission', width: 20 }
+    { header: 'Hak Mitra Bersih', key: 'net_commission', width: 20 }
   ]
   const dataRows = rows.map(o => ({
     name: o.name, phone: o.phone||'-', bank_name: o.bank_name||'-',

@@ -253,7 +253,7 @@
             <thead><tr class="text-slate-400 text-xs uppercase font-bold border-b border-slate-100">
               <th class="pb-3">Periode</th><th class="pb-3 text-right">Rental</th>
               <th class="pb-3 text-right">Pemasukan</th><th class="pb-3 text-right">Pengeluaran</th>
-              <th class="pb-3 text-right">Wavy Gets</th><th class="pb-3 text-right">Owner Gets</th>
+              <th class="pb-3 text-right">Wavy Gets</th><th class="pb-3 text-right">Bagian Mitra</th>
               <th class="pb-3 text-right">Profit</th>
             </tr></thead>
             <tbody class="divide-y divide-slate-50">
@@ -354,7 +354,7 @@
             <p class="text-2xl font-black text-primary font-headline">{{ formatRp(motorIncomeData.reduce((s,r)=>s+(r.total_price||0),0)) }}</p></div>
           <div class="card"><p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Wavy Gets</p>
             <p class="text-2xl font-black text-primary font-headline">{{ formatRp(motorIncomeData.reduce((s,r)=>s+(r.wavy_gets||0),0)) }}</p></div>
-          <div class="card"><p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Owner Gets</p>
+            <div class="card"><p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Bagian Mitra</p>
             <p class="text-2xl font-black text-slate-700 font-headline">{{ formatRp(motorIncomeData.reduce((s,r)=>s+(r.owner_gets||0),0)) }}</p></div>
         </div>
         <div class="card table-card">
@@ -363,7 +363,7 @@
             <thead><tr class="text-slate-400 text-xs uppercase font-bold border-b border-slate-100">
               <th class="pb-3">Tanggal</th><th class="pb-3">Pelanggan</th><th class="pb-3">Motor</th>
               <th class="pb-3 text-right">Durasi</th><th class="pb-3">Bayar</th>
-              <th class="pb-3 text-right">Total</th><th class="pb-3 text-right">Wavy Gets</th><th class="pb-3 text-right">Owner Gets</th>
+                <th class="pb-3 text-right">Total</th><th class="pb-3 text-right">Wavy Gets</th><th class="pb-3 text-right">Bagian Mitra</th>
             </tr></thead>
             <tbody class="divide-y divide-slate-50">
               <tr v-for="r in motorIncomeData" :key="r.id" class="text-sm">
@@ -424,6 +424,24 @@
             <p class="text-2xl font-black text-amber-600 font-headline">{{ formatRp(transactionsData.motorExpenses?.reduce((s,e)=>s+(e.amount||0),0)) }}</p></div>
           <div class="card"><p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Selisih</p>
             <p class="text-2xl font-black font-headline" :class="netBalance >= 0 ? 'text-emerald-600' : 'text-red-600'">{{ formatRp(netBalance) }}</p></div>
+        </div>
+        <div class="card table-card mb-4">
+          <div class="px-6 pt-5 mb-4 flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+            <div>
+              <h3 class="text-sm font-extrabold text-primary">Jejak Extend & Ganti Unit</h3>
+              <p class="text-xs text-slate-400 mt-1">Rantai transaksi per rental: transaksi awal, ganti unit, dan extend</p>
+            </div>
+            <span class="badge-neutral text-xs">{{ rentalJourneys.length }} rantai</span>
+          </div>
+          <div class="px-6 pb-5 space-y-3">
+            <div v-for="(journey, index) in rentalJourneys" :key="journey.key || index" class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <p class="text-sm font-bold text-slate-700">{{ journey.root }}</p>
+              <p v-for="(step, stepIndex) in journey.steps" :key="`${journey.key}-${stepIndex}`" class="text-sm text-slate-600 mt-1">
+                -> {{ step }}
+              </p>
+            </div>
+            <div v-if="!rentalJourneys.length" class="py-6 text-center text-slate-400 text-sm">Tidak ada data extend / ganti unit pada periode ini</div>
+          </div>
         </div>
         <div class="card table-card mb-4">
           <div class="px-6 pt-5 mb-4 flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
@@ -512,15 +530,15 @@
         </div>
       </template>
 
-      <!-- ── TAB: Komisi Mitra ── -->
+      <!-- ── TAB: Hak Mitra ── -->
       <template v-if="activeTab === 'commission'">
         <div v-if="!selectedOwnerId" class="card py-12 text-center text-slate-400">
           <span class="material-symbols-outlined text-4xl mb-2 block">person_search</span>
-          Pilih mitra di filter atas untuk melihat laporan komisi
+          Pilih mitra di filter atas untuk melihat laporan hak mitra
         </div>
         <template v-else-if="commissionData">
           <div class="grid grid-cols-4 gap-6 mb-6">
-            <div class="card"><p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Total Komisi</p>
+            <div class="card"><p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Total Hak Mitra</p>
               <p class="text-2xl font-black text-primary font-headline">{{ formatRp(commissionData.totalOwnerGets) }}</p></div>
             <div class="card"><p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Sudah Dibayar</p>
               <p class="text-2xl font-black text-emerald-600 font-headline">{{ formatRp(commissionData.totalPaid) }}</p></div>
@@ -540,7 +558,7 @@
               <thead><tr class="text-slate-400 text-xs uppercase font-bold border-b border-slate-100">
                 <th class="pb-3">Tanggal</th><th class="pb-3">Motor</th><th class="pb-3">Pelanggan</th>
                 <th class="pb-3 text-right">Durasi</th><th class="pb-3 text-right">Total Sewa</th>
-                <th class="pb-3 text-right">Komisi</th><th class="pb-3">Status</th>
+                <th class="pb-3 text-right">Hak Mitra</th><th class="pb-3">Status</th>
               </tr></thead>
               <tbody class="divide-y divide-slate-50">
                 <tr v-for="r in commissionData.rentals" :key="r.id" class="text-sm">
@@ -571,9 +589,9 @@
               <th class="pb-3 text-right">Motor</th>
               <th class="pb-3 text-right">Rental</th>
               <th class="pb-3 text-right">Total Omzet</th>
-              <th class="pb-3 text-right">Komisi Kotor</th>
+              <th class="pb-3 text-right">Hak Mitra Kotor</th>
               <th class="pb-3 text-right">Total Pengeluaran</th>
-              <th class="pb-3 text-right">Komisi Bersih</th>
+              <th class="pb-3 text-right">Hak Mitra Bersih</th>
             </tr></thead>
             <tbody class="divide-y divide-slate-50">
               <tr v-for="o in ownerReportData" :key="o.id" class="text-sm">
@@ -617,7 +635,7 @@
             <thead><tr class="text-slate-400 text-xs uppercase font-bold border-b border-slate-100">
               <th class="pb-3">#</th><th class="pb-3">Motor</th><th class="pb-3">Tipe</th>
               <th class="pb-3 text-right">Total Rental</th><th class="pb-3 text-right">Total Hari</th>
-              <th class="pb-3 text-right">Wavy Gets</th><th class="pb-3 text-right">Owner Gets</th>
+              <th class="pb-3 text-right">Wavy Gets</th><th class="pb-3 text-right">Bagian Mitra</th>
             </tr></thead>
             <tbody class="divide-y divide-slate-50">
               <tr v-for="(m, i) in motorRanking" :key="m.id" class="text-sm">
@@ -704,6 +722,89 @@ const netBalance = computed(() => {
   return inc - exp
 })
 
+const rentalJourneys = computed(() => {
+  const rentals = (transactionsData.value.rentals || []).map(item => ({ ...item }))
+  if (!rentals.length) return []
+
+  const byId = new Map(rentals.map(item => [Number(item.id), item]))
+  const childrenMap = new Map()
+  for (const item of rentals) {
+    const parentId = Number(item.parent_rental_id || 0)
+    if (!parentId) continue
+    if (!childrenMap.has(parentId)) childrenMap.set(parentId, [])
+    childrenMap.get(parentId).push(item)
+  }
+
+  const relationOrder = { swap: 1, extend: 2 }
+  const sortChildren = (list = []) => [...list].sort((a, b) => {
+    const da = new Date(a.date).getTime()
+    const db = new Date(b.date).getTime()
+    if (da !== db) return da - db
+    const oa = relationOrder[String(a.relation_type || '').toLowerCase()] || 9
+    const ob = relationOrder[String(b.relation_type || '').toLowerCase()] || 9
+    return oa - ob
+  })
+
+  const roots = rentals
+    .filter(item => !item.parent_rental_id)
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+
+  const journeys = []
+  const visited = new Set()
+
+  const walk = (node, steps) => {
+    const children = sortChildren(childrenMap.get(Number(node.id)) || [])
+    for (const child of children) {
+      const childId = Number(child.id)
+      if (visited.has(childId)) continue
+      visited.add(childId)
+      const relation = String(child.relation_type || '').toLowerCase()
+      if (relation === 'swap') {
+        steps.push(`Ganti ke ${child.motor_model || '-'} (${child.plate_number || '-'}) tgl ${formatDate(child.date)}`)
+      } else if (relation === 'extend') {
+        steps.push(`Extend sampai ${formatDate(child.date)} (${child.period_days || 0} hari)`)
+      }
+      walk(child, steps)
+    }
+  }
+
+  for (const root of roots) {
+    const rootId = Number(root.id)
+    if (visited.has(rootId)) continue
+    visited.add(rootId)
+    const steps = []
+    walk(root, steps)
+    if (!steps.length) continue
+    journeys.push({
+      key: root.invoice_number || `rental-${root.id}`,
+      root: `${root.description || '-'} ${root.motor_model || ''} (${root.plate_number || '-'})${root.invoice_number ? ` [${root.invoice_number}]` : ''}`.trim(),
+      steps
+    })
+  }
+
+  // fallback untuk child yg parent-nya tidak masuk periode filter
+  for (const item of rentals) {
+    const id = Number(item.id)
+    if (visited.has(id)) continue
+    const relation = String(item.relation_type || '').toLowerCase()
+    if (relation !== 'swap' && relation !== 'extend') continue
+    const fallbackRoot = item.parent_invoice_number
+      ? `Transaksi awal [${item.parent_invoice_number}] ${item.parent_motor_model || ''} (${item.parent_plate_number || '-'})`
+      : `Transaksi awal (di luar periode)`
+    const step = relation === 'swap'
+      ? `Ganti ke ${item.motor_model || '-'} (${item.plate_number || '-'}) tgl ${formatDate(item.date)}`
+      : `Extend sampai ${formatDate(item.date)} (${item.period_days || 0} hari)`
+    journeys.push({
+      key: `fallback-${id}`,
+      root: fallbackRoot,
+      steps: [step]
+    })
+    visited.add(id)
+  }
+
+  return journeys
+})
+
 const periodLabel = computed(() => {
   if (period.value === 'today') return 'Hari Ini'
   if (period.value === 'week') return 'Minggu Ini'
@@ -784,6 +885,7 @@ function getPdfPayload() {
         rentals: transactionsData.value.rentals,
         operationalExpenses: transactionsData.value.operationalExpenses,
         motorExpenses: transactionsData.value.motorExpenses,
+        journeys: rentalJourneys.value,
         period: p
       }),
       defaultName: `Semua_Transaksi_${dateLabel}.pdf`
@@ -792,7 +894,7 @@ function getPdfPayload() {
   if (activeTab.value === 'commission' && commissionData.value) {
     return {
       html: buildOwnerCommissionHtml({ data: commissionData.value, period: p }),
-      defaultName: `Komisi_Mitra_${toFileNamePart(commissionData.value.owner?.name || 'Mitra')}_${dateLabel}.pdf`
+      defaultName: `Hak_Mitra_${toFileNamePart(commissionData.value.owner?.name || 'Mitra')}_${dateLabel}.pdf`
     }
   }
   if (activeTab.value === 'ranking') {

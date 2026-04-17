@@ -39,7 +39,7 @@
             <th class="px-6 py-4">Model</th>
             <th class="px-6 py-4">Plat Nomor</th>
             <th class="px-6 py-4">Tipe</th>
-            <th class="px-6 py-4">Komisi Wavy</th>
+            <th class="px-6 py-4">Porsi Wavy</th>
             <th class="px-6 py-4">Pemilik</th>
             <th class="px-6 py-4"></th>
           </tr>
