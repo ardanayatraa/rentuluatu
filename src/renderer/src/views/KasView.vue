@@ -150,9 +150,14 @@
           <label class="block text-xs font-bold text-slate-500 mb-1">Tanggal</label>
           <input v-model="incomeForm.date" type="date" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required />
         </div>
+        <div v-if="incomeError" class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">
+          {{ incomeError }}
+        </div>
         <div class="flex justify-end gap-3 pt-2">
-          <button type="button" @click="showIncomeModal = false" class="btn-secondary">Batal</button>
-          <button type="submit" class="btn-primary">Simpan</button>
+          <button type="button" @click="showIncomeModal = false" :disabled="incomeSubmitting" class="btn-secondary disabled:opacity-60">Batal</button>
+          <button type="submit" :disabled="incomeSubmitting" class="btn-primary disabled:opacity-60">
+            {{ incomeSubmitting ? 'Menyimpan...' : 'Simpan' }}
+          </button>
         </div>
       </form>
     </n-modal>
@@ -191,6 +196,8 @@ const filterDate = ref('')
 const currentPage = ref(1)
 const pageSize = ref(10)
 const exporting = ref(false)
+const incomeError = ref('')
+const incomeSubmitting = ref(false)
 
 const incomeForm = ref({
   description: '',
@@ -255,26 +262,36 @@ function openIncome() {
     payment_method: 'tunai',
     date: new Date().toISOString().split('T')[0]
   }
+  incomeError.value = ''
+  incomeSubmitting.value = false
   showIncomeModal.value = true
 }
 
 async function submitIncome() {
+  incomeError.value = ''
   const description = String(incomeForm.value.description || '').trim()
   if (!description) {
-    alert('Catatan transaksi wajib diisi')
+    incomeError.value = 'Catatan transaksi wajib diisi'
     return
   }
   if (!(Number(incomeForm.value.amount) > 0)) {
-    alert('Jumlah harus lebih dari 0')
+    incomeError.value = 'Jumlah harus lebih dari 0'
     return
   }
+  if (!incomeForm.value.payment_method) {
+    incomeError.value = 'Metode bayar wajib dipilih'
+    return
+  }
+  incomeSubmitting.value = true
   try {
     await window.api.addCashIncome({ ...incomeForm.value, description })
     showIncomeModal.value = false
     await reloadCash()
     await loadTransactions()
   } catch (err) {
-    alert(String(err?.message || err).replace("Error invoking remote method 'cash:add-income': Error: ", ''))
+    incomeError.value = String(err?.message || err).replace("Error invoking remote method 'cash:add-income': Error: ", '')
+  } finally {
+    incomeSubmitting.value = false
   }
 }
 

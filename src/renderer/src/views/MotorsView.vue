@@ -6,6 +6,14 @@
         <p class="text-slate-500 text-sm mt-1">Data armada motor rental</p>
       </div>
       <div class="flex gap-3">
+        <button @click="exportPdf" :disabled="exporting" class="btn-secondary disabled:opacity-60">
+          <span class="material-symbols-outlined">visibility</span>
+          {{ exporting === 'pdf' ? 'Memuat...' : 'Lihat Laporan' }}
+        </button>
+        <button @click="exportExcel" :disabled="exporting" class="btn-secondary disabled:opacity-60">
+          <span class="material-symbols-outlined">table_view</span>
+          {{ exporting === 'excel' ? 'Menyimpan...' : 'Simpan Excel' }}
+        </button>
         <button @click="openAdd" class="btn-primary">
           <span class="material-symbols-outlined">add</span>
           Tambah Motor
@@ -159,6 +167,8 @@
 import { ref, computed, onMounted } from 'vue'
 import SearchSelect from '../components/SearchSelect.vue'
 import { getMotorTypeLabel, getWavyPctLabel, isAsetPt, normalizeMotorType } from '../utils/motorType'
+import { buildSimpleTableHtml, previewReport } from '../utils/pdf'
+import { saveMotorsExcel } from '../utils/excel'
 
 const motors = ref([])
 const loading = ref(false)
@@ -172,6 +182,7 @@ const filterType = ref('')
 const form = ref({ model: '', plate_number: '', type: 'aset_pt', owner_id: '' })
 const currentPage = ref(1)
 const pageSize = ref(10)
+const exporting = ref('')
 
 const isCreatingOwner = ref(false)
 const ownerForm = ref({ name: '', phone: '' })
@@ -195,6 +206,74 @@ const pagedMotors = computed(() => {
 })
 const pageStart = computed(() => filteredMotors.value.length ? ((currentPage.value - 1) * pageSize.value) + 1 : 0)
 const pageEnd = computed(() => Math.min(currentPage.value * pageSize.value, filteredMotors.value.length))
+
+function toFileNamePart(value) {
+  return String(value || '')
+    .trim()
+    .replace(/[\\/:*?"<>|]/g, '')
+    .replace(/\s+/g, '_')
+}
+
+function todayValue() {
+  return new Date().toISOString().split('T')[0]
+}
+
+function getExportFileLabel() {
+  const typeLabel = filterType.value ? toFileNamePart(getMotorTypeLabel(filterType.value)) : 'Semua_Tipe'
+  return `${todayValue()}_${typeLabel}`
+}
+
+async function exportPdf() {
+  exporting.value = 'pdf'
+  try {
+    const rows = filteredMotors.value.map((m) => ({
+      model: m.model,
+      plate: m.plate_number,
+      type: getMotorTypeLabel(m.type),
+      wavy: getWavyPctLabel(m.type),
+      owner: m.owner_name || '-'
+    }))
+    const html = buildSimpleTableHtml({
+      title: 'Daftar Motor',
+      subtitle: `Filter: ${filterType.value ? getMotorTypeLabel(filterType.value) : 'Semua Tipe'}`,
+      period: `Per ${todayValue()}`,
+      summary: [
+        { label: 'Total Motor', value: `${filteredMotors.value.length} unit` }
+      ],
+      columns: [
+        { key: 'model', label: 'Model' },
+        { key: 'plate', label: 'Plat Nomor' },
+        { key: 'type', label: 'Tipe' },
+        { key: 'wavy', label: 'Porsi Wavy' },
+        { key: 'owner', label: 'Pemilik' }
+      ],
+      rows,
+      emptyMessage: 'Belum ada data motor pada filter ini'
+    })
+    await previewReport(html, `Daftar_Motor_${getExportFileLabel()}.pdf`)
+  } finally {
+    exporting.value = ''
+  }
+}
+
+async function exportExcel() {
+  exporting.value = 'excel'
+  try {
+    await saveMotorsExcel({
+      motors: filteredMotors.value.map((m) => ({
+        model: m.model,
+        plate_number: m.plate_number,
+        type: m.type,
+        type_label: getMotorTypeLabel(m.type),
+        wavy_share: getWavyPctLabel(m.type),
+        owner_name: m.owner_name || '-'
+      })),
+      fileLabel: getExportFileLabel()
+    })
+  } finally {
+    exporting.value = ''
+  }
+}
 
 function openAdd() {
   editId.value = null

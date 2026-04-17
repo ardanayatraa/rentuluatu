@@ -28,8 +28,8 @@
       <span class="ml-auto text-xs text-slate-400">{{ startDate }} s/d {{ endDate }}</span>
     </div>
 
-    <!-- Summary Cards -->
-    <div class="grid grid-cols-4 gap-5 mb-6">
+    <!-- Summary Cards - Baris 1: Pemasukan & Pengeluaran -->
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 mb-6">
       <div class="card">
         <div class="flex items-center gap-3 mb-3">
           <div class="w-10 h-10 bg-emerald-50 rounded-lg flex items-center justify-center">
@@ -53,6 +53,31 @@
 
       <div class="card">
         <div class="flex items-center gap-3 mb-3">
+          <div class="w-10 h-10 bg-orange-50 rounded-lg flex items-center justify-center">
+            <span class="material-symbols-outlined text-orange-500">build</span>
+          </div>
+          <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Pengeluaran Motor</span>
+        </div>
+        <p class="text-2xl font-black text-orange-500 font-headline">{{ formatRp(summary.motor_expenses || 0) }}</p>
+        <p class="text-xs text-slate-400 mt-1">{{ summary.motor_expenses_count || 0 }} transaksi</p>
+      </div>
+
+      <div class="card">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-10 h-10 bg-slate-50 rounded-lg flex items-center justify-center">
+            <span class="material-symbols-outlined text-slate-600">receipt_long</span>
+          </div>
+          <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Bagian Mitra (Periode)</span>
+        </div>
+        <p class="text-2xl font-black text-slate-600 font-headline">{{ formatRp(summary.owner_gets_net ?? summary.owner_gets) }}</p>
+        <p class="text-xs text-slate-400 mt-1">Sudah dipotong pengeluaran motor: {{ formatRp(summary.owner_motor_expenses || 0) }}</p>
+      </div>
+    </div>
+
+    <!-- Summary Cards - Baris 2: Profit & Bagian Perusahaan -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
+      <div class="card">
+        <div class="flex items-center gap-3 mb-3">
           <div class="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
             <span class="material-symbols-outlined text-primary">account_balance_wallet</span>
           </div>
@@ -72,22 +97,35 @@
       </div>
     </div>
 
-    <!-- Kas Cards -->
-    <div class="grid grid-cols-2 xl:grid-cols-4 gap-5 mb-6">
-      <div v-for="acc in cashAccounts" :key="acc.id"
-        :class="cashCardClass(acc.type)"
-        class="rounded-xl p-6 shadow-sm">
-        <div class="flex items-center gap-2 mb-2">
-          <span :class="cashIconClass(acc.type)" class="material-symbols-outlined">
-            {{ cashIcon(acc.type) }}
-          </span>
-          <span :class="cashLabelClass(acc.type)" class="text-xs font-bold uppercase tracking-wider">{{ acc.name }}</span>
+    <!-- Kas Section -->
+    <div class="mb-6">
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center">
+            <span class="material-symbols-outlined text-slate-600">account_balance</span>
+          </div>
+          <h3 class="text-lg font-black text-slate-700 uppercase tracking-wide">Kas</h3>
         </div>
-        <p :class="cashBalanceClass(acc.type)" class="text-3xl font-black font-headline">{{ formatRp(acc.balance) }}</p>
+        <div class="text-right">
+          <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Total Saldo</p>
+          <p class="text-2xl font-black text-slate-700 font-headline">{{ formatRp(totalCash) }}</p>
+          <p class="text-[11px] text-slate-400 mt-1">Dana titipan mitra: {{ formatRp(summary.owner_reserved_funds || 0) }}</p>
+          <p class="text-[11px] font-semibold text-emerald-600">Dana bebas operasional: {{ formatRp(summary.available_operational_funds || 0) }}</p>
+        </div>
       </div>
-      <div class="card flex items-center justify-between">
-        <span class="text-slate-500 font-semibold">Total Saldo</span>
-        <span class="text-2xl font-black text-primary font-headline">{{ formatRp(cashTotal) }}</span>
+      
+      <div class="grid grid-cols-2 xl:grid-cols-4 gap-5">
+        <div v-for="acc in cashAccounts" :key="acc.id"
+          :class="cashCardClass(acc.type)"
+          class="rounded-xl p-6 shadow-sm">
+          <div class="flex items-center gap-2 mb-2">
+            <span :class="cashIconClass(acc.type)" class="material-symbols-outlined">
+              {{ cashIcon(acc.type) }}
+            </span>
+            <span :class="cashLabelClass(acc.type)" class="text-xs font-bold uppercase tracking-wider">{{ acc.name }}</span>
+          </div>
+          <p :class="cashBalanceClass(acc.type)" class="text-3xl font-black font-headline">{{ formatRp(acc.balance) }}</p>
+        </div>
       </div>
     </div>
 
@@ -246,10 +284,29 @@ const period = ref('month')
 const startDate = ref('')
 const endDate = ref('')
 
-const summary = ref({ income: 0, expenses: 0, wavy_gets: 0, owner_gets: 0, profit: 0, rental_count: 0, refund_count: 0 })
+const summary = ref({
+  income: 0,
+  expenses: 0,
+  motor_expenses: 0,
+  motor_expenses_count: 0,
+  wavy_gets: 0,
+  owner_gets: 0,
+  owner_gets_net: 0,
+  owner_motor_expenses: 0,
+  owner_reserved_funds: 0,
+  available_operational_funds: 0,
+  profit: 0,
+  rental_count: 0,
+  refund_count: 0
+})
 const cashAccounts = ref([])
 const cashTotal = ref(0)
 const recentRentals = ref([])
+
+// Computed: Total Kas
+const totalCash = computed(() => {
+  return cashAccounts.value.reduce((sum, acc) => sum + (acc.balance || 0), 0)
+})
 
 // Charts
 const incomeChartData = ref(null)
@@ -515,7 +572,7 @@ async function loadAll() {
   // Commission split
   commissionRows.value = buildBreakdownRows([
     { label: 'Hak Perusahaan', value: summary.value.wavy_gets, color: '#1e3a5f' },
-    { label: 'Hak Mitra', value: summary.value.owner_gets, color: '#f59e0b' }
+    { label: 'Hak Mitra', value: summary.value.owner_gets_net ?? summary.value.owner_gets, color: '#f59e0b' }
   ])
 
   // Top motors

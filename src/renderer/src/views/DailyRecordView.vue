@@ -60,6 +60,46 @@
         Ganti Unit
       </button>
     </div>
+
+    <!-- Sub-tabs untuk Transaksi Rental -->
+    <div v-if="activeRecordTab === 'rental'" class="flex gap-2 mb-4">
+      <button
+        @click="payoutFilter = 'all'"
+        :class="[
+          'px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors',
+          payoutFilter === 'all'
+            ? 'bg-primary text-white'
+            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+        ]"
+      >
+        Semua
+      </button>
+      <button
+        @click="payoutFilter = 'unpaid'"
+        :class="[
+          'px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors',
+          payoutFilter === 'unpaid'
+            ? 'bg-amber-500 text-white'
+            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+        ]"
+      >
+        <span class="material-symbols-outlined text-xs align-middle mr-0.5">schedule</span>
+        Belum Payout
+      </button>
+      <button
+        @click="payoutFilter = 'paid'"
+        :class="[
+          'px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors',
+          payoutFilter === 'paid'
+            ? 'bg-emerald-500 text-white'
+            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+        ]"
+      >
+        <span class="material-symbols-outlined text-xs align-middle mr-0.5">check_circle</span>
+        Sudah Payout
+      </button>
+    </div>
+
     <div class="card mb-6 flex gap-4 items-center flex-wrap">
       <input v-model="filters.startDate" type="date" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
       <span class="text-slate-400">—</span>
@@ -122,8 +162,7 @@
             <td class="px-6 py-4">
               <p class="font-medium">{{ r.customer_name }}</p>
               <div v-if="rentalRelation(r) === 'extend'" class="mt-1 flex flex-col items-start gap-1.5">
-                <span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
-                  <span class="material-symbols-outlined text-[14px]">autorenew</span>
+                <span class="inline-flex items-center rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold px-3 py-1">
                   Extend
                 </span>
                 <button v-if="r.parent_rental_id" @click="goToParentRental(r)" class="text-xs text-primary hover:underline font-semibold">
@@ -131,8 +170,7 @@
                 </button>
               </div>
               <div v-else-if="rentalRelation(r) === 'swap'" class="mt-1 flex flex-col items-start gap-1.5">
-                <span class="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-bold text-violet-700">
-                  <span class="material-symbols-outlined text-[14px]">swap_horiz</span>
+                <span class="inline-flex items-center rounded-full bg-violet-100 text-violet-700 text-xs font-semibold px-3 py-1">
                   Motor Pengganti
                 </span>
                 <button v-if="r.parent_rental_id" @click="goToParentRental(r)" class="text-xs text-primary hover:underline font-semibold">
@@ -140,14 +178,12 @@
                 </button>
               </div>
               <div v-else-if="rentalRelation(r) === 'swap_source'" class="mt-1 flex flex-col items-start gap-1.5">
-                <span class="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700">
-                  <span class="material-symbols-outlined text-[14px]">construction</span>
+                <span class="inline-flex items-center rounded-full bg-amber-100 text-amber-700 text-xs font-semibold px-3 py-1">
                   Diganti Unit
                 </span>
               </div>
-              <div v-else class="mt-1">
-                <span class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
-                  <span class="material-symbols-outlined text-[14px]">home_storage</span>
+              <div v-else-if="hasRelatedTransactions(r)" class="mt-1">
+                <span class="inline-flex items-center rounded-full bg-blue-100 text-blue-700 text-xs font-semibold px-3 py-1">
                   Rental Utama
                 </span>
               </div>
@@ -166,11 +202,20 @@
             <td class="px-6 py-4 text-right font-bold text-primary">{{ formatRp(r.wavy_gets) }}</td>
             <td class="px-6 py-4 text-right text-slate-600">{{ formatRp(r.owner_gets) }}</td>
             <td class="px-6 py-4 text-right">
-              <span :class="statusBadge(r.status)">{{ r.status }}</span>
+              <div class="flex flex-col items-end gap-1.5">
+                <span :class="statusBadge(r.status)">{{ r.status }}</span>
+                <!-- Badge payout hanya muncul di tab "Semua" atau "Sudah Payout" -->
+                <span v-if="r.status === 'completed' && r.payout_id && r.payout_id > 0 && (payoutFilter === 'all' || payoutFilter === 'paid')" class="inline-flex items-center rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold px-3 py-1">
+                  Sudah Payout
+                </span>
+                <span v-else-if="r.status === 'completed' && (!r.payout_id || r.payout_id === 0) && payoutFilter === 'all'" class="inline-flex items-center rounded-full bg-amber-100 text-amber-700 text-xs font-semibold px-3 py-1">
+                  Belum Payout
+                </span>
+              </div>
             </td>
             <td class="px-6 py-4 text-right">
               <div class="flex gap-1 justify-end">
-                <button v-if="r.status === 'completed' && !r.payout_id && !r.hotel_payout_id"
+                <button v-if="r.status === 'completed' && (!r.payout_id || r.payout_id === 0) && (!r.hotel_payout_id || r.hotel_payout_id === 0)"
                   @click="openExtend(r)"
                   class="p-1.5 hover:bg-emerald-50 rounded text-slate-400 hover:text-emerald-600 transition-colors" :title="extendActionLabel">
                   <span class="material-symbols-outlined text-base">autorenew</span>
@@ -180,7 +225,7 @@
                   class="p-1.5 hover:bg-violet-50 rounded text-slate-400 hover:text-violet-600 transition-colors" title="Ganti Unit">
                   <span class="material-symbols-outlined text-base">swap_horiz</span>
                 </button>
-                <button v-if="r.status === 'completed' && !r.payout_id && !r.hotel_payout_id"
+                <button v-if="r.status === 'completed' && (!r.payout_id || r.payout_id === 0) && (!r.hotel_payout_id || r.hotel_payout_id === 0)"
                   @click="openEdit(r)"
                   class="p-1.5 hover:bg-blue-50 rounded text-slate-400 hover:text-blue-500 transition-colors" title="Edit">
                   <span class="material-symbols-outlined text-base">edit</span>
@@ -596,6 +641,7 @@ const swapSourceLocked = ref(false)
 const swapSourceKeyword = ref('')
 const swapMotorKeyword = ref('')
 const activeRecordTab = ref('rental')
+const payoutFilter = ref('unpaid') // Default: 'unpaid' (Belum Payout)
 const extendActionLabel = computed(() => activeRecordTab.value === 'extend' ? 'Extend Lagi' : 'Extend')
 const extendModalTitle = computed(() => activeRecordTab.value === 'extend' ? 'Extend Lagi' : 'Extend Rental')
 const extendSubmitLabel = computed(() => activeRecordTab.value === 'extend' ? 'Simpan Extend Lagi' : 'Simpan Extend')
@@ -648,13 +694,46 @@ function rentalRelation(rental) {
   return Number(rental?.is_extension || 0) === 1 ? 'extend' : 'rental'
 }
 
+function hasRelatedTransactions(rental) {
+  // Cek apakah rental ini punya extend atau swap child
+  if (!rental || !rental.id) return false
+  if (!rentals.value || rentals.value.length === 0) return false
+  return rentals.value.some(r => 
+    r.parent_rental_id === rental.id && 
+    (r.relation_type === 'extend' || r.relation_type === 'swap')
+  )
+}
+
 function canSwapRental(rental) {
   const relation = rentalRelation(rental)
-  return rental.status === 'completed' &&
-    !rental.payout_id &&
-    !rental.hotel_payout_id &&
+  // payout_id = 0 adalah legacy (belum dibayar), payout_id > 0 adalah sudah dibayar
+  const notPaidOut = !rental.payout_id || rental.payout_id === 0
+  const notHotelPaidOut = !rental.hotel_payout_id || rental.hotel_payout_id === 0
+  
+  const canSwap = rental.status === 'completed' &&
+    notPaidOut &&
+    notHotelPaidOut &&
     Number(rental.period_days || 0) > 1 &&
     (relation === 'rental' || relation === 'swap')
+  
+  // Debug log
+  if (!canSwap && rental.status === 'completed') {
+    console.log('[canSwapRental] Rental tidak bisa swap:', {
+      id: rental.id,
+      customer: rental.customer_name,
+      status: rental.status,
+      payout_id: rental.payout_id,
+      hotel_payout_id: rental.hotel_payout_id,
+      period_days: rental.period_days,
+      relation: relation,
+      reason: notPaidOut ? '' : 'sudah payout',
+      reason2: notHotelPaidOut ? '' : 'sudah hotel payout',
+      reason3: Number(rental.period_days || 0) > 1 ? '' : 'periode <= 1 hari',
+      reason4: (relation === 'rental' || relation === 'swap') ? '' : 'relation bukan rental/swap'
+    })
+  }
+  
+  return canSwap
 }
 
 function canDeleteRental(rental) {
@@ -669,9 +748,22 @@ const filteredRentals = computed(() => {
     return relation !== 'extend' && relation !== 'swap' && relation !== 'swap_source'
   })
 
+  // Filter by payout status (hanya untuk tab rental)
+  const byPayout = activeRecordTab.value === 'rental' ? byTab.filter(r => {
+    if (payoutFilter.value === 'unpaid') {
+      // Belum payout: payout_id = NULL atau 0
+      return !r.payout_id || r.payout_id === 0
+    }
+    if (payoutFilter.value === 'paid') {
+      // Sudah payout: payout_id > 0
+      return r.payout_id && r.payout_id > 0
+    }
+    return true // 'all'
+  }) : byTab
+
   const keyword = String(filters.value.keyword || '').toLowerCase().trim()
-  if (!keyword) return byTab
-  return byTab.filter(r => {
+  if (!keyword) return byPayout
+  return byPayout.filter(r => {
     const customer = String(r.customer_name || '').toLowerCase()
     const plate = String(r.plate_number || '').toLowerCase()
     const model = String(r.model || '').toLowerCase()
@@ -679,12 +771,25 @@ const filteredRentals = computed(() => {
     return customer.includes(keyword) || plate.includes(keyword) || model.includes(keyword) || invoice.includes(keyword)
   })
 })
-const extendSourceOptions = computed(() => rentals.value
-  .filter(r => r.status === 'completed' && !r.payout_id && !r.hotel_payout_id)
-  .sort((a, b) => new Date(b.date_time) - new Date(a.date_time)))
-const swapSourceOptions = computed(() => rentals.value
-  .filter((r) => canSwapRental(r))
-  .sort((a, b) => new Date(b.date_time) - new Date(a.date_time)))
+const extendSourceOptions = computed(() => {
+  const options = rentals.value
+    .filter(r => {
+      // payout_id = 0 adalah legacy (belum dibayar), payout_id > 0 adalah sudah dibayar
+      const notPaidOut = !r.payout_id || r.payout_id === 0
+      const notHotelPaidOut = !r.hotel_payout_id || r.hotel_payout_id === 0
+      return r.status === 'completed' && notPaidOut && notHotelPaidOut
+    })
+    .sort((a, b) => new Date(b.date_time) - new Date(a.date_time))
+  console.log('[Extend Options]', options.length, 'rentals available')
+  return options
+})
+const swapSourceOptions = computed(() => {
+  const options = rentals.value
+    .filter((r) => canSwapRental(r))
+    .sort((a, b) => new Date(b.date_time) - new Date(a.date_time))
+  console.log('[Swap Options]', options.length, 'rentals available')
+  return options
+})
 const filteredSwapSourceOptions = computed(() => {
   const keyword = String(swapSourceKeyword.value || '').toLowerCase().trim()
   if (!keyword) return swapSourceOptions.value
@@ -761,6 +866,7 @@ watch(() => filters.value.keyword, () => {
 
 watch(activeRecordTab, () => {
   currentPage.value = 1
+  payoutFilter.value = 'unpaid' // Reset ke "Belum Payout" saat ganti tab
 })
 
 watch(pageSize, () => {

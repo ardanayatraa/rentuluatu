@@ -38,6 +38,8 @@ describe('IPC business logic', () => {
 
   it('dashboard summary menghitung profit perusahaan tanpa membebankan pengeluaran motor mitra', async () => {
     dbOps.get.mockImplementation((sql) => {
+      if (sql.includes('JOIN motors m ON e.motor_id = m.id')) return { total: 20_000 }
+      if (sql.includes('COUNT(*) as count FROM expenses')) return { total: 30_000, count: 1 }
       if (sql.includes('SUM(total_price)')) return { total: 300_000 }
       if (sql.includes('SUM(e.amount)')) return { total: 30_000 }
       if (sql.includes('SUM(wavy_gets)')) return { total: 75_000 }
@@ -46,7 +48,13 @@ describe('IPC business logic', () => {
       if (sql.includes('COUNT(*) as total') && sql.includes("status = 'refunded'")) return { total: 0 }
       if (sql.includes("reference_type = 'manual_income'")) return { total: 5_000 }
       if (sql.includes("reference_type = 'manual_expense'")) return { total: 10_000 }
+      if (sql.includes('SELECT COALESCE(SUM(balance), 0) as total FROM cash_accounts')) return { total: 500_000 }
       return { total: 0 }
+    })
+    dbOps.all.mockImplementation((sql) => {
+      if (sql.includes('FROM rentals r') && sql.includes('GROUP BY m.owner_id')) return [{ owner_id: 1, total: 300_000 }]
+      if (sql.includes('FROM expenses e') && sql.includes('GROUP BY m.owner_id')) return [{ owner_id: 1, total: 100_000 }]
+      return []
     })
 
     registerDashboardHandlers()
@@ -58,8 +66,14 @@ describe('IPC business logic', () => {
     expect(summary).toEqual({
       income: 305_000,
       expenses: 40_000,
+      motor_expenses: 30_000,
+      motor_expenses_count: 1,
       wavy_gets: 75_000,
       owner_gets: 225_000,
+      owner_gets_net: 205_000,
+      owner_motor_expenses: 20_000,
+      owner_reserved_funds: 200_000,
+      available_operational_funds: 300_000,
       profit: 40_000,
       rental_count: 2,
       refund_count: 0

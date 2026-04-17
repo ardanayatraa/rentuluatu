@@ -171,31 +171,13 @@
           </div>
         </div>
 
-        <div v-if="filteredDownloads.length" class="px-5 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-4 flex-wrap">
-          <div class="text-sm text-slate-500">
-            Menampilkan {{ pageStart }}-{{ pageEnd }} dari {{ filteredDownloads.length }} file
-          </div>
-
-          <div class="flex items-center gap-3 flex-wrap">
-            <div class="flex items-center gap-2 text-sm text-slate-500">
-              <span>Per halaman</span>
-              <select v-model.number="itemsPerPage" class="border border-slate-200 rounded-lg px-2 py-1 bg-white text-sm">
-                <option :value="10">10</option>
-                <option :value="20">20</option>
-                <option :value="30">30</option>
-              </select>
-            </div>
-
-            <div class="flex items-center gap-1">
-              <button @click="currentPage = Math.max(1, currentPage - 1)" :disabled="currentPage === 1" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-sm font-bold text-slate-600 disabled:opacity-50">
-                Prev
-              </button>
-              <span class="px-3 py-1.5 text-sm font-semibold text-slate-700">{{ currentPage }} / {{ totalPages }}</span>
-              <button @click="currentPage = Math.min(totalPages, currentPage + 1)" :disabled="currentPage === totalPages" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-sm font-bold text-slate-600 disabled:opacity-50">
-                Next
-              </button>
-            </div>
-          </div>
+        <div v-if="filteredDownloads.length" class="bg-slate-50 border-t border-slate-200">
+          <TablePagination
+            v-model:page="currentPage"
+            v-model:pageSize="itemsPerPage"
+            :total="filteredDownloads.length"
+            :pageSizeOptions="[10,20,30]"
+          />
         </div>
       </div>
     </div>
@@ -204,6 +186,7 @@
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
+import TablePagination from '../components/TablePagination.vue'
 
 const downloads = ref([])
 const loading = ref(false)

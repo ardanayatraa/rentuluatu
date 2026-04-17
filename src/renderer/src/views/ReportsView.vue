@@ -8,13 +8,15 @@
     </div>
 
     <!-- Tab Jenis Laporan -->
-    <div class="flex gap-2 mb-6 border-b border-slate-200">
-      <button v-for="t in tabs" :key="t.key"
-        @click="activeTab = t.key; loadReport()"
-        :class="['px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors',
-          activeTab === t.key ? 'bg-white border border-b-white border-slate-200 text-primary -mb-px' : 'text-slate-500 hover:text-slate-700']">
-        <span class="material-symbols-outlined text-sm align-middle mr-1">{{ t.icon }}</span>{{ t.label }}
-      </button>
+    <div class="card p-0 mb-6">
+      <div class="flex gap-2 px-4 pt-4 border-b border-slate-200 overflow-x-auto">
+        <button v-for="t in tabs" :key="t.key"
+          @click="activeTab = t.key; loadReport()"
+          :class="['px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors whitespace-nowrap',
+            activeTab === t.key ? 'bg-white border border-b-white border-slate-200 text-primary -mb-px' : 'text-slate-500 hover:text-slate-700']">
+          <span class="material-symbols-outlined text-sm align-middle mr-1">{{ t.icon }}</span>{{ t.label }}
+        </button>
+      </div>
     </div>
 
     <!-- Filter Bar -->
@@ -117,8 +119,10 @@
             <template v-if="activeSupportingReport === 'profit-loss'">
               <div v-if="profitLossData" class="space-y-4">
                 <div class="card table-card">
-                  <h3 class="text-sm font-bold uppercase tracking-wider text-slate-500 mb-4">Laporan Laba Rugi</h3>
-                  <div class="table-scroll">
+                  <div class="px-6 pt-5 pb-3 border-b border-slate-100">
+                    <h3 class="text-sm font-bold uppercase tracking-wider text-slate-500">Laporan Laba Rugi</h3>
+                  </div>
+                  <div class="table-scroll px-6 pb-5">
                   <table class="table-base text-sm">
                     <tbody class="divide-y divide-slate-100">
                       <tr class="font-bold bg-slate-50"><td class="py-2 px-3" colspan="2">PENDAPATAN</td></tr>
@@ -167,8 +171,10 @@
 
                 <div class="grid grid-cols-2 gap-6">
                   <div class="card table-card">
-                    <h3 class="text-sm font-bold uppercase tracking-wider text-slate-500 mb-4">Aset</h3>
-                    <div class="table-scroll">
+                    <div class="px-6 pt-5 pb-3 border-b border-slate-100">
+                      <h3 class="text-sm font-bold uppercase tracking-wider text-slate-500">Aset</h3>
+                    </div>
+                    <div class="table-scroll px-6 pb-5">
                     <table class="table-base text-sm">
                       <tbody class="divide-y divide-slate-100">
                         <tr v-for="row in balanceSheetData.assets.current" :key="row.label">
@@ -186,8 +192,10 @@
 
                   <div class="space-y-6">
                     <div class="card table-card">
-                      <h3 class="text-sm font-bold uppercase tracking-wider text-slate-500 mb-4">Kewajiban</h3>
-                      <div class="table-scroll">
+                      <div class="px-6 pt-5 pb-3 border-b border-slate-100">
+                        <h3 class="text-sm font-bold uppercase tracking-wider text-slate-500">Kewajiban</h3>
+                      </div>
+                      <div class="table-scroll px-6 pb-5">
                       <table class="table-base text-sm">
                         <tbody class="divide-y divide-slate-100">
                           <tr v-for="row in balanceSheetData.liabilities.current" :key="row.label">
@@ -207,8 +215,10 @@
                     </div>
 
                     <div class="card table-card">
-                      <h3 class="text-sm font-bold uppercase tracking-wider text-slate-500 mb-4">Ekuitas</h3>
-                      <div class="table-scroll">
+                      <div class="px-6 pt-5 pb-3 border-b border-slate-100">
+                        <h3 class="text-sm font-bold uppercase tracking-wider text-slate-500">Ekuitas</h3>
+                      </div>
+                      <div class="table-scroll px-6 pb-5">
                       <table class="table-base text-sm">
                         <tbody class="divide-y divide-slate-100">
                           <tr v-for="row in balanceSheetData.equity.rows" :key="row.label">
@@ -342,6 +352,12 @@
             </tbody>
           </table>
           </div>
+          <TablePagination
+            v-model:page="rankingPage"
+            v-model:pageSize="rankingPageSize"
+            :total="motorRanking.length"
+            :pageSizeOptions="[10,25,50]"
+          />
         </div>
       </template>
 
@@ -358,28 +374,44 @@
             <p class="text-2xl font-black text-slate-700 font-headline">{{ formatRp(motorIncomeData.reduce((s,r)=>s+(r.owner_gets||0),0)) }}</p></div>
         </div>
         <div class="card table-card">
+          <div class="px-6 pt-5 pb-3 border-b border-slate-100 flex items-center justify-between">
+            <h3 class="text-sm font-extrabold text-primary">Detail Transaksi Rental</h3>
+            <span class="badge-neutral text-xs">{{ motorIncomeData.length }} transaksi</span>
+          </div>
           <div class="table-scroll">
           <table class="table-base text-left">
-            <thead><tr class="text-slate-400 text-xs uppercase font-bold border-b border-slate-100">
-              <th class="pb-3">Tanggal</th><th class="pb-3">Pelanggan</th><th class="pb-3">Motor</th>
-              <th class="pb-3 text-right">Durasi</th><th class="pb-3">Bayar</th>
-                <th class="pb-3 text-right">Total</th><th class="pb-3 text-right">Wavy Gets</th><th class="pb-3 text-right">Bagian Mitra</th>
+            <thead class="bg-slate-50/70"><tr class="text-slate-500 text-xs uppercase font-bold tracking-wide border-b border-slate-100">
+              <th class="px-4 py-3">Tanggal</th><th class="px-4 py-3">Pelanggan</th><th class="px-4 py-3">Motor</th>
+              <th class="px-4 py-3 text-right">Durasi</th><th class="px-4 py-3">Bayar</th>
+                <th class="px-4 py-3 text-right">Total</th><th class="px-4 py-3 text-right">Bagian Perusahaan</th><th class="px-4 py-3 text-right">Bagian Mitra</th>
             </tr></thead>
-            <tbody class="divide-y divide-slate-50">
-              <tr v-for="r in motorIncomeData" :key="r.id" class="text-sm">
-                <td class="py-3">{{ formatDateTime(r.date_time) }}</td>
-                <td class="py-3">{{ r.customer_name }}<br v-if="r.hotel"/><span v-if="r.hotel" class="text-xs text-slate-400">{{ r.hotel }}</span></td>
-                <td class="py-3">{{ r.model }} <span class="text-slate-400">· {{ r.plate_number }}</span></td>
-                <td class="py-3 text-right">{{ r.period_days }} hari</td>
-              <td class="py-3"><span class="badge-neutral text-xs">{{ paymentMethodLabel(r.payment_method) }}</span></td>
-                <td class="py-3 text-right font-bold">{{ formatRp(r.total_price) }}</td>
-                <td class="py-3 text-right text-primary">{{ formatRp(r.wavy_gets) }}</td>
-                <td class="py-3 text-right text-slate-500">{{ formatRp(r.owner_gets) }}</td>
+            <tbody class="divide-y divide-slate-100">
+              <tr v-for="r in pagedMotorIncomeData" :key="r.id" class="text-sm odd:bg-white even:bg-slate-50/30 hover:bg-slate-50">
+                <td class="px-4 py-3 text-slate-700 whitespace-nowrap">{{ formatDateTime(r.date_time) }}</td>
+                <td class="px-4 py-3">
+                  <p class="font-semibold text-slate-800 leading-tight">{{ r.customer_name }}</p>
+                  <p v-if="r.hotel" class="text-xs text-slate-400 mt-1 leading-tight">{{ r.hotel }}</p>
+                </td>
+                <td class="px-4 py-3">
+                  <p class="font-semibold text-slate-800 leading-tight">{{ r.model }}</p>
+                  <p class="text-xs text-slate-400 mt-1 leading-tight">{{ r.plate_number }}</p>
+                </td>
+                <td class="px-4 py-3 text-right whitespace-nowrap">{{ r.period_days }} hari</td>
+                <td class="px-4 py-3 whitespace-nowrap"><span class="badge-neutral text-xs">{{ paymentMethodLabel(r.payment_method) }}</span></td>
+                <td class="px-4 py-3 text-right font-bold whitespace-nowrap">{{ formatRp(r.total_price) }}</td>
+                <td class="px-4 py-3 text-right text-primary font-semibold whitespace-nowrap">{{ formatRp(r.wavy_gets) }}</td>
+                <td class="px-4 py-3 text-right text-slate-600 whitespace-nowrap">{{ formatRp(r.owner_gets) }}</td>
               </tr>
-              <tr v-if="!motorIncomeData.length"><td colspan="8" class="py-8 text-center text-slate-400">Belum ada data</td></tr>
+              <tr v-if="!motorIncomeData.length"><td colspan="8" class="px-4 py-10 text-center text-slate-400">Belum ada data</td></tr>
             </tbody>
           </table>
           </div>
+          <TablePagination
+            v-model:page="motorIncomePage"
+            v-model:pageSize="motorIncomePageSize"
+            :total="motorIncomeData.length"
+            :pageSizeOptions="[10,25,50]"
+          />
         </div>
       </template>
 
@@ -391,25 +423,41 @@
           <div class="card"><p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Jumlah Transaksi</p>
             <p class="text-2xl font-black text-slate-700 font-headline">{{ motorExpensesData.length }}x</p></div>
         </div>
-        <div class="card">
-          <table class="w-full text-left">
-            <thead><tr class="text-slate-400 text-xs uppercase font-bold border-b border-slate-100">
-              <th class="pb-3">Tanggal</th><th class="pb-3">Motor</th><th class="pb-3">Tipe</th>
-              <th class="pb-3">Kategori</th><th class="pb-3">Keterangan</th><th class="pb-3">Bayar</th><th class="pb-3 text-right">Jumlah</th>
+        <div class="card table-card">
+          <div class="table-scroll">
+          <table class="table-base text-left">
+            <thead class="bg-slate-50/70"><tr class="text-slate-500 text-xs uppercase font-bold tracking-wide border-b border-slate-100">
+              <th class="px-4 py-3">Tanggal</th>
+              <th class="px-4 py-3">Motor</th>
+              <th class="px-4 py-3">Tipe</th>
+              <th class="px-4 py-3">Kategori</th>
+              <th class="px-4 py-3">Keterangan</th>
+              <th class="px-4 py-3">Bayar</th>
+              <th class="px-4 py-3 text-right">Jumlah</th>
             </tr></thead>
-            <tbody class="divide-y divide-slate-50">
-              <tr v-for="e in motorExpensesData" :key="e.id" class="text-sm">
-                <td class="py-3">{{ formatDate(e.date) }}</td>
-                <td class="py-3">{{ e.model ? e.model + ' · ' + e.plate_number : '-' }}</td>
-                <td class="py-3"><span class="badge-warning text-xs">{{ e.type }}</span></td>
-                <td class="py-3">{{ e.category }}</td>
-                <td class="py-3 text-slate-500">{{ e.description || '-' }}</td>
-              <td class="py-3"><span class="badge-neutral text-xs">{{ paymentMethodLabel(e.payment_method) }}</span></td>
-                <td class="py-3 text-right font-bold text-red-600">{{ formatRp(e.amount) }}</td>
+            <tbody class="divide-y divide-slate-100">
+              <tr v-for="e in pagedMotorExpensesData" :key="e.id" class="text-sm odd:bg-white even:bg-slate-50/30 hover:bg-slate-50">
+                <td class="px-4 py-3 text-slate-700 whitespace-nowrap">{{ formatDate(e.date) }}</td>
+                <td class="px-4 py-3">
+                  <p class="font-semibold text-slate-800 leading-tight">{{ e.model || '-' }}</p>
+                  <p v-if="e.plate_number" class="text-xs text-slate-400 mt-1 leading-tight">{{ e.plate_number }}</p>
+                </td>
+                <td class="px-4 py-3"><span class="badge-warning text-xs">{{ e.type }}</span></td>
+                <td class="px-4 py-3">{{ e.category }}</td>
+                <td class="px-4 py-3 text-slate-500">{{ e.description || '-' }}</td>
+                <td class="px-4 py-3 whitespace-nowrap"><span class="badge-neutral text-xs">{{ paymentMethodLabel(e.payment_method) }}</span></td>
+                <td class="px-4 py-3 text-right font-bold text-red-600 whitespace-nowrap">{{ formatRp(e.amount) }}</td>
               </tr>
-              <tr v-if="!motorExpensesData.length"><td colspan="7" class="py-8 text-center text-slate-400">Belum ada data</td></tr>
+              <tr v-if="!motorExpensesData.length"><td colspan="7" class="px-4 py-10 text-center text-slate-400">Belum ada data</td></tr>
             </tbody>
           </table>
+          </div>
+          <TablePagination
+            v-model:page="motorExpensesPage"
+            v-model:pageSize="motorExpensesPageSize"
+            :total="motorExpensesData.length"
+            :pageSizeOptions="[10,25,50]"
+          />
         </div>
       </template>
 
@@ -458,7 +506,7 @@
               <th class="pb-3">Bayar</th><th class="pb-3 text-right">Jumlah</th><th class="pb-3">Status</th>
             </tr></thead>
             <tbody class="divide-y divide-slate-50">
-              <tr v-for="r in transactionsData.rentals" :key="'r'+r.id" class="text-sm">
+              <tr v-for="r in pagedTxRentals" :key="'r'+r.id" class="text-sm">
                 <td class="py-2">{{ formatDateTime(r.date) }}</td>
                 <td class="py-2">{{ r.description }}</td>
                 <td class="py-2 text-slate-500">{{ r.motor }}</td>
@@ -470,6 +518,12 @@
             </tbody>
           </table>
           </div>
+          <TablePagination
+            v-model:page="txRentalsPage"
+            v-model:pageSize="txRentalsPageSize"
+            :total="transactionsData.rentals?.length || 0"
+            :pageSizeOptions="[10,25,50]"
+          />
         </div>
         <div class="card table-card mb-4">
           <div class="px-6 pt-5 mb-4 flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
@@ -486,7 +540,7 @@
               <th class="pb-3">Bayar</th><th class="pb-3 text-right">Jumlah</th>
             </tr></thead>
             <tbody class="divide-y divide-slate-50">
-              <tr v-for="e in transactionsData.operationalExpenses" :key="'oe'+e.id" class="text-sm">
+              <tr v-for="e in pagedTxOperational" :key="'oe'+e.id" class="text-sm">
                 <td class="py-2">{{ formatDate(e.date) }}</td>
                 <td class="py-2">{{ e.description }}</td>
                 <td class="py-2">
@@ -500,6 +554,12 @@
             </tbody>
           </table>
           </div>
+          <TablePagination
+            v-model:page="txOperationalPage"
+            v-model:pageSize="txOperationalPageSize"
+            :total="transactionsData.operationalExpenses?.length || 0"
+            :pageSizeOptions="[10,25,50]"
+          />
         </div>
         <div class="card table-card">
           <div class="px-6 pt-5 mb-4 flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
@@ -516,7 +576,7 @@
               <th class="pb-3">Bayar</th><th class="pb-3 text-right">Jumlah</th>
             </tr></thead>
             <tbody class="divide-y divide-slate-50">
-              <tr v-for="e in transactionsData.motorExpenses" :key="'me'+e.id" class="text-sm">
+              <tr v-for="e in pagedTxMotorExpenses" :key="'me'+e.id" class="text-sm">
                 <td class="py-2">{{ formatDate(e.date) }}</td>
                 <td class="py-2">{{ e.description }}</td>
                 <td class="py-2 text-slate-600 text-xs">{{ e.motor }}</td>
@@ -527,6 +587,12 @@
             </tbody>
           </table>
           </div>
+          <TablePagination
+            v-model:page="txMotorExpensesPage"
+            v-model:pageSize="txMotorExpensesPageSize"
+            :total="transactionsData.motorExpenses?.length || 0"
+            :pageSizeOptions="[10,25,50]"
+          />
         </div>
       </template>
 
@@ -633,8 +699,8 @@
               <th class="pb-3 text-right">Wavy Gets</th><th class="pb-3 text-right">Bagian Mitra</th>
             </tr></thead>
             <tbody class="divide-y divide-slate-50">
-              <tr v-for="(m, i) in motorRanking" :key="m.id" class="text-sm">
-                <td class="py-3 font-black text-slate-400">{{ i + 1 }}</td>
+              <tr v-for="(m, i) in pagedRanking" :key="m.id" class="text-sm">
+                <td class="py-3 font-black text-slate-400">{{ ((rankingPage - 1) * rankingPageSize) + i + 1 }}</td>
                 <td class="py-3 font-medium">{{ m.model }} <span class="text-slate-400">· {{ m.plate_number }}</span></td>
                 <td class="py-3"><span :class="isAsetPt(m.type) ? 'badge-neutral' : 'badge-warning'">{{ getMotorTypeLabel(m.type) }}</span></td>
                 <td class="py-3 text-right">{{ m.total_rentals }}x</td>
@@ -656,6 +722,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { formatRp, formatDate, formatDateTime, today } from '../utils/format'
 import SearchSelect from '../components/SearchSelect.vue'
+import TablePagination from '../components/TablePagination.vue'
 import { getMotorTypeLabel, isAsetPt } from '../utils/motorType'
 import {
   buildFinancialHtml, buildMotorIncomeHtml, buildMotorExpensesHtml,
@@ -706,6 +773,47 @@ const balanceSheetData = ref(null)
 const annualData = ref([])
 const selectedYear = ref(new Date().getFullYear())
 const ownerReportData = ref([])
+
+const motorIncomePage = ref(1)
+const motorIncomePageSize = ref(10)
+const motorExpensesPage = ref(1)
+const motorExpensesPageSize = ref(10)
+const txRentalsPage = ref(1)
+const txRentalsPageSize = ref(10)
+const txOperationalPage = ref(1)
+const txOperationalPageSize = ref(10)
+const txMotorExpensesPage = ref(1)
+const txMotorExpensesPageSize = ref(10)
+const rankingPage = ref(1)
+const rankingPageSize = ref(10)
+
+const pagedMotorIncomeData = computed(() => {
+  const start = (motorIncomePage.value - 1) * motorIncomePageSize.value
+  return motorIncomeData.value.slice(start, start + motorIncomePageSize.value)
+})
+const pagedMotorExpensesData = computed(() => {
+  const start = (motorExpensesPage.value - 1) * motorExpensesPageSize.value
+  return motorExpensesData.value.slice(start, start + motorExpensesPageSize.value)
+})
+const pagedTxRentals = computed(() => {
+  const list = transactionsData.value.rentals || []
+  const start = (txRentalsPage.value - 1) * txRentalsPageSize.value
+  return list.slice(start, start + txRentalsPageSize.value)
+})
+const pagedTxOperational = computed(() => {
+  const list = transactionsData.value.operationalExpenses || []
+  const start = (txOperationalPage.value - 1) * txOperationalPageSize.value
+  return list.slice(start, start + txOperationalPageSize.value)
+})
+const pagedTxMotorExpenses = computed(() => {
+  const list = transactionsData.value.motorExpenses || []
+  const start = (txMotorExpensesPage.value - 1) * txMotorExpensesPageSize.value
+  return list.slice(start, start + txMotorExpensesPageSize.value)
+})
+const pagedRanking = computed(() => {
+  const start = (rankingPage.value - 1) * rankingPageSize.value
+  return motorRanking.value.slice(start, start + rankingPageSize.value)
+})
 
 const motorOptions = computed(() => motors.value.map(m => ({ value: m.id, label: m.model, sub: m.plate_number + (m.owner_name ? ' · ' + m.owner_name : '') })))
 const ownerOptions = computed(() => owners.value.map(o => ({ value: o.id, label: o.name })))

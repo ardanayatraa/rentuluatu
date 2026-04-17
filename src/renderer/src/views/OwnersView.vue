@@ -6,6 +6,14 @@
         <p class="text-slate-500 text-sm mt-1">Data mitra pemilik motor titipan</p>
       </div>
       <div class="flex gap-3">
+        <button @click="exportPdf" :disabled="exporting" class="btn-secondary disabled:opacity-60">
+          <span class="material-symbols-outlined">visibility</span>
+          {{ exporting === 'pdf' ? 'Memuat...' : 'Lihat Laporan' }}
+        </button>
+        <button @click="exportExcel" :disabled="exporting" class="btn-secondary disabled:opacity-60">
+          <span class="material-symbols-outlined">table_view</span>
+          {{ exporting === 'excel' ? 'Menyimpan...' : 'Simpan Excel' }}
+        </button>
         <button @click="openAdd" class="btn-primary">
           <span class="material-symbols-outlined">add</span>
           Tambah Mitra
@@ -115,12 +123,15 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { formatRp } from '../utils/format'
+import { buildSimpleTableHtml, previewReport } from '../utils/pdf'
+import { saveOwnersExcel } from '../utils/excel'
 
 const router = useRouter()
 const owners = ref([])
 const loading = ref(false)
 const showModal = ref(false)
 const searchQuery = ref('')
+const exporting = ref('')
 
 const editId = ref(null)
 
@@ -146,6 +157,67 @@ const pageEnd = computed(() => Math.min(currentPage.value * pageSize.value, filt
 watch([searchQuery, pageSize], () => {
   currentPage.value = 1
 })
+
+function toFileNamePart(value) {
+  return String(value || '')
+    .trim()
+    .replace(/[\\/:*?"<>|]/g, '')
+    .replace(/\s+/g, '_')
+}
+
+function todayValue() {
+  return new Date().toISOString().split('T')[0]
+}
+
+function getExportFileLabel() {
+  return `${todayValue()}_${toFileNamePart(searchQuery.value || 'Semua')}`
+}
+
+async function exportPdf() {
+  exporting.value = 'pdf'
+  try {
+    const filtered = filteredOwners.value
+    const totalUnpaid = filtered.reduce((s, o) => s + Number(o.unpaid_commission || 0), 0)
+    const activeCount = filtered.filter(o => o.is_active).length
+    const inactiveCount = filtered.length - activeCount
+    const html = buildSimpleTableHtml({
+      title: 'Daftar Mitra / Pemilik Motor',
+      subtitle: searchQuery.value ? `Pencarian: "${searchQuery.value}"` : 'Semua Mitra',
+      period: `Per ${todayValue()}`,
+      summary: [
+        { label: 'Total Mitra', value: `${filtered.length} orang` },
+        { label: 'Aktif', value: `${activeCount} orang` },
+        { label: 'Nonaktif', value: `${inactiveCount} orang` },
+        { label: 'Hak Mengendap', value: formatRp(totalUnpaid) }
+      ],
+      columns: [
+        { key: 'name', label: 'Nama' },
+        { key: 'phone', label: 'WhatsApp' },
+        { key: 'status', label: 'Status' },
+        { key: 'unpaid', label: 'Hak Mitra Mengendap', align: 'right' }
+      ],
+      rows: filtered.map(o => ({
+        name: o.name || '-',
+        phone: o.phone || '-',
+        status: o.is_active ? 'Aktif' : 'Nonaktif',
+        unpaid: formatRp(o.unpaid_commission || 0)
+      })),
+      emptyMessage: 'Belum ada data mitra pada filter ini'
+    })
+    await previewReport(html, `Daftar_Mitra_${getExportFileLabel()}.pdf`)
+  } finally {
+    exporting.value = ''
+  }
+}
+
+async function exportExcel() {
+  exporting.value = 'excel'
+  try {
+    await saveOwnersExcel({ owners: filteredOwners.value, fileLabel: getExportFileLabel() })
+  } finally {
+    exporting.value = ''
+  }
+}
 
 function openAdd() {
   editId.value = null

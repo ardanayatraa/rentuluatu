@@ -232,6 +232,52 @@ export async function saveAnnualExcel({ rows, year }) {
   })
 }
 
+export async function saveMotorsExcel({ motors, fileLabel }) {
+  const columns = [
+    { header: 'Model', key: 'model', width: 22 },
+    { header: 'Plat Nomor', key: 'plate_number', width: 16 },
+    { header: 'Tipe', key: 'type', width: 14 },
+    { header: 'Porsi Wavy', key: 'wavy_share', width: 14 },
+    { header: 'Pemilik', key: 'owner_name', width: 22 }
+  ]
+  const rows = (motors || []).map((m) => ({
+    model: m.model || '-',
+    plate_number: m.plate_number || '-',
+    type: m.type_label || m.type || '-',
+    wavy_share: m.wavy_share || '-',
+    owner_name: m.owner_name || '-'
+  }))
+  return window.api.saveExcel({
+    defaultName: `Daftar_Motor_${fileLabel}.xlsx`,
+    sheets: [{ name: 'Motor', columns, rows }]
+  })
+}
+
+export async function saveOwnersExcel({ owners, fileLabel }) {
+  const columns = [
+    { header: 'Nama', key: 'name', width: 22 },
+    { header: 'WhatsApp', key: 'phone', width: 18 },
+    { header: 'Status', key: 'status', width: 12 },
+    { header: 'Hak Mitra Mengendap', key: 'unpaid_commission', width: 20 }
+  ]
+  const rows = (owners || []).map((o) => ({
+    name: o.name || '-',
+    phone: o.phone || '-',
+    status: o.is_active ? 'Aktif' : 'Nonaktif',
+    unpaid_commission: Number(o.unpaid_commission || 0)
+  }))
+  const totals = {
+    name: 'TOTAL',
+    phone: `${rows.length} mitra`,
+    status: '',
+    unpaid_commission: rows.reduce((s, r) => s + Number(r.unpaid_commission || 0), 0)
+  }
+  return window.api.saveExcel({
+    defaultName: `Daftar_Mitra_${fileLabel}.xlsx`,
+    sheets: [{ name: 'Mitra', columns, rows, totals, currencyKeys: ['unpaid_commission'] }]
+  })
+}
+
 export async function saveOwnerReportExcel({ rows, period, fileLabel }) {
   const columns = [
     { header: 'Mitra', key: 'name', width: 22 },
