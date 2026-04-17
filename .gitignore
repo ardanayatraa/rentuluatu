@@ -6,6 +6,7 @@ out
 *.log*
 docs/*.docx
 docs/*.rtf
+tmp/
 
 # Environment variables
 .env
