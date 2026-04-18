@@ -49,6 +49,7 @@ export async function saveMotorIncomeExcel({ rentals, period, motorName, fileLab
     { header: 'Durasi (hari)', key: 'days', width: 14 },
     { header: 'Pembayaran', key: 'payment', width: 14 },
     { header: 'Total', key: 'total', width: 18 },
+    { header: 'Fee Vendor', key: 'vendor_fee', width: 18 },
     { header: 'Wavy Gets', key: 'wavy', width: 18 },
     { header: 'Bagian Mitra', key: 'owner', width: 18 }
   ]
@@ -56,19 +57,21 @@ export async function saveMotorIncomeExcel({ rentals, period, motorName, fileLab
     date: fmtDateTime(r.date_time), customer: r.customer_name, hotel: r.hotel || '-',
     motor: r.model + ' ' + r.plate_number, days: r.period_days,
     payment: paymentLabel(r.payment_method), total: rp(r.total_price),
+    vendor_fee: rp(r.vendor_fee),
     wavy: rp(r.wavy_gets), owner: rp(r.owner_gets)
   }))
   const totals = {
     date: 'TOTAL', customer: '', hotel: '', motor: '',
     days: rentals.reduce((s,r)=>s+r.period_days,0), payment: '',
     total: rp(rentals.reduce((s,r)=>s+r.total_price,0)),
+    vendor_fee: rp(rentals.reduce((s,r)=>s+Number(r.vendor_fee||0),0)),
     wavy: rp(rentals.reduce((s,r)=>s+r.wavy_gets,0)),
     owner: rp(rentals.reduce((s,r)=>s+r.owner_gets,0))
   }
   return window.api.saveExcel({
     defaultName: `Pendapatan_Motor_${(motorName||'Semua').replace(/\s/g,'_')}_${fileLabel || period.replace(/\//g,'-')}.xlsx`,
     sheets: [{ name: 'Pendapatan Motor', columns, rows: dataRows, totals,
-      currencyKeys: ['total','wavy','owner'] }]
+      currencyKeys: ['total','vendor_fee','wavy','owner'] }]
   })
 }
 

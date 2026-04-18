@@ -361,11 +361,13 @@
 
       <!-- ── TAB: Pendapatan per Motor ── -->
       <template v-if="activeTab === 'motor-income'">
-        <div class="grid grid-cols-4 gap-6 mb-6">
+        <div class="grid grid-cols-2 lg:grid-cols-5 gap-6 mb-6">
           <div class="card"><p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Total Transaksi</p>
             <p class="text-2xl font-black text-primary font-headline">{{ motorIncomeData.length }}x</p></div>
-          <div class="card"><p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Total Pendapatan</p>
+          <div class="card"><p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Total Omzet</p>
             <p class="text-2xl font-black text-primary font-headline">{{ formatRp(motorIncomeData.reduce((s,r)=>s+(r.total_price||0),0)) }}</p></div>
+          <div class="card"><p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Fee Vendor</p>
+            <p class="text-2xl font-black text-orange-500 font-headline">{{ formatRp(motorIncomeData.reduce((s,r)=>s+(r.vendor_fee||0),0)) }}</p></div>
           <div class="card"><p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Wavy Gets</p>
             <p class="text-2xl font-black text-primary font-headline">{{ formatRp(motorIncomeData.reduce((s,r)=>s+(r.wavy_gets||0),0)) }}</p></div>
             <div class="card"><p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Bagian Mitra</p>
@@ -381,7 +383,10 @@
             <thead class="bg-slate-50/70"><tr class="text-slate-500 text-xs uppercase font-bold tracking-wide border-b border-slate-100">
               <th class="px-4 py-3">Tanggal</th><th class="px-4 py-3">Pelanggan</th><th class="px-4 py-3">Motor</th>
               <th class="px-4 py-3 text-right">Durasi</th><th class="px-4 py-3">Bayar</th>
-                <th class="px-4 py-3 text-right">Total</th><th class="px-4 py-3 text-right">Bagian Perusahaan</th><th class="px-4 py-3 text-right">Bagian Mitra</th>
+                <th class="px-4 py-3 text-right">Total</th>
+                <th class="px-4 py-3 text-right">Fee Vendor</th>
+                <th class="px-4 py-3 text-right">Bagian Perusahaan</th>
+                <th class="px-4 py-3 text-right">Bagian Mitra</th>
             </tr></thead>
             <tbody class="divide-y divide-slate-100">
               <tr v-for="r in pagedMotorIncomeData" :key="r.id" class="text-sm odd:bg-white even:bg-slate-50/30 hover:bg-slate-50">
@@ -397,10 +402,11 @@
                 <td class="px-4 py-3 text-right whitespace-nowrap">{{ r.period_days }} hari</td>
                 <td class="px-4 py-3 whitespace-nowrap"><span class="badge-neutral text-xs">{{ paymentMethodLabel(r.payment_method) }}</span></td>
                 <td class="px-4 py-3 text-right font-bold whitespace-nowrap">{{ formatRp(r.total_price) }}</td>
+                <td class="px-4 py-3 text-right text-orange-500 font-semibold whitespace-nowrap">{{ formatRp(r.vendor_fee || 0) }}</td>
                 <td class="px-4 py-3 text-right text-primary font-semibold whitespace-nowrap">{{ formatRp(r.wavy_gets) }}</td>
                 <td class="px-4 py-3 text-right text-slate-600 whitespace-nowrap">{{ formatRp(r.owner_gets) }}</td>
               </tr>
-              <tr v-if="!motorIncomeData.length"><td colspan="8" class="px-4 py-10 text-center text-slate-400">Belum ada data</td></tr>
+              <tr v-if="!motorIncomeData.length"><td colspan="9" class="px-4 py-10 text-center text-slate-400">Belum ada data</td></tr>
             </tbody>
           </table>
           </div>

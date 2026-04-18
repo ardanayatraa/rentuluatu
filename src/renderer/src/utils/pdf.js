@@ -320,6 +320,7 @@ export function printFinancialReport(args) { printWindow(buildFinancialHtml(args
 // ─── 2. Laporan Pendapatan per Motor ───────────────────────────────────────
 export function buildMotorIncomeHtml({ rentals, period, motorName }) {
   const total = rentals.reduce((s, r) => s + (r.total_price || 0), 0)
+  const totalVendor = rentals.reduce((s, r) => s + (r.vendor_fee || 0), 0)
   const totalWavy = rentals.reduce((s, r) => s + (r.wavy_gets || 0), 0)
   const totalOwner = rentals.reduce((s, r) => s + (r.owner_gets || 0), 0)
   const rowsHtml = rentals.map(r => `<tr>
@@ -329,21 +330,23 @@ export function buildMotorIncomeHtml({ rentals, period, motorName }) {
     <td class="right">${r.period_days} hari</td>
     <td><span class="badge badge-blue">${paymentLabel(r.payment_method)}</span></td>
     <td class="right" style="font-weight:700">${rp(r.total_price)}</td>
+    <td class="right">${rp(r.vendor_fee || 0)}</td>
     <td class="right">${rp(r.wavy_gets)}</td>
     <td class="right">${rp(r.owner_gets)}</td>
   </tr>`).join('')
   return `${headerHtml('Laporan Pendapatan per Motor', period, motorName || 'Semua Motor')}
-  <div class="summary-grid">
+  <div class="summary-grid" style="grid-template-columns:repeat(5,1fr)">
     <div class="summary-card"><div class="label">Total Transaksi</div><div class="value">${rentals.length}x</div></div>
     <div class="summary-card"><div class="label">Total Pendapatan</div><div class="value">${rp(total)}</div></div>
+    <div class="summary-card"><div class="label">Fee Vendor</div><div class="value">${rp(totalVendor)}</div></div>
     <div class="summary-card"><div class="label">Wavy Gets</div><div class="value">${rp(totalWavy)}</div></div>
 <div class="summary-card"><div class="label">Bagian Mitra</div><div class="value">${rp(totalOwner)}</div></div>
   </div>
   <div class="section-title">Detail Transaksi Rental</div>
   <table><thead><tr>
     <th>Tanggal</th><th>Pelanggan</th><th>Motor</th><th class="right">Durasi</th>
-    <th>Pembayaran</th><th class="right">Total</th><th class="right">Wavy Gets</th><th class="right">Bagian Mitra</th>
-  </tr></thead><tbody>${rowsHtml || '<tr><td colspan="8" style="text-align:center;padding:20px;color:#888">Tidak ada data</td></tr>'}</tbody></table>
+    <th>Pembayaran</th><th class="right">Total</th><th class="right">Fee Vendor</th><th class="right">Wavy Gets</th><th class="right">Bagian Mitra</th>
+  </tr></thead><tbody>${rowsHtml || '<tr><td colspan="9" style="text-align:center;padding:20px;color:#888">Tidak ada data</td></tr>'}</tbody></table>
   ${footerHtml()}`
 }
 export function printMotorIncomeReport(args) { printWindow(buildMotorIncomeHtml(args)) }
