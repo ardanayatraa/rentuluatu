@@ -106,4 +106,6 @@ contextBridge.exposeInMainWorld('api', {
   getLicenseStatus: () => invoke('license:status'),
   startTrial: () => invoke('license:start-trial'),
   activateLicense: (data) => invoke('license:activate', data),
+  // Import
+  importVehiclesFromXlsx: (data) => invoke('import:vehicles-from-xlsx', data),
 })

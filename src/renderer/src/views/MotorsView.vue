@@ -6,6 +6,10 @@
         <p class="text-slate-500 text-sm mt-1">Data armada motor rental</p>
       </div>
       <div class="flex gap-3">
+        <button @click="importExcel" class="btn-secondary">
+          <span class="material-symbols-outlined">upload_file</span>
+          Import Excel
+        </button>
         <button @click="exportPdf" :disabled="exporting !== ''" class="btn-secondary disabled:opacity-60">
           <span class="material-symbols-outlined">print</span>
           {{ exporting === 'pdf' ? 'Memuat...' : 'Cetak' }}
@@ -288,6 +292,28 @@ async function exportExcel() {
       fileLabel: getExportFileLabel()
     })
   })
+}
+
+async function importExcel() {
+  if (!confirm('Import Motor & Mitra dari Excel?\n\nData yang sudah ada tidak akan dihapus.\nPlat nomor yang sudah ada akan dilewati (atau diisi pemilik jika masih kosong).')) return
+  try {
+    const result = await window.api.importVehiclesFromXlsx({})
+    if (result?.canceled) return
+    await loadData()
+    const warn = (result.warnings || []).slice(0, 5)
+    const warnText = warn.length ? `\n\nCatatan:\n- ${warn.join('\n- ')}` : ''
+    alert(
+      `Import selesai.\n\n` +
+      `Mitra dibuat: ${result.owners_created}\n` +
+      `Mitra dilewati: ${result.owners_skipped}\n` +
+      `Motor dibuat: ${result.motors_created}\n` +
+      `Motor diupdate: ${result.motors_updated}\n` +
+      `Motor dilewati: ${result.motors_skipped}` +
+      warnText
+    )
+  } catch (err) {
+    alert(String(err?.message || err).replace(\"Error invoking remote method 'import:vehicles-from-xlsx': Error: \", ''))
+  }
 }
 
 function openAdd() {

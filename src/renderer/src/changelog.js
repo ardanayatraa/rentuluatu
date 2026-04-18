@@ -3,6 +3,18 @@
 
 export const CHANGELOG = [
   {
+    version: '1.0.13',
+    date: '2026-04-18',
+    badge: { text: 'Import Excel', tone: 'emerald' },
+    intro: 'Tambah fitur import motor dan mitra dari file Excel.',
+    items: [
+      {
+        title: 'Import Motor & Mitra',
+        desc: 'Di halaman Motor dan Mitra tersedia tombol Import Excel untuk memasukkan data dari template daftar kendaraan.'
+      }
+    ]
+  },
+  {
     version: '1.0.12',
     date: '2026-04-18',
     badge: { text: 'Backup Bulanan', tone: 'emerald' },

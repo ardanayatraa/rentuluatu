@@ -11,11 +11,13 @@ import { registerDashboardHandlers } from './dashboard'
 import { registerResetHandlers } from './reset'
 import { registerBackupHandlers } from './backup'
 import { registerLicenseHandlers } from './license'
+import { registerImportHandlers } from './import'
 import './export'
 
 export function registerAllHandlers() {
   registerAuthHandlers()
   registerLicenseHandlers()
+  registerImportHandlers()
   registerMotorHandlers()
   registerOwnerHandlers()
   registerHotelHandlers()
