@@ -92,11 +92,9 @@ function ensureSandboxMasterData({ rentalCount = 500 } = {}) {
   for (let index = hotelCount; index < targetHotels; index += 1) {
     const baseName = hotelNames[index % hotelNames.length]
     const hotelName = index < hotelNames.length ? baseName : `${baseName} Cabang ${index + 1}`
-    dbOps.run('INSERT INTO hotels (name, phone, bank_account, bank_name) VALUES (?, ?, ?, ?)', [
+    dbOps.run('INSERT INTO hotels (name, phone) VALUES (?, ?)', [
         hotelName,
-        `0361${randomInt(100000, 999999)}`,
-        `2000${randomInt(100000, 999999)}`,
-        'BCA'
+        `0361${randomInt(100000, 999999)}`
       ])
     created.hotels += 1
   }
@@ -215,6 +213,15 @@ function seedSandboxData({ rentalCount = 500, daysBack = 365 }) {
       ) VALUES (?, 'in', ?, 'rental', ?, ?, ?)
     `, [cashAccount.id, totalPrice, rentalId, `Sewa ${invoiceNumber}`, dateTime.slice(0, 10)])
     dbOps.run('UPDATE cash_accounts SET balance = COALESCE(balance, 0) + ? WHERE id = ?', [totalPrice, cashAccount.id])
+    if (vendorFee > 0) {
+      const cashTunai = cashAccountByType.tunai || cashAccounts[0]
+      dbOps.run(`
+        INSERT INTO cash_transactions (
+          cash_account_id, type, amount, reference_type, reference_id, description, date
+        ) VALUES (?, 'out', ?, 'rental_vendor_fee', ?, ?, ?)
+      `, [cashTunai.id, vendorFee, rentalId, `Fee Vendor ${invoiceNumber}`, dateTime.slice(0, 10)])
+      dbOps.run('UPDATE cash_accounts SET balance = COALESCE(balance, 0) - ? WHERE id = ?', [vendorFee, cashTunai.id])
+    }
 
     if (status === 'completed') {
       completedBaseRentals.push({

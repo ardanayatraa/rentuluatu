@@ -12,6 +12,7 @@ import { registerResetHandlers } from './reset'
 import { registerBackupHandlers } from './backup'
 import { registerLicenseHandlers } from './license'
 import { registerImportHandlers } from './import'
+import { registerAuditHandlers } from './audit'
 import './export'
 
 export function registerAllHandlers() {
@@ -29,4 +30,5 @@ export function registerAllHandlers() {
   registerDashboardHandlers()
   registerResetHandlers()
   registerBackupHandlers()
+  registerAuditHandlers()
 }

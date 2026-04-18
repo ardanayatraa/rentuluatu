@@ -166,8 +166,6 @@ function createBaseSchema() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       phone TEXT,
-      bank_account TEXT,
-      bank_name TEXT,
       is_active INTEGER DEFAULT 1,
       created_at TEXT DEFAULT (datetime('now','localtime'))
     )

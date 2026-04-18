@@ -10,22 +10,23 @@
     <!-- Period Filter -->
     <div class="card mb-6 flex gap-4 items-center flex-wrap">
       <select v-model="period" @change="onPeriodChange" class="border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium">
-        <option value="today">Hari Ini</option>
-        <option value="week">Minggu Ini</option>
-        <option value="month">Bulan Ini</option>
-        <option value="year">Tahun Ini</option>
-        <option value="custom">Kustom</option>
+        <option value="month">Per Bulan</option>
+        <option value="year">Per Tahun</option>
+        <option value="all">Semua Data</option>
       </select>
-      <template v-if="period === 'custom'">
-        <input v-model="startDate" type="date" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-        <span class="text-slate-400">—</span>
-        <input v-model="endDate" type="date" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+      <template v-if="period === 'month'">
+        <input v-model="selectedMonth" type="month" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+      </template>
+      <template v-if="period === 'year'">
+        <select v-model="selectedYear" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+          <option v-for="year in availableYears" :key="year" :value="year">{{ year }}</option>
+        </select>
       </template>
       <button @click="loadAll" class="btn-primary">
         <span class="material-symbols-outlined">refresh</span>
         Tampilkan
       </button>
-      <span class="ml-auto text-xs text-slate-400">{{ startDate }} s/d {{ endDate }}</span>
+      <span class="ml-auto text-xs text-slate-400">{{ periodLabel }}</span>
     </div>
 
     <!-- Summary Cards - Baris 1: Pemasukan & Pengeluaran -->
@@ -107,10 +108,11 @@
           <h3 class="text-lg font-black text-slate-700 uppercase tracking-wide">Kas</h3>
         </div>
         <div class="text-right">
-          <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Total Saldo</p>
+          <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Total Saldo per {{ periodLabel }}</p>
           <p class="text-2xl font-black text-slate-700 font-headline">{{ formatRp(totalCash) }}</p>
         </div>
       </div>
+      <p class="mb-4 text-xs text-slate-400">Saldo kas ditampilkan sebagai posisi akun sampai tanggal akhir filter yang dipilih.</p>
       
       <div class="grid grid-cols-2 xl:grid-cols-4 gap-5">
         <div v-for="acc in cashAccounts" :key="acc.id"
@@ -279,6 +281,8 @@ ChartJS.register(
 )
 
 const period = ref('month')
+const selectedMonth = ref('')
+const selectedYear = ref('')
 const startDate = ref('')
 const endDate = ref('')
 
@@ -406,20 +410,46 @@ const dynamicMotorOptions = computed(() => ({
 
 function today() { return new Date().toISOString().split('T')[0] }
 
+function getLastDayOfMonth(monthValue) {
+  const [year, month] = String(monthValue || '').split('-')
+  if (!year || !month) return today()
+  return new Date(Number(year), Number(month), 0).toISOString().split('T')[0]
+}
+
+const availableYears = computed(() => {
+  const currentYear = new Date().getFullYear()
+  const years = []
+  for (let year = currentYear; year >= currentYear - 10; year -= 1) {
+    years.push(String(year))
+  }
+  return years
+})
+
+const periodLabel = computed(() => {
+  if (period.value === 'month' && selectedMonth.value) {
+    const [year, month] = selectedMonth.value.split('-')
+    return new Date(Number(year), Number(month) - 1, 1).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
+  }
+  if (period.value === 'year' && selectedYear.value) {
+    return `Tahun ${selectedYear.value}`
+  }
+  return 'Semua Data'
+})
+
 function onPeriodChange() {
   const now = new Date()
-  if (period.value === 'today') {
-    startDate.value = endDate.value = today()
-  } else if (period.value === 'week') {
-    const day = now.getDay()
-    const diff = now.getDate() - day + (day === 0 ? -6 : 1)
-    startDate.value = new Date(now.getFullYear(), now.getMonth(), diff).toISOString().split('T')[0]
-    endDate.value = today()
-  } else if (period.value === 'month') {
-    startDate.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
-    endDate.value = today()
+  if (period.value === 'month') {
+    const monthValue = selectedMonth.value || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    selectedMonth.value = monthValue
+    startDate.value = `${monthValue}-01`
+    endDate.value = getLastDayOfMonth(monthValue)
   } else if (period.value === 'year') {
-    startDate.value = `${now.getFullYear()}-01-01`
+    const yearValue = selectedYear.value || String(now.getFullYear())
+    selectedYear.value = yearValue
+    startDate.value = `${yearValue}-01-01`
+    endDate.value = `${yearValue}-12-31`
+  } else if (period.value === 'all') {
+    startDate.value = '2000-01-01'
     endDate.value = today()
   }
 }
@@ -512,7 +542,7 @@ async function loadAll() {
   summary.value = await window.api.getDashboardSummary(dateRange)
 
   // Cash
-  const cash = await window.api.getCashSummary()
+  const cash = await window.api.getCashSummary({ endDate: endDate.value })
   cashAccounts.value = cash.accounts
   cashTotal.value = cash.total
 
@@ -586,6 +616,9 @@ async function loadAll() {
 }
 
 onMounted(() => {
+  const now = new Date()
+  selectedMonth.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  selectedYear.value = String(now.getFullYear())
   onPeriodChange()
   loadAll()
 })

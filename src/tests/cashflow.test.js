@@ -202,6 +202,18 @@ describe('dashboard summary — kalkulasi income, wavy_gets, profit', () => {
     expect(totalIncome).toBe(1_150_000)
   })
 
+  it('modal awal masuk kas tapi tidak dihitung sebagai pendapatan', () => {
+    const openingBalance = 500_000
+    const rentalIncome = 1_000_000
+    const manualIncome = 150_000
+
+    const cashBalance = openingBalance + rentalIncome + manualIncome
+    const totalIncome = rentalIncome + manualIncome
+
+    expect(cashBalance).toBe(1_650_000)
+    expect(totalIncome).toBe(1_150_000)
+  })
+
   it('total expenses = operational expenses + manual expenses', () => {
     const operationalExpenses = 200_000
     const manualExpenses = 50_000

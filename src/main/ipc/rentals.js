@@ -18,6 +18,93 @@ export function registerRentalHandlers() {
     }
     return method
   }
+  const reverseCashTransactionRows = (rows = []) => {
+    for (const tx of rows) {
+      const amount = Number(tx?.amount || 0)
+      if (amount <= 0) continue
+      const reverseAmount = tx.type === 'in' ? -amount : amount
+      dbOps.run('UPDATE cash_accounts SET balance = balance + ? WHERE id = ?', [reverseAmount, tx.cash_account_id])
+    }
+  }
+  const deleteRentalCashTransactions = (rentalId) => {
+    const txRows = dbOps.all(
+      `SELECT * FROM cash_transactions
+       WHERE reference_id = ?
+         AND reference_type IN ('rental', 'rental_vendor_fee')
+       ORDER BY id DESC`,
+      [rentalId]
+    )
+    if (txRows.length) {
+      reverseCashTransactionRows(txRows)
+      dbOps.run(
+        `DELETE FROM cash_transactions
+         WHERE reference_id = ?
+           AND reference_type IN ('rental', 'rental_vendor_fee')`,
+        [rentalId]
+      )
+      return
+    }
+
+    // Fallback kompatibilitas data/test lama: hanya 1 baris mutasi rental.
+    const legacyTx = dbOps.get(
+      "SELECT * FROM cash_transactions WHERE reference_type = 'rental' AND reference_id = ? ORDER BY id DESC LIMIT 1",
+      [rentalId]
+    )
+    if (legacyTx) reverseCashTransactionRows([legacyTx])
+    dbOps.run("DELETE FROM cash_transactions WHERE reference_type = 'rental' AND reference_id = ?", [rentalId])
+  }
+  const applyRentalCashTransactions = ({
+    rentalId,
+    paymentMethod,
+    totalPrice,
+    vendorFee,
+    customerName,
+    motorModel,
+    dateTime,
+    relationType
+  }) => {
+    const incomeAmount = Number(totalPrice || 0)
+    const feeAmount = Number(vendorFee || 0)
+    if (incomeAmount <= 0) return
+    const txDate = String(dateTime || '').split('T')[0]
+    const methodAccount = dbOps.get('SELECT * FROM cash_accounts WHERE type = ?', [paymentMethod])
+    if (!methodAccount) throw new Error('Akun kas metode pembayaran tidak ditemukan')
+
+    dbOps.run(
+      `INSERT INTO cash_transactions (cash_account_id, type, amount, reference_type, reference_id, description, date)
+       VALUES (?, 'in', ?, 'rental', ?, ?, ?)`,
+      [methodAccount.id, incomeAmount, rentalId, `Sewa ${motorModel} - ${customerName}`, txDate]
+    )
+    dbOps.run('UPDATE cash_accounts SET balance = balance + ? WHERE id = ?', [incomeAmount, methodAccount.id])
+
+    if (feeAmount > 0) {
+      let cashTunai = dbOps.get("SELECT * FROM cash_accounts WHERE type = 'tunai'")
+      if (!cashTunai) {
+        // Fallback kompatibilitas data lama/testing: pakai akun metode pembayaran bila akun tunai belum tersedia.
+        cashTunai = methodAccount
+      }
+      if (!cashTunai) throw new Error('Akun kas tidak ditemukan untuk pembayaran fee vendor')
+
+      const projectedTunaiBalance =
+        Number(cashTunai.balance || 0) +
+        (Number(cashTunai.id) === Number(methodAccount.id) ? incomeAmount : 0)
+      if (projectedTunaiBalance < feeAmount) {
+        throw new Error(`Saldo Kas Tunai tidak cukup untuk membayar fee vendor (butuh Rp ${feeAmount.toLocaleString('id-ID')})`)
+      }
+
+      const vendorFeeLabel =
+        relationType === 'swap_source' ? 'Fee Vendor (Sumber Ganti Unit)' :
+          relationType === 'swap' ? 'Fee Vendor (Motor Pengganti)' :
+            relationType === 'extend' ? 'Fee Vendor (Extend)' :
+              'Fee Vendor'
+      dbOps.run(
+        `INSERT INTO cash_transactions (cash_account_id, type, amount, reference_type, reference_id, description, date)
+         VALUES (?, 'out', ?, 'rental_vendor_fee', ?, ?, ?)`,
+        [cashTunai.id, feeAmount, rentalId, `${vendorFeeLabel} - ${customerName}`, txDate]
+      )
+      dbOps.run('UPDATE cash_accounts SET balance = balance - ? WHERE id = ?', [feeAmount, cashTunai.id])
+    }
+  }
 
   const generateInvoiceNumber = (dateTime) => {
     const dt = new Date(dateTime)
@@ -36,6 +123,10 @@ export function registerRentalHandlers() {
         m.plate_number,
         m.type as motor_type,
         h.name as vendor_name,
+        COALESCE(rs_rep.settlement_note, rs_src.settlement_note) as swap_note,
+        COALESCE(rs_rep.settlement_type, rs_src.settlement_type) as swap_settlement_type,
+        COALESCE(rs_rep.settlement_amount, rs_src.settlement_amount) as swap_settlement_amount,
+        COALESCE(rs_rep.settlement_payment_method, rs_src.settlement_payment_method) as swap_settlement_payment_method,
         pr.invoice_number as parent_invoice_number,
         pr.date_time as parent_date_time,
         pr.customer_name as parent_customer_name,
@@ -46,6 +137,8 @@ export function registerRentalHandlers() {
       FROM rentals r 
       JOIN motors m ON r.motor_id = m.id 
       LEFT JOIN hotels h ON r.hotel_id = h.id 
+      LEFT JOIN rental_swaps rs_src ON rs_src.source_rental_id = r.id
+      LEFT JOIN rental_swaps rs_rep ON rs_rep.replacement_rental_id = r.id
       LEFT JOIN rentals pr ON r.parent_rental_id = pr.id
       LEFT JOIN motors pm ON pr.motor_id = pm.id
       WHERE 1=1
@@ -95,24 +188,28 @@ export function registerRentalHandlers() {
 
     dbOps.runRaw('BEGIN TRANSACTION')
     try {
-      const cashAccount = dbOps.get('SELECT * FROM cash_accounts WHERE type = ?', [paymentMethod])
-      if (!cashAccount) {
-        throw new Error('Akun kas metode pembayaran tidak ditemukan')
-      }
+      const rentalStatus = String(data.status || 'completed')
       dbOps.runRaw(`
         INSERT INTO rentals (date_time, customer_name, hotel, hotel_id, motor_id, period_days,
           payment_method, total_price, price_per_day, vendor_fee, sisa, wavy_gets, owner_gets, status, invoice_number, relation_type)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [data.date_time, data.customer_name, data.hotel || null, data.hotel_id || null, data.motor_id,
           data.period_days, paymentMethod, data.total_price, pricePerDay,
-          vendorFee, sisa, wavy_gets, owner_gets, data.status || 'completed', invoiceNumber, 'rental'])
+          vendorFee, sisa, wavy_gets, owner_gets, rentalStatus, invoiceNumber, 'rental'])
 
       const { id: rentalId } = dbOps.get('SELECT last_insert_rowid() as id')
-      dbOps.run(`
-        INSERT INTO cash_transactions (cash_account_id, type, amount, reference_type, reference_id, description, date)
-        VALUES (?, 'in', ?, 'rental', ?, ?, ?)
-      `, [cashAccount.id, data.total_price, rentalId, `Sewa ${motor.model} - ${data.customer_name}`, data.date_time.split('T')[0]])
-      dbOps.run('UPDATE cash_accounts SET balance = balance + ? WHERE id = ?', [data.total_price, cashAccount.id])
+      if (rentalStatus !== 'refunded') {
+        applyRentalCashTransactions({
+          rentalId,
+          paymentMethod,
+          totalPrice: data.total_price,
+          vendorFee,
+          customerName: data.customer_name,
+          motorModel: motor.model,
+          dateTime: data.date_time,
+          relationType: 'rental'
+        })
+      }
       dbOps.runRaw('COMMIT')
       saveDb()
       return { id: rentalId, invoice_number: invoiceNumber }
@@ -146,10 +243,6 @@ export function registerRentalHandlers() {
 
     dbOps.runRaw('BEGIN TRANSACTION')
     try {
-      const cashAccount = dbOps.get('SELECT * FROM cash_accounts WHERE type = ?', [paymentMethod])
-      if (!cashAccount) {
-        throw new Error('Akun kas metode pembayaran tidak ditemukan')
-      }
       dbOps.runRaw(`
         INSERT INTO rentals (
           date_time, customer_name, hotel, hotel_id, motor_id, period_days,
@@ -176,17 +269,16 @@ export function registerRentalHandlers() {
       ])
 
       const { id: rentalId } = dbOps.get('SELECT last_insert_rowid() as id')
-      dbOps.run(`
-        INSERT INTO cash_transactions (cash_account_id, type, amount, reference_type, reference_id, description, date)
-        VALUES (?, 'in', ?, 'rental', ?, ?, ?)
-      `, [
-        cashAccount.id,
-        totalPrice,
+      applyRentalCashTransactions({
         rentalId,
-        `Extend Sewa ${motor.model} - ${parentRental.customer_name}`,
-        data.date_time.split('T')[0]
-      ])
-      dbOps.run('UPDATE cash_accounts SET balance = balance + ? WHERE id = ?', [totalPrice, cashAccount.id])
+        paymentMethod,
+        totalPrice,
+        vendorFee,
+        customerName: parentRental.customer_name,
+        motorModel: motor.model,
+        dateTime: data.date_time,
+        relationType: 'extend'
+      })
       dbOps.runRaw('COMMIT')
       saveDb()
       return { id: rentalId, invoice_number: invoiceNumber }
@@ -422,15 +514,7 @@ export function registerRentalHandlers() {
 
     dbOps.runRaw('BEGIN TRANSACTION')
     try {
-      const oldCashTx = dbOps.get(
-        "SELECT * FROM cash_transactions WHERE reference_type = 'rental' AND reference_id = ? ORDER BY id DESC LIMIT 1",
-        [id]
-      )
-      if (oldCashTx) {
-        const reverseAmount = oldCashTx.type === 'in' ? -Number(oldCashTx.amount || 0) : Number(oldCashTx.amount || 0)
-        dbOps.run('UPDATE cash_accounts SET balance = balance + ? WHERE id = ?', [reverseAmount, oldCashTx.cash_account_id])
-        dbOps.run("DELETE FROM cash_transactions WHERE reference_type = 'rental' AND reference_id = ?", [id])
-      }
+      deleteRentalCashTransactions(id)
 
       dbOps.run(`
         UPDATE rentals SET date_time=?, customer_name=?, hotel=?, hotel_id=?, motor_id=?, period_days=?,
@@ -440,13 +524,16 @@ export function registerRentalHandlers() {
           paymentMethod, data.total_price, pricePerDay, vendorFee, sisa, wavy_gets, owner_gets, id])
 
       if (existingRental.status !== 'refunded') {
-        const cashAccount = dbOps.get('SELECT * FROM cash_accounts WHERE type = ?', [paymentMethod])
-        if (!cashAccount) throw new Error('Akun kas metode pembayaran tidak ditemukan')
-        dbOps.run(`
-          INSERT INTO cash_transactions (cash_account_id, type, amount, reference_type, reference_id, description, date)
-          VALUES (?, 'in', ?, 'rental', ?, ?, ?)
-        `, [cashAccount.id, data.total_price, id, `Sewa ${motor.model} - ${data.customer_name}`, String(data.date_time || '').split('T')[0]])
-        dbOps.run('UPDATE cash_accounts SET balance = balance + ? WHERE id = ?', [data.total_price, cashAccount.id])
+        applyRentalCashTransactions({
+          rentalId: id,
+          paymentMethod,
+          totalPrice: data.total_price,
+          vendorFee,
+          customerName: data.customer_name,
+          motorModel: motor.model,
+          dateTime: data.date_time,
+          relationType: existingRental.relation_type || 'rental'
+        })
       }
 
       dbOps.runRaw('COMMIT')
@@ -476,20 +563,8 @@ export function registerRentalHandlers() {
 
     dbOps.runRaw('BEGIN TRANSACTION')
     try {
-      // Kembalikan saldo kas berdasarkan transaksi kas rental yang tercatat.
-      if (rental.status !== 'refunded') {
-        const cashTx = dbOps.get(
-          "SELECT * FROM cash_transactions WHERE reference_type = 'rental' AND reference_id = ? ORDER BY id DESC LIMIT 1",
-          [id]
-        )
-        if (cashTx) {
-          const reverseAmount = cashTx.type === 'in' ? -Number(cashTx.amount || 0) : Number(cashTx.amount || 0)
-          dbOps.run('UPDATE cash_accounts SET balance = balance + ? WHERE id = ?', [reverseAmount, cashTx.cash_account_id])
-        }
-        dbOps.run("DELETE FROM cash_transactions WHERE reference_type = 'rental' AND reference_id = ?", [id])
-      } else {
-        dbOps.run("DELETE FROM cash_transactions WHERE reference_type = 'rental' AND reference_id = ?", [id])
-      }
+      // Kembalikan saldo kas berdasarkan transaksi kas rental + fee vendor yang tercatat.
+      deleteRentalCashTransactions(id)
 
       // Hapus refund terkait jika ada
       dbOps.run('DELETE FROM refunds WHERE rental_id = ?', [id])

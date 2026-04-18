@@ -3,6 +3,54 @@
 
 export const CHANGELOG = [
   {
+    version: '1.0.18',
+    date: '2026-04-18',
+    badge: { text: 'Audit & Cash Accuracy', tone: 'emerald' },
+    intro: 'Rilis ini fokus pada akurasi saldo kas, pemisahan modal, audit data, dan perapihan alur transaksi turunan.',
+    items: [
+      {
+        title: 'Audit Data di Pengaturan',
+        desc: 'Tambah fitur audit untuk mendeteksi mismatch saldo akun, mutasi kas, payout, refund, rental, dan settlement ganti unit.'
+      },
+      {
+        title: 'Saldo Dashboard Ikut Periode',
+        desc: 'Kartu saldo kas di dashboard sekarang dihitung sampai tanggal akhir filter yang dipilih, bukan selalu saldo live lintas periode.'
+      },
+      {
+        title: 'Modal Dipisah dari Pendapatan',
+        desc: 'Modal awal dan tambahan modal tetap masuk ke kas, tetapi tidak ikut dihitung sebagai pendapatan operasional.'
+      },
+      {
+        title: 'Daily Record Lebih Jelas',
+        desc: 'Total transaksi ditampilkan net setelah fee vendor, dan ringkasan pembayaran extend/ganti unit dibuat lebih mudah ditelusuri.'
+      }
+    ]
+  },
+  {
+    version: '1.0.17',
+    date: '2026-04-18',
+    badge: { text: 'Filter & Settlement Visibility', tone: 'emerald' },
+    intro: 'Perbaikan alur vendor hotel, filter periode mitra, dan visibilitas catatan/selisih ganti unit.',
+    items: [
+      {
+        title: 'Vendor Fee Otomatis Lebih Jelas',
+        desc: 'Halaman detail vendor hotel sekarang menegaskan bahwa fee vendor dibayar otomatis saat transaksi, lengkap dengan ringkasan periode.'
+      },
+      {
+        title: 'Filter Rentang Waktu di Detail Mitra',
+        desc: 'Kartu motor pada detail mitra kini mendukung Per Bulan, Rentang Tanggal, dan Semua Data, dengan kontrol Terapkan/Reset.'
+      },
+      {
+        title: 'Catatan Ganti Unit Ditampilkan',
+        desc: 'Catatan yang diisi saat proses ganti unit kini tampil kembali di baris transaksi setelah disimpan.'
+      },
+      {
+        title: 'Selisih Ganti Unit Terlihat di Tabel',
+        desc: 'Nilai top up/refund dan metode pembayarannya kini ditampilkan langsung pada tab Ganti Unit agar mudah ditelusuri.'
+      }
+    ]
+  },
+  {
     version: '1.0.16',
     date: '2026-04-18',
     badge: { text: 'Import & UI Fix', tone: 'emerald' },

@@ -149,8 +149,8 @@ const navGroups = [
     label: 'Armada',
     items: [
       { to: '/motors', icon: 'two_wheeler', label: 'Motor' },
-      { to: '/owners', icon: 'handshake', label: 'Mitra Owner' },
-      { to: '/hotels', icon: 'domain', label: 'Hotel / Vendor' },
+      { to: '/owners', icon: 'handshake', label: 'Mitra / Pemilik' },
+      { to: '/hotels', icon: 'domain', label: 'Hotel / Vendor Hotel' },
     ]
   },
   {

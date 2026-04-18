@@ -71,11 +71,20 @@ function assertValidManualCashInput(data = {}, mode = 'income') {
     throw new Error('Metode bayar wajib dipilih')
   }
 
+  const entryType = mode === 'income'
+    ? String(data.entry_type || 'manual_income').trim().toLowerCase()
+    : 'manual_expense'
+
+  if (mode === 'income' && !['manual_income', 'capital_injection'].includes(entryType)) {
+    throw new Error('Jenis pemasukan tidak valid')
+  }
+
   return {
     amount,
     description,
     paymentMethod,
     date: data.date || new Date().toISOString().split('T')[0],
+    entryType,
     mode
   }
 }
@@ -117,21 +126,38 @@ export function registerCashHandlers() {
     return dbOps.all(query, params)
   })
 
-  ipcMain.handle('cash:get-summary', () => {
-    const accounts = dbOps.all('SELECT * FROM cash_accounts')
-    const total = accounts.reduce((sum, a) => sum + (a.balance || 0), 0)
-    return { accounts, total }
+  ipcMain.handle('cash:get-summary', (_, filters = {}) => {
+    const snapshotDate = String(filters.endDate || '').trim()
+    const accounts = dbOps.all('SELECT * FROM cash_accounts ORDER BY type ASC')
+    const accountsWithBalance = snapshotDate
+      ? accounts.map((account) => {
+        const mutationRows = dbOps.all(
+          `SELECT type, amount
+           FROM cash_transactions
+           WHERE cash_account_id = ?
+             AND date <= ?`,
+          [account.id, snapshotDate]
+        ) || []
+        const balance = mutationRows.reduce((sum, row) => {
+          const amount = Number(row.amount || 0)
+          return String(row.type).toLowerCase() === 'out' ? sum - amount : sum + amount
+        }, 0)
+        return { ...account, balance }
+      })
+      : accounts
+    const total = accountsWithBalance.reduce((sum, a) => sum + Number(a.balance || 0), 0)
+    return { accounts: accountsWithBalance, total }
   })
 
-  // Tambah pemasukan manual (misal jual SIM card, dll)
+  // Tambah pemasukan operasional atau tambahan modal.
   ipcMain.handle('cash:add-income', (_, data) => {
     const payload = assertValidManualCashInput(data, 'income')
     const account = dbOps.get('SELECT * FROM cash_accounts WHERE type = ?', [payload.paymentMethod])
     if (!account) throw new Error('Akun kas tidak ditemukan')
     dbOps.run(`
       INSERT INTO cash_transactions (cash_account_id, type, amount, reference_type, description, date)
-      VALUES (?, 'in', ?, 'manual_income', ?, ?)
-    `, [account.id, payload.amount, payload.description, payload.date])
+      VALUES (?, 'in', ?, ?, ?, ?)
+    `, [account.id, payload.amount, payload.entryType, payload.description, payload.date])
     dbOps.run('UPDATE cash_accounts SET balance = balance + ? WHERE id = ?', [payload.amount, account.id])
     return { success: true }
   })

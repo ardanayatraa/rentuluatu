@@ -19,7 +19,7 @@
         <input
           v-model="searchQuery"
           type="text"
-          placeholder="Cari nama hotel atau kontak..."
+          placeholder="Cari nama hotel..."
           class="w-80 max-w-full border border-slate-200 rounded-lg pl-9 pr-3 py-2 text-sm"
         />
       </div>
@@ -37,8 +37,6 @@
         <thead>
           <tr class="bg-slate-50 text-slate-400 text-xs uppercase font-bold">
             <th class="px-6 py-4">Nama Hotel / Vendor Hotel</th>
-            <th class="px-6 py-4">Kontak / Telepon</th>
-            <th class="px-6 py-4">Info Rekening</th>
             <th class="px-6 py-4 text-right">Fee Vendor (Tunai)</th>
             <th class="px-6 py-4 text-right">Status</th>
             <th class="px-6 py-4 text-right">Aksi</th>
@@ -46,7 +44,7 @@
         </thead>
         <tbody class="divide-y divide-slate-50">
           <tr v-if="loading" v-for="index in 6" :key="`sk-${index}`">
-            <td colspan="6" class="px-6 py-4">
+            <td colspan="4" class="px-6 py-4">
               <div class="skeleton h-10 rounded-xl"></div>
             </td>
           </tr>
@@ -55,14 +53,6 @@
               <div class="font-bold cursor-pointer hover:text-primary transition-colors" @click="goToDetail(h.id)">
                 {{ h.name }}
               </div>
-            </td>
-            <td class="px-6 py-4 text-slate-500 text-sm">{{ h.phone || '-' }}</td>
-            <td class="px-6 py-4">
-              <div v-if="h.bank_account || h.bank_name">
-                <span class="font-medium text-sm block">{{ h.bank_account }}</span>
-                <span class="text-xs text-slate-400">{{ h.bank_name }}</span>
-              </div>
-              <span v-else class="text-slate-400">-</span>
             </td>
             <td class="px-6 py-4 text-right">
               <span v-if="h.unpaid_commission > 0" class="font-bold text-red-500 bg-red-50 px-3 py-1 rounded-full text-sm">
@@ -90,7 +80,7 @@
             </td>
           </tr>
           <tr v-if="!loading && !filteredHotels.length">
-            <td colspan="6" class="px-6 py-12 text-center text-slate-400">Belum ada data hotel / vendor hotel</td>
+            <td colspan="4" class="px-6 py-12 text-center text-slate-400">Belum ada data hotel / vendor hotel</td>
           </tr>
         </tbody>
       </table>
@@ -111,20 +101,6 @@
         <div>
           <label class="block text-xs font-bold text-slate-500 mb-1">Nama Hotel / Vendor Hotel</label>
           <input v-model="form.name" type="text" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required />
-        </div>
-        <div>
-          <label class="block text-xs font-bold text-slate-500 mb-1">No. Telepon / WhatsApp</label>
-          <input v-model="form.phone" type="text" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-        </div>
-        <div class="grid grid-cols-2 gap-4">
-          <div>
-            <label class="block text-xs font-bold text-slate-500 mb-1">Nama Bank</label>
-            <input v-model="form.bank_name" type="text" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="BCA / Mandiri" />
-          </div>
-          <div>
-            <label class="block text-xs font-bold text-slate-500 mb-1">No. Rekening</label>
-            <input v-model="form.bank_account" type="text" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-          </div>
         </div>
         <div v-if="isEdit" class="flex items-center gap-2 mt-4">
           <input type="checkbox" v-model="form.is_active" :true-value="1" :false-value="0" id="is_active" class="accent-primary" />
@@ -163,7 +139,7 @@ const showModal = ref(false)
 const showDeleteConfirm = ref(false)
 const pendingDeleteId = ref(null)
 const isEdit = ref(false)
-const form = ref({ id: null, name: '', phone: '', bank_account: '', bank_name: '', is_active: 1 })
+const form = ref({ id: null, name: '', is_active: 1 })
 const formError = ref('')
 const currentPage = ref(1)
 const pageSize = ref(10)
@@ -171,7 +147,7 @@ const filteredHotels = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
   if (!query) return hotels.value
   return hotels.value.filter(hotel => {
-    const haystack = `${hotel.name || ''} ${hotel.phone || ''} ${hotel.bank_name || ''} ${hotel.bank_account || ''}`.toLowerCase()
+    const haystack = `${hotel.name || ''}`.toLowerCase()
     return haystack.includes(query)
   })
 })
@@ -203,7 +179,7 @@ function goToDetail(id) {
 
 function openAdd() {
   isEdit.value = false
-  form.value = { id: null, name: '', phone: '', bank_account: '', bank_name: '', is_active: 1 }
+  form.value = { id: null, name: '', is_active: 1 }
   formError.value = ''
   showModal.value = true
 }

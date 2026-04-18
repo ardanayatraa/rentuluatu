@@ -2,6 +2,27 @@
 
 Format: `MAJOR.MINOR.PATCH` (SemVer)
 
+## 1.0.18 (2026-04-18)
+- **Dashboard & Kas**:
+  - Saldo kas di dashboard sekarang mengikuti tanggal akhir filter yang dipilih, jadi tidak lagi membingungkan dengan saldo live lintas periode.
+  - Periode dashboard dirapikan menjadi **Per Bulan / Per Tahun / Semua Data**.
+- **Kas & Modal**:
+  - Modal awal dan tambahan modal tetap masuk ke kas tetapi dipisahkan dari pendapatan operasional.
+  - Proteksi dan snapshot saldo kas diperkuat.
+- **Daily Record & Detail**:
+  - Total transaksi tampil net setelah fee vendor.
+  - Ringkasan pembayaran `extend` dan `ganti unit` diperjelas.
+  - Popup/detail mitra mendukung filter rentang tanggal yang lebih lengkap.
+- **Audit Data Baru**:
+  - Di Pengaturan tersedia fitur audit untuk mengecek mismatch saldo akun, mutasi kas, payout, refund, rental, dan settlement ganti unit.
+
+## 1.0.17 (2026-04-18)
+- **Vendor Hotel (Detail)**: Tampilan fee vendor diperjelas sebagai **dibayar otomatis saat transaksi**, termasuk ringkasan dibayar otomatis per periode.
+- **Mitra Detail**: Filter pada kartu motor sekarang mendukung **rentang tanggal** (Per Bulan / Rentang Tanggal / Semua Data) dengan tombol Terapkan/Reset.
+- **Daily Record - Ganti Unit**:
+  - Catatan ganti unit sekarang tampil di baris transaksi setelah disimpan.
+  - Informasi selisih (top up/refund) dan metode pembayarannya ditampilkan langsung di tabel.
+
 ## 1.0.16 (2026-04-18)
 - **Import Motor**: Kolom WARNA sekarang digabung dengan NAMA KENDARAAN (contoh: "N-MAX PUTIH", "Scoopy Merah").
 - **Perbaikan Bug**: Fix nama motor berubah jadi "-" saat edit (query SQL diperbaiki dengan kolom eksplisit).
@@ -31,4 +52,3 @@ Format: `MAJOR.MINOR.PATCH` (SemVer)
 
 ## 1.0.3 (2026-04-??)
 - Penyempurnaan laporan, dokumen, backup, performa, dan kesiapan penggunaan jangka panjang.
-

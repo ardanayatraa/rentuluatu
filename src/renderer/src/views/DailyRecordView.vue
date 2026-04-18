@@ -137,7 +137,7 @@
             <th class="px-6 py-4">Motor</th>
             <th class="px-6 py-4">Periode</th>
             <th class="px-6 py-4">Bayar</th>
-            <th class="px-6 py-4 text-right">Harga Kotor</th>
+            <th class="px-6 py-4 text-right">Total Transaksi</th>
             <th v-if="showVendorFeeColumn" class="px-6 py-4 text-right">Fee Vendor</th>
             <th class="px-6 py-4 text-right">Wavy Gets</th>
             <th class="px-6 py-4 text-right">Bagian Mitra</th>
@@ -168,6 +168,9 @@
                 <button v-if="r.parent_rental_id" @click="goToParentRental(r)" class="text-xs text-primary hover:underline font-semibold">
                   Lihat sumber: {{ parentLabel(r) }}
                 </button>
+                <p class="text-xs text-slate-500">
+                  Pembayaran: {{ paymentMethodLabel(r.payment_method) }} · {{ formatRp(r.total_price) }}
+                </p>
               </div>
               <div v-else-if="rentalRelation(r) === 'swap'" class="mt-1 flex flex-col items-start gap-1.5">
                 <span class="inline-flex items-center rounded-full bg-violet-100 text-violet-700 text-xs font-semibold px-3 py-1">
@@ -176,11 +179,22 @@
                 <button v-if="r.parent_rental_id" @click="goToParentRental(r)" class="text-xs text-primary hover:underline font-semibold">
                   Sumber ganti unit: {{ parentLabel(r) }}
                 </button>
+                <p class="text-xs text-slate-500">
+                  Harga ganti unit: {{ formatRp(r.total_price) }}
+                </p>
+                <p v-if="swapSettlementLabel(r)" class="text-xs text-violet-600 font-semibold">
+                  {{ swapSettlementLabel(r) }}
+                </p>
+                <p v-if="swapNote(r)" class="text-xs text-slate-500">Catatan: {{ swapNote(r) }}</p>
               </div>
               <div v-else-if="rentalRelation(r) === 'swap_source'" class="mt-1 flex flex-col items-start gap-1.5">
                 <span class="inline-flex items-center rounded-full bg-amber-100 text-amber-700 text-xs font-semibold px-3 py-1">
                   Diganti Unit
                 </span>
+                <p v-if="swapSettlementLabel(r)" class="text-xs text-violet-600 font-semibold">
+                  {{ swapSettlementLabel(r) }}
+                </p>
+                <p v-if="swapNote(r)" class="text-xs text-slate-500">Catatan: {{ swapNote(r) }}</p>
               </div>
               <div v-else-if="hasRelatedTransactions(r)" class="mt-1">
                 <span class="inline-flex items-center rounded-full bg-blue-100 text-blue-700 text-xs font-semibold px-3 py-1">
@@ -195,9 +209,15 @@
             </td>
             <td class="px-6 py-4">{{ r.period_days }} hari</td>
             <td class="px-6 py-4">
-              <span :class="paymentMethodBadge(r.payment_method)">{{ paymentMethodLabel(r.payment_method) }}</span>
+              <div class="flex flex-col items-start gap-1.5">
+                <span :class="paymentMethodBadge(displayPaymentMethod(r))">{{ paymentMethodLabel(displayPaymentMethod(r)) }}</span>
+                <p v-if="paymentSummary(r)" class="text-xs text-slate-500">{{ paymentSummary(r) }}</p>
+              </div>
             </td>
-            <td class="px-6 py-4 text-right font-semibold">{{ formatRp(r.total_price) }}</td>
+            <td class="px-6 py-4 text-right">
+              <p class="font-semibold">{{ formatRp(transactionNetAmount(r)) }}</p>
+              <p v-if="Number(r.vendor_fee || 0) > 0" class="text-xs text-slate-400">Gross {{ formatRp(r.total_price) }}</p>
+            </td>
             <td v-if="showVendorFeeColumn" class="px-6 py-4 text-right text-amber-600">{{ r.vendor_fee > 0 ? formatRp(r.vendor_fee) : '-' }}</td>
             <td class="px-6 py-4 text-right font-bold text-primary">{{ formatRp(r.wavy_gets) }}</td>
             <td class="px-6 py-4 text-right text-slate-600">{{ formatRp(r.owner_gets) }}</td>
@@ -1066,6 +1086,67 @@ function openSwapFromTab() {
 
 function formatExtendSourceLabel(rental) {
   return `${formatDate(rental.date_time)} - ${rental.customer_name} - ${rental.plate_number}`
+}
+
+function swapNote(rental) {
+  const note = String(rental?.swap_note || '').trim()
+  return note || ''
+}
+
+function transactionNetAmount(rental) {
+  const total = Number(rental?.total_price || 0)
+  const vendorFee = Number(rental?.vendor_fee || 0)
+  return Math.max(total - vendorFee, 0)
+}
+
+function paymentMethodLabelShort(method) {
+  return {
+    tunai: 'Tunai',
+    transfer: 'Transfer',
+    qris: 'QRIS',
+    debit_card: 'Debit Card'
+  }[String(method || '').toLowerCase()] || '-'
+}
+
+function swapSettlementLabel(rental) {
+  const type = String(rental?.swap_settlement_type || '').toLowerCase()
+  const amount = Number(rental?.swap_settlement_amount || 0)
+  if (!amount || type === 'none') return ''
+  const method = paymentMethodLabelShort(rental?.swap_settlement_payment_method)
+  if (type === 'topup') return `Selisih dibayar customer: +${formatRp(amount)} (${method})`
+  if (type === 'refund') return `Selisih refund ke customer: -${formatRp(amount)} (${method})`
+  return ''
+}
+
+function displayPaymentMethod(rental) {
+  const relation = rentalRelation(rental)
+  if (relation === 'swap') {
+    return rental?.swap_settlement_payment_method || rental?.payment_method
+  }
+  return rental?.payment_method
+}
+
+function paymentSummary(rental) {
+  const relation = rentalRelation(rental)
+  const total = Number(rental?.total_price || 0)
+  if (relation === 'extend') {
+    return `Bayar extend ${formatRp(total)}`
+  }
+  if (relation === 'swap') {
+    const type = String(rental?.swap_settlement_type || '').toLowerCase()
+    const amount = Number(rental?.swap_settlement_amount || 0)
+    if (!amount || type === 'none') return 'Tidak ada selisih bayar'
+    if (type === 'topup') return `Top up ${formatRp(amount)}`
+    if (type === 'refund') return `Refund ${formatRp(amount)}`
+  }
+  if (relation === 'swap_source') {
+    const type = String(rental?.swap_settlement_type || '').toLowerCase()
+    const amount = Number(rental?.swap_settlement_amount || 0)
+    if (!amount || type === 'none') return 'Ganti unit tanpa selisih'
+    if (type === 'topup') return `Customer tambah ${formatRp(amount)}`
+    if (type === 'refund') return `Customer refund ${formatRp(amount)}`
+  }
+  return ''
 }
 
 function parentLabel(rental) {

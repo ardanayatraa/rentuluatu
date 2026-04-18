@@ -6,13 +6,22 @@ const COMPANY_EXPENSE_WHERE = `
   WHERE e.date BETWEEN ? AND ?
     AND (e.type IS NULL OR e.type != 'motor')
 `
+const NET_RENTAL_INCOME_EXPR = `
+  CASE
+    WHEN COALESCE(r.sisa, 0) > 0 THEN COALESCE(r.sisa, 0)
+    WHEN (COALESCE(r.wavy_gets, 0) + COALESCE(r.owner_gets, 0)) > 0 THEN (COALESCE(r.wavy_gets, 0) + COALESCE(r.owner_gets, 0))
+    ELSE (COALESCE(r.total_price, 0) - COALESCE(r.vendor_fee, 0))
+  END
+`
 
 export function registerReportHandlers() {
   ipcMain.handle('report:summary', (_, { startDate, endDate }) => {
     const start = startDate.split('T')[0]
     const end = endDate.split('T')[0]
     const income = dbOps.get(
-      "SELECT COALESCE(SUM(total_price), 0) as total FROM rentals WHERE date_time BETWEEN ? AND ? AND status != 'refunded'",
+      `SELECT COALESCE(SUM(${NET_RENTAL_INCOME_EXPR}), 0) as total
+       FROM rentals r
+       WHERE r.date_time BETWEEN ? AND ? AND r.status != 'refunded'`,
       [startDate, endDate]
     )
     const expenses = dbOps.get(
@@ -104,7 +113,13 @@ export function registerReportHandlers() {
       SELECT r.id, r.date_time as date, 'rental' as type,
              r.customer_name as description,
              m.model || ' (' || m.plate_number || ')' as motor,
-             r.payment_method, r.total_price as amount, r.status,
+             r.payment_method,
+             CASE
+               WHEN COALESCE(r.sisa, 0) > 0 THEN COALESCE(r.sisa, 0)
+               WHEN (COALESCE(r.wavy_gets, 0) + COALESCE(r.owner_gets, 0)) > 0 THEN (COALESCE(r.wavy_gets, 0) + COALESCE(r.owner_gets, 0))
+               ELSE (COALESCE(r.total_price, 0) - COALESCE(r.vendor_fee, 0))
+             END as amount,
+             r.status,
              r.invoice_number, r.relation_type, r.parent_rental_id, r.period_days,
              m.model as motor_model, m.plate_number,
              pr.invoice_number as parent_invoice_number,
@@ -369,7 +384,13 @@ export function registerReportHandlers() {
          AND date_time <= ?
          AND hotel_id IS NOT NULL
          AND COALESCE(relation_type, 'rental') IN ('rental', 'swap_source')
-         AND hotel_payout_id IS NULL`,
+         AND hotel_payout_id IS NULL
+         AND NOT EXISTS (
+           SELECT 1
+           FROM cash_transactions ct
+           WHERE ct.reference_type = 'rental_vendor_fee'
+             AND ct.reference_id = rentals.id
+         )`,
       [cutoffDateTime]
     )
 
@@ -468,7 +489,9 @@ export function registerReportHandlers() {
       const start = `${year}-${mo}-01T00:00:00`
       const end = `${year}-${mo}-31T23:59:59`
       const income = dbOps.get(
-        "SELECT COALESCE(SUM(total_price),0) as total, COUNT(*) as count FROM rentals WHERE date_time BETWEEN ? AND ? AND status != 'refunded'",
+        `SELECT COALESCE(SUM(${NET_RENTAL_INCOME_EXPR}),0) as total, COUNT(*) as count
+         FROM rentals r
+         WHERE r.date_time BETWEEN ? AND ? AND r.status != 'refunded'`,
         [start, end]
       )
       const wavyGets = dbOps.get(
@@ -493,13 +516,13 @@ export function registerReportHandlers() {
     const fmt = groupBy === 'day' ? '%Y-%m-%d' : groupBy === 'month' ? '%Y-%m' : '%Y'
 
     const incomeByPeriod = dbOps.all(`
-      SELECT strftime('${fmt}', date_time) as period,
-             COALESCE(SUM(total_price), 0) as income,
+      SELECT strftime('${fmt}', r.date_time) as period,
+             COALESCE(SUM(${NET_RENTAL_INCOME_EXPR}), 0) as income,
              COALESCE(SUM(wavy_gets), 0) as wavy_gets,
              COALESCE(SUM(owner_gets), 0) as owner_gets,
              COUNT(id) as rental_count
-      FROM rentals
-      WHERE date_time BETWEEN ? AND ? AND status != 'refunded'
+      FROM rentals r
+      WHERE r.date_time BETWEEN ? AND ? AND r.status != 'refunded'
       GROUP BY period ORDER BY period ASC
     `, [startDate, endDate])
 

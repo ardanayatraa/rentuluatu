@@ -29,6 +29,7 @@ import { registerHotelHandlers } from '../main/ipc/hotels.js'
 import { registerRefundHandlers } from '../main/ipc/refunds.js'
 import { registerExpenseHandlers } from '../main/ipc/expenses.js'
 import { registerCashHandlers } from '../main/ipc/cash.js'
+import { registerAuditHandlers } from '../main/ipc/audit.js'
 
 describe('IPC business logic', () => {
   beforeEach(() => {
@@ -40,6 +41,7 @@ describe('IPC business logic', () => {
     dbOps.get.mockImplementation((sql) => {
       if (sql.includes('JOIN motors m ON e.motor_id = m.id')) return { total: 20_000 }
       if (sql.includes('COUNT(*) as count FROM expenses')) return { total: 30_000, count: 1 }
+      if (sql.includes('COALESCE(r.sisa') && sql.includes('FROM rentals r')) return { total: 300_000 }
       if (sql.includes('SUM(total_price)')) return { total: 300_000 }
       if (sql.includes('SUM(e.amount)')) return { total: 30_000 }
       if (sql.includes('SUM(wavy_gets)')) return { total: 75_000 }
@@ -388,18 +390,43 @@ describe('IPC business logic', () => {
 
     registerHotelHandlers()
     const result = handlers.get('hotel:create')(null, {
-      name: 'IBIS Kuta',
-      phone: '08123456789',
-      bank_account: '',
-      bank_name: ''
+      name: 'IBIS Kuta'
     })
 
     expect(result).toEqual({ id: 77 })
     expect(dbOps.runRaw).toHaveBeenCalledWith(
-      'INSERT INTO hotels (name, phone, bank_account, bank_name) VALUES (?, ?, ?, ?)',
-      ['IBIS Kuta', '08123456789', null, null]
+      'INSERT INTO hotels (name) VALUES (?)',
+      ['IBIS Kuta']
     )
     expect(saveDb).toHaveBeenCalled()
+  })
+
+  it('cash add-income bisa menyimpan tambah modal tanpa dihitung sebagai manual income', async () => {
+    dbOps.get.mockImplementation((sql, params) => {
+      if (sql.includes('SELECT * FROM cash_accounts WHERE type = ?')) {
+        return { id: 4, type: params[0], name: 'Transfer' }
+      }
+      return null
+    })
+
+    registerCashHandlers()
+    const result = handlers.get('cash:add-income')(null, {
+      entry_type: 'capital_injection',
+      description: 'Tambahan modal owner',
+      amount: 250_000,
+      payment_method: 'transfer',
+      date: '2026-04-18'
+    })
+
+    expect(result).toEqual({ success: true })
+    expect(dbOps.run).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO cash_transactions'),
+      [4, 250_000, 'capital_injection', 'Tambahan modal owner', '2026-04-18']
+    )
+    expect(dbOps.run).toHaveBeenCalledWith(
+      'UPDATE cash_accounts SET balance = balance + ? WHERE id = ?',
+      [250_000, 4]
+    )
   })
 
   it('hotel payout selalu menolak request payout walau payload valid', async () => {
@@ -556,5 +583,79 @@ describe('IPC business logic', () => {
       description: 'Beli ATK',
       date: '2026-04-17'
     })).toThrow('Dana perusahaan tidak cukup. Dana bebas saat ini Rp 50.000 (setelah proteksi hak mitra).')
+  })
+
+  it('cash get summary bisa menghitung saldo snapshot sampai tanggal filter', async () => {
+    dbOps.all.mockImplementation((sql, params) => {
+      if (sql.includes('SELECT * FROM cash_accounts ORDER BY type ASC')) {
+        return [
+          { id: 1, name: 'Kas Tunai', type: 'tunai', balance: 999_999 },
+          { id: 2, name: 'Debit Card', type: 'debit_card', balance: 999_999 }
+        ]
+      }
+      if (sql.includes('FROM cash_transactions') && Number(params[0]) === 1) {
+        return [
+          { type: 'in', amount: 500_000 },
+          { type: 'out', amount: 100_000 }
+        ]
+      }
+      if (sql.includes('FROM cash_transactions') && Number(params[0]) === 2) {
+        return [
+          { type: 'in', amount: 450_000 },
+          { type: 'in', amount: 50_000 }
+        ]
+      }
+      return []
+    })
+
+    registerCashHandlers()
+    const summary = handlers.get('cash:get-summary')(null, { endDate: '2026-04-30' })
+
+    expect(summary).toEqual({
+      accounts: [
+        { id: 1, name: 'Kas Tunai', type: 'tunai', balance: 400_000 },
+        { id: 2, name: 'Debit Card', type: 'debit_card', balance: 500_000 }
+      ],
+      total: 900_000
+    })
+  })
+
+  it('system audit menandai saldo kas mismatch dan mutasi expense yang hilang', async () => {
+    dbOps.all.mockImplementation((sql) => {
+      if (sql.includes('SELECT * FROM cash_accounts ORDER BY type ASC')) {
+        return [{ id: 1, name: 'Kas Tunai', type: 'tunai', balance: 1_000_000 }]
+      }
+      if (sql.includes('FROM cash_transactions') && sql.includes('GROUP BY cash_account_id')) {
+        return [{ cash_account_id: 1, ledger_balance: 900_000 }]
+      }
+      if (sql.includes('FROM rentals r')) return []
+      if (sql.includes('SELECT * FROM expenses ORDER BY id ASC')) {
+        return [{ id: 44, amount: 75_000, payment_method: 'tunai', date: '2026-04-18' }]
+      }
+      if (sql.includes('FROM refunds rf')) return []
+      if (sql.includes('SELECT * FROM payouts ORDER BY id ASC')) return []
+      if (sql.includes('SELECT * FROM rental_swaps ORDER BY id ASC')) return []
+      return []
+    })
+    dbOps.get.mockImplementation((sql) => {
+      if (sql.includes('FROM cash_transactions') && sql.includes('reference_type = ?')) return null
+      return null
+    })
+
+    registerAuditHandlers()
+    const result = handlers.get('audit:run-system-check')(null)
+
+    expect(result.summary.ok).toBe(false)
+    expect(result.summary.errors).toBe(2)
+    expect(result.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        severity: 'error',
+        category: 'cash'
+      }),
+      expect.objectContaining({
+        severity: 'error',
+        category: 'expense'
+      })
+    ]))
   })
 })

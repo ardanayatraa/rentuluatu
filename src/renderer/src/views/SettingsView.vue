@@ -55,6 +55,86 @@
           </div>
         </div>
 
+        <div class="card">
+          <div class="flex items-start justify-between gap-4 mb-4">
+            <div>
+              <h3 class="font-bold text-slate-700 text-sm flex items-center gap-2">
+                <span class="material-symbols-outlined text-base text-slate-400">health_metrics</span>
+                Audit Data
+              </h3>
+              <p class="text-xs text-slate-400 mt-1">Cek cepat apakah saldo kas, mutasi, payout, refund, dan hitungan transaksi masih konsisten.</p>
+            </div>
+            <button @click="runSystemAudit" :disabled="auditLoading" class="btn-secondary text-xs px-3 py-1.5 shrink-0">
+              <span class="material-symbols-outlined text-sm">fact_check</span>
+              {{ auditLoading ? 'Mengecek...' : 'Cek Sekarang' }}
+            </button>
+          </div>
+
+          <div
+            v-if="auditResult"
+            :class="auditResult.summary.ok ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'"
+            class="mb-4 rounded-xl border px-4 py-3"
+          >
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <p :class="auditResult.summary.ok ? 'text-emerald-700' : 'text-amber-700'" class="text-sm font-black">
+                  {{ auditResult.summary.ok ? 'Data terlihat konsisten' : 'Ditemukan hal yang perlu dicek' }}
+                </p>
+                <p class="mt-1 text-xs text-slate-500">
+                  Dicek {{ formatFileDate(auditResult.summary.checkedAt) }}
+                </p>
+              </div>
+              <div class="text-right text-xs font-bold">
+                <p class="text-red-500">{{ auditResult.summary.errors }} error</p>
+                <p class="text-amber-600">{{ auditResult.summary.warnings }} warning</p>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="auditResult" class="grid grid-cols-2 gap-3 mb-4">
+            <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+              <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Objek Dicek</p>
+              <p class="mt-2 text-sm font-black text-slate-700">
+                {{ auditCheckedLabel }}
+              </p>
+            </div>
+            <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+              <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Temuan</p>
+              <p class="mt-2 text-sm font-black text-slate-700">
+                {{ auditResult.summary.totalFindings }} item
+              </p>
+            </div>
+          </div>
+
+          <div v-if="auditError" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 mb-4">
+            {{ auditError }}
+          </div>
+
+          <div v-if="auditResult?.findings?.length" class="space-y-2 max-h-72 overflow-y-auto">
+            <div
+              v-for="(finding, index) in auditResult.findings"
+              :key="`${finding.category}-${index}`"
+              class="rounded-xl border px-3 py-3"
+              :class="finding.severity === 'error' ? 'border-red-200 bg-red-50/70' : 'border-amber-200 bg-amber-50/70'"
+            >
+              <div class="flex items-center gap-2 mb-1">
+                <span
+                  class="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
+                  :class="finding.severity === 'error' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'"
+                >
+                  {{ finding.severity }}
+                </span>
+                <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">{{ finding.category }}</span>
+              </div>
+              <p class="text-xs text-slate-700 leading-relaxed">{{ finding.message }}</p>
+            </div>
+          </div>
+
+          <div v-else-if="auditResult && !auditResult.findings.length" class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-700">
+            Tidak ada temuan. Alur kas dan data inti terlihat sinkron.
+          </div>
+        </div>
+
         <!-- Lisensi -->
         <div class="card">
           <h3 class="font-bold text-slate-700 text-sm mb-4 flex items-center gap-2">
@@ -499,6 +579,9 @@ const isResetting = ref(false)
 const showResetModal = ref(false)
 const resetConfirmText = ref('')
 const productionReset = ref({ visible: false, used: false })
+const auditLoading = ref(false)
+const auditError = ref('')
+const auditResult = ref(null)
 
 function handleReset() { resetConfirmText.value = ''; showResetModal.value = true }
 
@@ -573,6 +656,29 @@ function formatSize(bytes) {
   if (!bytes) return '-'
   const kb = Number(bytes) / 1024
   return kb > 1024 ? (kb / 1024).toFixed(1) + ' MB' : kb.toFixed(0) + ' KB'
+}
+
+const auditCheckedLabel = computed(() => {
+  const checked = auditResult.value?.summary?.checked
+  if (!checked) return '-'
+  return [
+    `${checked.cashAccounts || 0} akun kas`,
+    `${checked.rentals || 0} rental`,
+    `${checked.expenses || 0} pengeluaran`,
+    `${checked.refunds || 0} refund`
+  ].join(' · ')
+})
+
+async function runSystemAudit() {
+  auditLoading.value = true
+  auditError.value = ''
+  try {
+    auditResult.value = await window.api.runSystemAudit()
+  } catch (error) {
+    auditError.value = `Audit gagal dijalankan: ${error.message}`
+  } finally {
+    auditLoading.value = false
+  }
 }
 
 async function savePassphrase() {
@@ -728,6 +834,7 @@ onMounted(async () => {
   await license.load()
   await checkGdriveStatus()
   await loadBackupList()
+  await runSystemAudit()
   if (!isDev) {
     try {
       productionReset.value = await window.api.getProductionResetStatus()

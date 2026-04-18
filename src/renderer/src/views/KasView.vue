@@ -8,7 +8,7 @@
       <div class="flex gap-3">
         <button @click="openIncome" class="btn-primary">
           <span class="material-symbols-outlined">add</span>
-          Tambah Pemasukan
+          Tambah Pemasukan / Modal
         </button>
         <button @click="showOpeningModal = true" class="btn-secondary">
           <span class="material-symbols-outlined">tune</span>
@@ -91,7 +91,7 @@
             <td class="px-6 py-4">{{ t.description || '-' }}</td>
             <td class="px-6 py-4 text-slate-500">{{ t.account_name }}</td>
             <td class="px-6 py-4">
-              <span :class="t.type === 'in' ? 'badge-success' : 'badge-error'">{{ t.type === 'in' ? 'Masuk' : 'Keluar' }}</span>
+              <span :class="t.type === 'in' ? 'badge-success' : 'badge-error'">{{ transactionTypeLabel(t) }}</span>
             </td>
             <td class="px-6 py-4 text-right font-bold" :class="t.type === 'in' ? 'text-emerald-600' : 'text-red-600'">
               {{ t.type === 'in' ? '+' : '-' }}{{ formatRp(t.amount) }}
@@ -113,12 +113,28 @@
       </div>
     </div>
 
-    <!-- Tambah Pemasukan Modal -->
-    <n-modal v-model:show="showIncomeModal" preset="card" title="Tambah Pemasukan" class="max-w-sm" :auto-focus="false" :trap-focus="false">
+    <!-- Tambah Pemasukan / Modal -->
+    <n-modal v-model:show="showIncomeModal" preset="card" title="Tambah Pemasukan / Modal" class="max-w-sm" :auto-focus="false" :trap-focus="false">
       <form @submit.prevent="submitIncome" class="space-y-4">
         <div>
+          <label class="block text-xs font-bold text-slate-500 mb-1">Jenis Transaksi</label>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 cursor-pointer">
+              <input type="radio" v-model="incomeForm.entry_type" value="manual_income" class="accent-primary" />
+              <span class="text-sm font-medium">Pemasukan</span>
+            </label>
+            <label class="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 cursor-pointer">
+              <input type="radio" v-model="incomeForm.entry_type" value="capital_injection" class="accent-primary" />
+              <span class="text-sm font-medium">Tambah Modal</span>
+            </label>
+          </div>
+          <p class="mt-1 text-[11px] text-slate-400">
+            Tambah modal masuk ke saldo kas, tapi tidak dihitung sebagai pendapatan.
+          </p>
+        </div>
+        <div>
           <label class="block text-xs font-bold text-slate-500 mb-1">Catatan Transaksi</label>
-          <input v-model="incomeForm.description" type="text" placeholder="Contoh: Penjualan aksesoris"
+          <input v-model="incomeForm.description" type="text" :placeholder="incomeDescriptionPlaceholder"
             class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required />
         </div>
         <div>
@@ -200,6 +216,7 @@ const incomeError = ref('')
 const incomeSubmitting = ref(false)
 
 const incomeForm = ref({
+  entry_type: 'manual_income',
   description: '',
   amount: 0,
   payment_method: 'tunai',
@@ -212,9 +229,28 @@ const pagedTransactions = computed(() => {
 })
 const pageStart = computed(() => transactions.value.length ? ((currentPage.value - 1) * pageSize.value) + 1 : 0)
 const pageEnd = computed(() => Math.min(currentPage.value * pageSize.value, transactions.value.length))
-const totalIncome = computed(() => transactions.value.filter(t => t.type === 'in').reduce((sum, t) => sum + Number(t.amount || 0), 0))
+const totalOpeningBalance = computed(() =>
+  transactions.value
+    .filter(t => t.reference_type === 'opening_balance')
+    .reduce((sum, t) => sum + Number(t.amount || 0), 0)
+)
+const totalCapitalInjection = computed(() =>
+  transactions.value
+    .filter(t => t.reference_type === 'capital_injection')
+    .reduce((sum, t) => sum + Number(t.amount || 0), 0)
+)
+const totalIncome = computed(() =>
+  transactions.value
+    .filter(t => t.type === 'in' && !['opening_balance', 'capital_injection'].includes(t.reference_type))
+    .reduce((sum, t) => sum + Number(t.amount || 0), 0)
+)
 const totalExpense = computed(() => transactions.value.filter(t => t.type === 'out').reduce((sum, t) => sum + Number(t.amount || 0), 0))
 const netFlow = computed(() => totalIncome.value - totalExpense.value)
+const incomeDescriptionPlaceholder = computed(() =>
+  incomeForm.value.entry_type === 'capital_injection'
+    ? 'Contoh: Tambahan modal pemilik'
+    : 'Contoh: Penjualan aksesoris'
+)
 const selectedAccountName = computed(() => {
   if (!filterAccount.value) return 'Semua Akun'
   return accounts.value.find(a => Number(a.id) === Number(filterAccount.value))?.name || 'Semua Akun'
@@ -257,6 +293,7 @@ function kasIcon(type) {
 
 function openIncome() {
   incomeForm.value = {
+    entry_type: 'manual_income',
     description: '',
     amount: 0,
     payment_method: 'tunai',
@@ -332,6 +369,12 @@ function getExportFileLabel() {
   return `${account}_${type}_${date}`
 }
 
+function transactionTypeLabel(item) {
+  if (item.reference_type === 'opening_balance') return 'Modal Awal'
+  if (item.reference_type === 'capital_injection') return 'Tambah Modal'
+  return item.type === 'in' ? 'Pemasukan' : 'Pengeluaran'
+}
+
 async function exportPdf() {
   exporting.value = true
   try {
@@ -340,9 +383,11 @@ async function exportPdf() {
       subtitle: `Akun: ${selectedAccountName.value} · Tipe: ${selectedTypeLabel.value}`,
       period: periodLabel.value,
       summary: [
+        { label: 'Total Modal Awal', value: formatRp(totalOpeningBalance.value) },
+        { label: 'Total Tambah Modal', value: formatRp(totalCapitalInjection.value) },
         { label: 'Total Pemasukan', value: formatRp(totalIncome.value) },
         { label: 'Total Pengeluaran', value: formatRp(totalExpense.value) },
-        { label: 'Selisih Arus Kas', value: formatRp(netFlow.value) },
+        { label: 'Arus Kas Operasional', value: formatRp(netFlow.value) },
         { label: 'Jumlah Mutasi', value: `${transactions.value.length}x` }
       ],
       columns: [
@@ -356,7 +401,7 @@ async function exportPdf() {
         date: formatDate(item.date),
         description: item.description || '-',
         account: item.account_name || '-',
-        type: item.type === 'in' ? 'Pemasukan' : 'Pengeluaran',
+        type: transactionTypeLabel(item),
         amount: `${item.type === 'in' ? '+' : '-'}${formatRp(item.amount)}`
       })),
       emptyMessage: 'Belum ada mutasi pada filter ini'
@@ -382,8 +427,10 @@ async function exportExcel() {
       date: formatDate(item.date),
       description: item.description || '-',
       account: item.account_name || '-',
-      type: item.type === 'in' ? 'Pemasukan' : 'Pengeluaran',
-      income: item.type === 'in' ? Number(item.amount || 0) : 0,
+      type: transactionTypeLabel(item),
+      income: item.reference_type === 'capital_injection' || item.reference_type === 'opening_balance'
+        ? 0
+        : item.type === 'in' ? Number(item.amount || 0) : 0,
       expense: item.type === 'out' ? Number(item.amount || 0) : 0
     }))
     const totals = {

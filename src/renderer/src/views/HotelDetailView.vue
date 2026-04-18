@@ -13,7 +13,7 @@
                 {{ hotel.is_active ? 'Aktif' : 'Nonaktif' }}
               </span>
             </div>
-            <p class="text-slate-500 text-sm mt-1">Detail vendor hotel, fee vendor tunai per transaksi, dan riwayat pembayaran lama</p>
+            <p class="text-slate-500 text-sm mt-1">Detail vendor hotel, fee vendor tunai per transaksi (otomatis dibayar saat transaksi)</p>
           </div>
         </div>
 
@@ -22,31 +22,10 @@
             <span class="material-symbols-outlined text-sm">picture_as_pdf</span>
             Slip Fee Vendor
           </button>
-          <button
-            v-if="previewData.netAmount > 0"
-            @click="loadPreviewAndConfirm"
-            class="btn-primary !bg-orange-500 hover:!bg-orange-600"
-            :disabled="!hotel.is_active"
-          >
-            <span class="material-symbols-outlined text-sm">payments</span>
-            Bayar Semua ({{ formatRp(previewData.netAmount) }})
-          </button>
         </div>
       </div>
 
       <div class="mt-6 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-8 gap-y-4 border-t border-slate-100 pt-5">
-        <div class="space-y-1">
-          <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Telepon</p>
-          <p class="text-base font-bold text-slate-800">{{ hotel.phone || '-' }}</p>
-        </div>
-        <div class="space-y-1">
-          <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Bank</p>
-          <p class="text-base font-bold text-slate-800">{{ hotel.bank_name || '-' }}</p>
-        </div>
-        <div class="space-y-1">
-          <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">No. Rekening</p>
-          <p class="text-base font-mono font-bold text-slate-800 break-all">{{ hotel.bank_account || '-' }}</p>
-        </div>
         <div class="space-y-1">
           <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Periode Aktif</p>
           <p class="text-base font-bold text-slate-800">{{ activePeriodLabel }}</p>
@@ -72,8 +51,12 @@
         <p class="mt-2 text-2xl font-black text-primary">{{ previewData.rentals.length }}</p>
       </div>
       <div class="card">
-        <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Total Dibayar (Periode Ini)</p>
-        <p class="mt-2 text-2xl font-black text-emerald-600">{{ formatRp(totalPaidHistorical) }}</p>
+        <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Total Dibayar Otomatis (Periode Ini)</p>
+        <p class="mt-2 text-2xl font-black text-emerald-600">{{ formatRp(previewData.paidAmount || 0) }}</p>
+      </div>
+      <div class="card">
+        <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Sisa Belum Sinkron</p>
+        <p class="mt-2 text-2xl font-black text-red-500">{{ formatRp(previewData.unpaidAmount || 0) }}</p>
       </div>
     </div>
 
@@ -123,7 +106,7 @@
             Rekap Fee Vendor (Tunai Saat Transaksi)
           </h3>
           <p class="text-xs text-slate-400 mt-1">
-            {{ pendingRentals.length }} transaksi vendor dengan total fee {{ formatRp(previewData.grossCommission) }}
+            {{ pendingRentals.length }} transaksi vendor dengan total fee {{ formatRp(previewData.grossCommission) }} (dibayar tunai otomatis)
           </p>
         </div>
         <div class="flex items-center gap-2">
@@ -155,6 +138,7 @@
             <th class="px-6 py-4 text-right">Durasi</th>
             <th class="px-6 py-4 text-right">Total Sewa</th>
             <th class="px-6 py-4 text-right">Fee Vendor</th>
+            <th class="px-6 py-4 text-center">Status Fee</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-50">
@@ -168,6 +152,9 @@
             <td class="px-6 py-4 text-right text-slate-500">{{ r.period_days }} hari</td>
             <td class="px-6 py-4 text-right font-semibold text-slate-700">{{ formatRp(r.total_price) }}</td>
             <td class="px-6 py-4 text-right font-bold text-orange-500">{{ formatRp(r.vendor_fee) }}</td>
+            <td class="px-6 py-4 text-center">
+              <span class="badge-success">Auto Dibayar</span>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -188,7 +175,7 @@
         <div>
           <h3 class="font-bold text-slate-700 text-sm flex items-center gap-2">
             <span class="material-symbols-outlined text-base">receipt_long</span>
-            Riwayat Pembayaran Fee Vendor
+            Riwayat Pembayaran Manual (Data Lama)
           </h3>
           <p class="text-xs text-slate-400 mt-1">{{ filteredPayouts.length }} pembayaran tercatat untuk periode aktif</p>
         </div>
@@ -208,7 +195,7 @@
       </div>
 
       <div v-if="!filteredPayouts.length" class="py-10 text-center text-slate-400 text-sm">
-        Belum ada riwayat pembayaran untuk periode ini
+        Tidak ada pembayaran manual pada periode ini (fee vendor dibayar otomatis saat transaksi)
       </div>
 
       <div v-for="(p, idx) in pagedPayouts" :key="p.id" class="border-b border-slate-100 last:border-0">
@@ -441,7 +428,7 @@ function createDefaultPeriodFilter() {
 const hotel = ref(null)
 const history = ref({ payouts: [] })
 const cashAccounts = ref([])
-const previewData = ref({ rentals: [], grossCommission: 0, netAmount: 0 })
+const previewData = ref({ rentals: [], grossCommission: 0, paidAmount: 0, unpaidAmount: 0, netAmount: 0 })
 
 const showPayoutModal = ref(false)
 const showSlipModal = ref(false)
@@ -530,10 +517,6 @@ const slipFileName = computed(() => {
 
 const totalPendingRentalValue = computed(() =>
   (previewData.value.rentals || []).reduce((sum, item) => sum + Number(item.total_price || 0), 0)
-)
-
-const totalPaidHistorical = computed(() =>
-  (history.value.payouts || []).reduce((sum, item) => sum + Number(item.amount || 0), 0)
 )
 
 const pendingRentals = computed(() => {

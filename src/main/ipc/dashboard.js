@@ -6,6 +6,13 @@ const COMPANY_EXPENSE_WHERE = `
   WHERE e.date BETWEEN ? AND ?
     AND (e.type IS NULL OR e.type != 'motor')
 `
+const NET_RENTAL_INCOME_EXPR = `
+  CASE
+    WHEN COALESCE(r.sisa, 0) > 0 THEN COALESCE(r.sisa, 0)
+    WHEN (COALESCE(r.wavy_gets, 0) + COALESCE(r.owner_gets, 0)) > 0 THEN (COALESCE(r.wavy_gets, 0) + COALESCE(r.owner_gets, 0))
+    ELSE (COALESCE(r.total_price, 0) - COALESCE(r.vendor_fee, 0))
+  END
+`
 
 function getReservedOwnerFundsAllTime() {
   const ownerRentalRows = dbOps.all(`
@@ -54,7 +61,9 @@ export function registerDashboardHandlers() {
     const end = endDate.split('T')[0]
     
     const income = dbOps.get(
-      "SELECT COALESCE(SUM(total_price), 0) as total FROM rentals WHERE date(date_time) BETWEEN ? AND ? AND status != 'refunded'",
+      `SELECT COALESCE(SUM(${NET_RENTAL_INCOME_EXPR}), 0) as total
+       FROM rentals r
+       WHERE date(r.date_time) BETWEEN ? AND ? AND r.status != 'refunded'`,
       [start, end]
     )
     const expenses = dbOps.get(
@@ -141,13 +150,13 @@ export function registerDashboardHandlers() {
     
     const rentals = dbOps.all(`
       SELECT date(date_time) as date,
-        COALESCE(SUM(total_price), 0) as income,
+        COALESCE(SUM(${NET_RENTAL_INCOME_EXPR}), 0) as income,
         COALESCE(SUM(wavy_gets), 0) as wavy_gets,
         COALESCE(SUM(owner_gets), 0) as owner_gets,
         COUNT(*) as count
-      FROM rentals
-      WHERE date(date_time) BETWEEN ? AND ? AND status != 'refunded'
-      GROUP BY date(date_time)
+      FROM rentals r
+      WHERE date(r.date_time) BETWEEN ? AND ? AND r.status != 'refunded'
+      GROUP BY date(r.date_time)
     `, [start, end])
 
     const manuals = dbOps.all(`
@@ -200,10 +209,10 @@ export function registerDashboardHandlers() {
     const end = endDate.split('T')[0]
     
     const rentals = dbOps.all(`
-      SELECT payment_method, COALESCE(SUM(total_price), 0) as total, COUNT(*) as count
-      FROM rentals
-      WHERE date(date_time) BETWEEN ? AND ? AND status != 'refunded'
-      GROUP BY payment_method
+      SELECT r.payment_method, COALESCE(SUM(${NET_RENTAL_INCOME_EXPR}), 0) as total, COUNT(*) as count
+      FROM rentals r
+      WHERE date(r.date_time) BETWEEN ? AND ? AND r.status != 'refunded'
+      GROUP BY r.payment_method
     `, [start, end])
 
     const manuals = dbOps.all(`
@@ -232,7 +241,7 @@ export function registerDashboardHandlers() {
     return dbOps.all(`
       SELECT m.model, m.plate_number, m.type,
         COUNT(r.id) as rental_count,
-        COALESCE(SUM(r.total_price), 0) as total_income,
+        COALESCE(SUM(${NET_RENTAL_INCOME_EXPR}), 0) as total_income,
         COALESCE(SUM(r.wavy_gets), 0) as wavy_gets
       FROM motors m
       LEFT JOIN rentals r ON m.id = r.motor_id

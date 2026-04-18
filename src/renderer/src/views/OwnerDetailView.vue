@@ -61,11 +61,31 @@
           <p class="text-xs text-slate-400 mt-1">{{ filteredMotors.length }} motor terhubung ke mitra ini</p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
+          <select v-model="motorPeriodFilter.mode" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+            <option value="month">Per Bulan</option>
+            <option value="custom">Rentang Tanggal</option>
+            <option value="all">Semua Data</option>
+          </select>
           <input
-            v-model="motorMonthFilter"
+            v-if="motorPeriodFilter.mode === 'month'"
+            v-model="motorPeriodFilter.month"
             type="month"
             class="border border-slate-200 rounded-lg px-3 py-2 text-sm"
           />
+          <template v-if="motorPeriodFilter.mode === 'custom'">
+            <input
+              v-model="motorPeriodFilter.startDate"
+              type="date"
+              class="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+            />
+            <input
+              v-model="motorPeriodFilter.endDate"
+              type="date"
+              class="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+            />
+          </template>
+          <button @click="applyMotorPeriodFilter" class="btn-primary text-sm py-2 px-3">Terapkan</button>
+          <button @click="resetMotorPeriodFilter" class="btn-secondary text-sm py-2 px-3">Reset</button>
           <input
             v-model="motorSearch"
             type="text"
@@ -367,10 +387,32 @@
         <div class="flex flex-wrap items-end justify-between gap-3">
           <div>
             <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Detail Per Motor</p>
-            <p class="text-sm text-slate-500 mt-1">Default menampilkan data bulan ini dan bisa diganti kapan saja.</p>
+            <p class="text-sm text-slate-500 mt-1">Bisa difilter per bulan, rentang tanggal, atau semua data.</p>
           </div>
           <div class="flex flex-wrap items-end gap-2">
-            <input v-model="motorDetailFilter.month" type="month" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+            <select v-model="motorDetailFilter.mode" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+              <option value="month">Per Bulan</option>
+              <option value="custom">Rentang Tanggal</option>
+              <option value="all">Semua Data</option>
+            </select>
+            <input
+              v-if="motorDetailFilter.mode === 'month'"
+              v-model="motorDetailFilter.month"
+              type="month"
+              class="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+            />
+            <template v-if="motorDetailFilter.mode === 'custom'">
+              <input
+                v-model="motorDetailFilter.startDate"
+                type="date"
+                class="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+              />
+              <input
+                v-model="motorDetailFilter.endDate"
+                type="date"
+                class="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+              />
+            </template>
             <button @click="loadMotorDetail" class="btn-primary text-sm">Terapkan</button>
             <button @click="previewMotorSlip" class="btn-secondary text-sm">
               <span class="material-symbols-outlined text-sm">picture_as_pdf</span>
@@ -381,11 +423,11 @@
 
         <div class="grid grid-cols-3 gap-4">
           <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Pemasukan Bulan Ini</p>
+            <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Pemasukan Periode Ini</p>
             <p class="mt-2 text-2xl font-black text-emerald-600">{{ formatRp(motorDetailSummary.income) }}</p>
           </div>
           <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Pengeluaran Bulan Ini</p>
+            <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Pengeluaran Periode Ini</p>
             <p class="mt-2 text-2xl font-black text-red-500">{{ formatRp(motorDetailSummary.expense) }}</p>
           </div>
           <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
@@ -631,7 +673,12 @@ const slipFilter = ref({
 const historyFilter = ref({ startDate: '', endDate: '', motorId: '' })
 const currentPage = ref(1)
 const itemsPerPage = 10
-const motorMonthFilter = ref(today().slice(0, 7))
+const motorPeriodFilter = ref({
+  mode: 'month',
+  month: today().slice(0, 7),
+  startDate: today(),
+  endDate: today()
+})
 const motorSearch = ref('')
 const motorCurrentPage = ref(1)
 const motorPageSize = ref(4)
@@ -641,7 +688,10 @@ const payoutPageSize = ref(5)
 const showMotorDetailModal = ref(false)
 const selectedMotor = ref(null)
 const motorDetailFilter = ref({
-  month: today().slice(0, 7)
+  mode: 'month',
+  month: today().slice(0, 7),
+  startDate: today(),
+  endDate: today()
 })
 const motorIncomeRows = ref([])
 const motorExpenseRows = ref([])
@@ -788,6 +838,25 @@ function getOwnerPeriodRange() {
   return { startDate: null, endDate: null }
 }
 
+function getMotorOwnerRange() {
+  if (motorPeriodFilter.value.mode === 'month') {
+    const monthValue = motorPeriodFilter.value.month || today().slice(0, 7)
+    return {
+      startDate: `${monthValue}-01`,
+      endDate: getLastDayOfMonth(monthValue)
+    }
+  }
+
+  if (motorPeriodFilter.value.mode === 'custom') {
+    return {
+      startDate: motorPeriodFilter.value.startDate || null,
+      endDate: motorPeriodFilter.value.endDate || null
+    }
+  }
+
+  return { startDate: null, endDate: null }
+}
+
 function getSlipRange() {
   if (slipFilter.value.mode === 'all') {
     return {
@@ -816,6 +885,27 @@ function getSlipFilePeriodLabel() {
   if (slipFilter.value.mode === 'month') return toFileNamePart(slipFilter.value.month)
   if (startDate && endDate && startDate !== endDate) return `${toFileNamePart(startDate)}_sd_${toFileNamePart(endDate)}`
   return toFileNamePart(endDate || startDate || today())
+}
+
+function getMotorDetailRange() {
+  if (motorDetailFilter.value.mode === 'month') {
+    return getMonthRange(motorDetailFilter.value.month)
+  }
+
+  if (motorDetailFilter.value.mode === 'custom') {
+    return {
+      startDate: motorDetailFilter.value.startDate || null,
+      endDate: motorDetailFilter.value.endDate || null
+    }
+  }
+
+  const rentals = motorIncomeRows.value.map(row => String(row.date_time || '').split('T')[0]).filter(Boolean)
+  const expenses = motorExpenseRows.value.map(row => String(row.date || '')).filter(Boolean)
+  const dates = [...rentals, ...expenses].sort()
+  return {
+    startDate: dates[0] || '2000-01-01',
+    endDate: dates[dates.length - 1] || today()
+  }
 }
 
 function openSlipModal() {
@@ -857,16 +947,40 @@ async function resetPeriodFilter() {
   await loadPayoutHistory()
 }
 
+async function applyMotorPeriodFilter() {
+  const { startDate, endDate } = getMotorOwnerRange()
+  if (motorPeriodFilter.value.mode === 'custom' && (!startDate || !endDate)) return
+  if (startDate && endDate && startDate > endDate) return
+  await loadData()
+}
+
+async function resetMotorPeriodFilter() {
+  motorPeriodFilter.value = {
+    mode: 'month',
+    month: today().slice(0, 7),
+    startDate: today(),
+    endDate: today()
+  }
+  await loadData()
+}
+
 async function openMotorDetail(motor) {
   selectedMotor.value = motor
-  motorDetailFilter.value.month = motorMonthFilter.value || today().slice(0, 7)
+  motorDetailFilter.value = {
+    mode: motorPeriodFilter.value.mode === 'custom' ? 'custom' : motorPeriodFilter.value.mode === 'all' ? 'all' : 'month',
+    month: (motorPeriodFilter.value.mode === 'month' ? motorPeriodFilter.value.month : today().slice(0, 7)) || today().slice(0, 7),
+    startDate: motorPeriodFilter.value.startDate || today(),
+    endDate: motorPeriodFilter.value.endDate || today()
+  }
   showMotorDetailModal.value = true
   await loadMotorDetail()
 }
 
 async function loadMotorDetail() {
   if (!selectedMotor.value) return
-  const { startDate, endDate } = getMonthRange(motorDetailFilter.value.month)
+  const { startDate, endDate } = getMotorDetailRange()
+  if (motorDetailFilter.value.mode === 'custom' && (!startDate || !endDate)) return
+  if (startDate && endDate && startDate > endDate) return
   motorIncomeRows.value = await window.api.getMotorIncomeReport({
     startDate: `${startDate}T00:00:00`,
     endDate: `${endDate}T23:59:59`,
@@ -881,7 +995,8 @@ async function loadMotorDetail() {
 
 async function previewMotorSlip() {
   if (!selectedMotor.value) return
-  const { startDate, endDate } = getMonthRange(motorDetailFilter.value.month)
+  const { startDate, endDate } = getMotorDetailRange()
+  if (!startDate || !endDate || startDate > endDate) return
   const reportData = await window.api.getOwnerCommissionReport({
     ownerId,
     motorId: selectedMotor.value.id,
@@ -895,16 +1010,16 @@ async function previewMotorSlip() {
   })
   await previewReport(
     html,
-    `Slip_Hak_Mitra_${toFileNamePart(owner.value?.name || 'Mitra')}_${toFileNamePart(selectedMotor.value.plate_number)}_${toFileNamePart(motorDetailFilter.value.month)}.pdf`
+    `Slip_Hak_Mitra_${toFileNamePart(owner.value?.name || 'Mitra')}_${toFileNamePart(selectedMotor.value.plate_number)}_${toFileNamePart(startDate)}_sd_${toFileNamePart(endDate)}.pdf`
   )
 }
 
 async function loadData() {
-  const monthRange = getMonthRange(motorMonthFilter.value)
+  const range = getMotorOwnerRange()
   const res = await window.api.getOwner({
     id: ownerId,
-    startDate: monthRange.startDate,
-    endDate: monthRange.endDate
+    startDate: range.startDate,
+    endDate: range.endDate
   })
   owner.value = res
   motors.value = res.motors
@@ -1016,10 +1131,6 @@ onMounted(() => loadData())
 
 watch([motorSearch, motorPageSize], () => {
   motorCurrentPage.value = 1
-})
-
-watch(motorMonthFilter, async () => {
-  await loadData()
 })
 
 watch([payoutSearch, payoutPageSize], () => {

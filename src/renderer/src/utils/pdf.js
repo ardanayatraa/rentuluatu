@@ -520,7 +520,6 @@ export function buildHotelCommissionHtml({ hotel, rentals = [], period }) {
       <div class="info-name">${esc(hotel?.name || '-')}</div>
       <div class="info-detail">
         Telepon: ${esc(hotel?.phone || '-')}<br>
-        Bank: ${esc(hotel?.bank_name || '-')} - ${esc(hotel?.bank_account || '-')}<br>
         Status Dokumen: Fee vendor yang belum dibayarkan pada periode terpilih
       </div>
     </div>

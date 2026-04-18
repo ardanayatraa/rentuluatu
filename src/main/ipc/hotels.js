@@ -28,6 +28,12 @@ export function registerHotelHandlers() {
             AND r.status != 'refunded'
             AND r.vendor_fee > 0
             AND COALESCE(r.relation_type, 'rental') IN ('rental', 'swap_source')
+            AND NOT EXISTS (
+              SELECT 1
+              FROM cash_transactions ct
+              WHERE ct.reference_type = 'rental_vendor_fee'
+                AND ct.reference_id = r.id
+            )
         ) as unpaid_commission
       FROM hotels h ORDER BY name ASC
     `)
@@ -47,12 +53,9 @@ export function registerHotelHandlers() {
     if (existing) throw new Error(`Vendor dengan nama "${name}" sudah terdaftar`)
 
     dbOps.runRaw(
-      'INSERT INTO hotels (name, phone, bank_account, bank_name) VALUES (?, ?, ?, ?)',
+      'INSERT INTO hotels (name) VALUES (?)',
       [
-        name,
-        data.phone || null,
-        data.bank_account || null,
-        data.bank_name || null
+        name
       ]
     )
     const row = dbOps.get('SELECT last_insert_rowid() as id')
@@ -69,8 +72,8 @@ export function registerHotelHandlers() {
     if (existing) throw new Error(`Vendor dengan nama "${data.name}" sudah terdaftar`)
 
     dbOps.run(
-      'UPDATE hotels SET name=?, phone=?, bank_account=?, bank_name=?, is_active=? WHERE id=?',
-      [data.name, data.phone, data.bank_account, data.bank_name, data.is_active ?? 1, id]
+      'UPDATE hotels SET name=?, is_active=? WHERE id=?',
+      [data.name, data.is_active ?? 1, id]
     )
     return { success: true }
   })
@@ -123,11 +126,13 @@ export function registerHotelHandlers() {
     `, previewParams)
 
     const grossCommission = rentals.reduce((s, r) => s + (r.vendor_fee || 0), 0)
-    // Sesuai proses bisnis terbaru: fee vendor/hotel dibayar tunai saat transaksi,
-    // sehingga tidak ada payout terpisah yang harus dibayarkan lagi.
+    // Sesuai proses bisnis terbaru: fee vendor/hotel dibayar tunai saat transaksi.
+    // Untuk tampilan detail vendor, semua fee pada periode dianggap sudah dibayar otomatis.
+    const paidAmount = grossCommission
+    const unpaidAmount = 0
     const netAmount = 0
 
-    return { rentals, grossCommission, totalDeductions: 0, netAmount }
+    return { rentals, grossCommission, paidAmount, unpaidAmount, totalDeductions: 0, netAmount }
   })
 
   ipcMain.handle('hotel:payout', (_, data) => {

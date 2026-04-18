@@ -45,7 +45,7 @@ contextBridge.exposeInMainWorld('api', {
   getCashAccounts: () => invoke('cash:get-accounts'),
   setCashOpeningBalance: (data) => invoke('cash:set-opening-balance', data),
   getCashTransactions: (filters) => invoke('cash:get-transactions', filters),
-  getCashSummary: () => invoke('cash:get-summary'),
+  getCashSummary: (filters) => invoke('cash:get-summary', filters),
   addCashIncome: (data) => invoke('cash:add-income', data),
   addCashExpense: (data) => invoke('cash:add-expense', data),
   getReportSummary: (data) => invoke('report:summary', data),
@@ -67,6 +67,7 @@ contextBridge.exposeInMainWorld('api', {
   getPaymentBreakdown: (data) => invoke('dashboard:payment-breakdown', data),
   getTopMotors: (data) => invoke('dashboard:top-motors', data),
   getExpenseCategories: (data) => invoke('dashboard:expense-categories', data),
+  runSystemAudit: () => invoke('audit:run-system-check'),
   // System
   resetAllData: () => invoke('db:reset-all'),
   getProductionResetStatus: () => invoke('db:production-reset-status'),
