@@ -3,6 +3,22 @@
 
 export const CHANGELOG = [
   {
+    version: '1.0.8',
+    date: '2026-04-18',
+    badge: { text: 'Perhitungan Dashboard', tone: 'slate' },
+    intro: 'Rilis ini memastikan ringkasan Dashboard konsisten dengan pencatatan kas dan pembagian hasil.',
+    items: [
+      {
+        title: 'Profit Dashboard Konsisten',
+        desc: 'Profit Bersih dihitung dari (Wavy Gets + Kas Masuk Manual) dikurangi (Pengeluaran Operasional + Kas Keluar Manual).'
+      },
+      {
+        title: 'Bagian Perusahaan Tetap Murni',
+        desc: 'Bagian Perusahaan hanya berasal dari Wavy Gets rental (tidak mencampur pemasukan kas manual).'
+      }
+    ]
+  },
+  {
     version: '1.0.7',
     date: '2026-04-18',
     badge: { text: 'Export & Konsistensi', tone: 'emerald' },
