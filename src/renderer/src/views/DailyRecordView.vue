@@ -406,6 +406,7 @@
           </div>
         </div>
 
+        <p v-if="rentalError" class="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{{ rentalError }}</p>
         <div class="flex justify-end gap-3 pt-2">
           <button type="button" @click="showModal = false" class="btn-secondary">Batal</button>
           <button type="submit" :disabled="!form.motor_id" class="btn-primary disabled:opacity-50">Simpan</button>
@@ -466,6 +467,7 @@
           </div>
         </div>
 
+        <p v-if="extendError" class="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{{ extendError }}</p>
         <div class="flex justify-end gap-3 pt-2">
           <button type="button" @click="showExtendModal = false" class="btn-secondary">Batal</button>
           <button type="submit" class="btn-primary" :disabled="!extendForm.motor_id">{{ extendSubmitLabel }}</button>
@@ -616,6 +618,27 @@
         </div>
       </div>
     </n-modal>
+
+    <!-- Modal Konfirmasi Hapus -->
+    <n-modal v-model:show="showDeleteConfirm" preset="card" title="Hapus Rental" style="max-width: 520px" :auto-focus="false" :trap-focus="false">
+      <p class="text-sm text-slate-600 whitespace-pre-line">
+        Hapus rental "{{ pendingDeleteRental?.customer_name }} - {{ pendingDeleteRental?.model }} ({{ pendingDeleteRental?.invoice_number || 'no invoice' }})"?
+        
+        Saldo kas akan dikembalikan. Tindakan ini tidak bisa dibatalkan.
+      </p>
+      <div class="flex justify-end gap-3 pt-5">
+        <button type="button" class="btn-secondary" @click="showDeleteConfirm = false">Batal</button>
+        <button type="button" class="btn-primary bg-red-600 hover:bg-red-700 border-red-600" @click="confirmDeleteRental">Hapus</button>
+      </div>
+    </n-modal>
+
+    <!-- Modal Error Hapus -->
+    <n-modal v-model:show="showDeleteErrorModal" preset="card" title="Tidak Bisa Hapus" style="max-width: 520px" :auto-focus="false" :trap-focus="false">
+      <p class="text-sm text-slate-600 whitespace-pre-line">{{ deleteErrorMessage }}</p>
+      <div class="flex justify-end pt-5">
+        <button type="button" class="btn-primary" @click="showDeleteErrorModal = false">Tutup</button>
+      </div>
+    </n-modal>
   </div>
 </template>
 
@@ -638,6 +661,12 @@ const showModal = ref(false)
 const showRefundModal = ref(false)
 const showExtendModal = ref(false)
 const showSwapModal = ref(false)
+const showDeleteConfirm = ref(false)
+const showDeleteErrorModal = ref(false)
+const pendingDeleteRental = ref(null)
+const deleteErrorMessage = ref('')
+const rentalError = ref('')
+const extendError = ref('')
 const swapSourceLocked = ref(false)
 const swapSourceKeyword = ref('')
 const swapMotorKeyword = ref('')
@@ -1130,9 +1159,16 @@ async function resetFilters() {
 
 async function submitRental() {
   const vendorFee = form.value.vendor_fee || 0
-  if (vendorFee < 0) return alert('Vendor fee tidak boleh negatif')
-  if (vendorFee > form.value.total_price) return alert('Vendor fee tidak boleh melebihi total harga sewa')
+  if (vendorFee < 0) {
+    rentalError.value = 'Vendor fee tidak boleh negatif'
+    return
+  }
+  if (vendorFee > form.value.total_price) {
+    rentalError.value = 'Vendor fee tidak boleh melebihi total harga sewa'
+    return
+  }
 
+  rentalError.value = ''
   if (editId.value) {
     await window.api.updateRental({ id: editId.value, ...form.value })
   } else {
@@ -1143,10 +1179,23 @@ async function submitRental() {
 }
 
 async function submitExtend() {
-  if (!extendForm.value.parent_rental_id) return alert('Data sumber extend tidak ditemukan')
-  if (!extendForm.value.motor_id) return alert('DK motor wajib dipilih')
-  if (!extendForm.value.period_days || extendForm.value.period_days < 1) return alert('Periode minimal 1 hari')
-  if (!extendForm.value.total_price || extendForm.value.total_price <= 0) return alert('Total price harus lebih dari 0')
+  extendError.value = ''
+  if (!extendForm.value.parent_rental_id) {
+    extendError.value = 'Data sumber extend tidak ditemukan'
+    return
+  }
+  if (!extendForm.value.motor_id) {
+    extendError.value = 'DK motor wajib dipilih'
+    return
+  }
+  if (!extendForm.value.period_days || extendForm.value.period_days < 1) {
+    extendError.value = 'Periode minimal 1 hari'
+    return
+  }
+  if (!extendForm.value.total_price || extendForm.value.total_price <= 0) {
+    extendError.value = 'Total price harus lebih dari 0'
+    return
+  }
 
   await window.api.extendRental({ ...extendForm.value })
   showExtendModal.value = false
@@ -1192,17 +1241,26 @@ async function deleteRental(rental) {
     if (rental?.payout_id) steps.push('Batalkan dulu pencairan hak mitra untuk transaksi ini.')
     if (rental?.hotel_payout_id) steps.push('Batalkan dulu pencairan fee vendor untuk transaksi ini.')
     const numberedSteps = steps.map((item, index) => `${index + 1}. ${item}`).join('\n')
-    alert(`Transaksi ini belum bisa dihapus.\n\nSilakan selesaikan dulu:\n${numberedSteps}\n\nSetelah itu, baru hapus transaksi ini.`)
+    deleteErrorMessage.value = `Transaksi ini belum bisa dihapus.\n\nSilakan selesaikan dulu:\n${numberedSteps}\n\nSetelah itu, baru hapus transaksi ini.`
+    showDeleteErrorModal.value = true
     return
   }
 
-  const label = `${rental.customer_name} - ${rental.model} (${rental.invoice_number || 'no invoice'})`
-  if (!confirm(`Hapus rental "${label}"?\n\nSaldo kas akan dikembalikan. Tindakan ini tidak bisa dibatalkan.`)) return
+  pendingDeleteRental.value = rental
+  showDeleteConfirm.value = true
+}
+
+async function confirmDeleteRental() {
+  if (!pendingDeleteRental.value) return
   try {
-    await window.api.deleteRental(rental.id)
+    await window.api.deleteRental(pendingDeleteRental.value.id)
+    showDeleteConfirm.value = false
+    pendingDeleteRental.value = null
     await loadRentals()
   } catch (err) {
-    alert(err.message.replace("Error invoking remote method 'rental:delete': Error: ", ''))
+    showDeleteConfirm.value = false
+    deleteErrorMessage.value = err.message.replace("Error invoking remote method 'rental:delete': Error: ", '')
+    showDeleteErrorModal.value = true
   }
 }
 

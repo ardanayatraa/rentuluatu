@@ -164,7 +164,7 @@
       </div>
     </div>
 
-    <!-- Modal -->
+    <!-- Modal Tambah -->
     <n-modal v-model:show="showModal" preset="card" title="Tambah Pengeluaran" class="max-w-md" :auto-focus="false" :trap-focus="false">
       <form @submit.prevent="submitExpense" class="space-y-4">
         <div>
@@ -269,6 +269,15 @@
         </div>
       </form>
     </n-modal>
+
+    <!-- Modal Konfirmasi Hapus -->
+    <n-modal v-model:show="showDeleteConfirm" preset="card" title="Hapus Pengeluaran" style="max-width: 460px" :auto-focus="false" :trap-focus="false">
+      <p class="text-sm text-slate-600">Yakin ingin menghapus pengeluaran ini? Saldo kas akan dikembalikan.</p>
+      <div class="flex justify-end gap-3 pt-5">
+        <button type="button" class="btn-secondary" @click="showDeleteConfirm = false">Batal</button>
+        <button type="button" class="btn-primary bg-red-600 hover:bg-red-700 border-red-600" @click="confirmDeleteExpense">Hapus</button>
+      </div>
+    </n-modal>
   </div>
 </template>
 
@@ -288,6 +297,8 @@ const formError = ref('')
 const currentPage = ref(1)
 const pageSize = ref(10)
 const cashAccounts = ref([])
+const showDeleteConfirm = ref(false)
+const pendingDeleteId = ref(null)
 
 // Motor search
 const motorSearch = ref('')
@@ -465,15 +476,23 @@ async function submitExpense() {
   }
 }
 
-async function deleteExpense(id) {
-  const expense = expenses.value.find((item) => Number(item.id) === Number(id))
-  const label = expense
-    ? `${expense.category || 'pengeluaran'} · ${formatRp(expense.amount || 0)}`
-    : 'pengeluaran ini'
-  if (!confirm(`Yakin ingin menghapus ${label}?\n\nSaldo kas akan dikembalikan.`)) return
-  await window.api.deleteExpense(id)
-  await loadCashAccounts()
-  await loadExpenses()
+function deleteExpense(id) {
+  pendingDeleteId.value = id
+  showDeleteConfirm.value = true
+}
+
+async function confirmDeleteExpense() {
+  if (!pendingDeleteId.value) return
+  try {
+    await window.api.deleteExpense(pendingDeleteId.value)
+    showDeleteConfirm.value = false
+    pendingDeleteId.value = null
+    await loadCashAccounts()
+    await loadExpenses()
+  } catch (err) {
+    formError.value = err.message
+    showDeleteConfirm.value = false
+  }
 }
 
 async function loadCashAccounts() {

@@ -9,13 +9,17 @@ export function registerMotorHandlers() {
     const cols = dbOps.all("PRAGMA table_info(motors)")
     const hasIsActive = cols.some(c => c.name === 'is_active')
     const whereClause = hasIsActive ? 'WHERE (m.is_active = 1 OR m.is_active IS NULL)' : ''
+    const isActiveSelect = hasIsActive ? 'm.is_active,' : 'NULL as is_active,'
     return dbOps.all(`
       SELECT
-        m.*,
-        CASE
-          WHEN LOWER(COALESCE(m.type, '')) IN ('aset_pt', 'pribadi') THEN '${ownerLabelForAsetPt}'
-          ELSE o.name
-        END as owner_name
+        m.id,
+        m.model,
+        m.plate_number,
+        m.type,
+        m.owner_id,
+        ${isActiveSelect}
+        m.created_at,
+        o.name as owner_name
       FROM motors m
       LEFT JOIN owners o ON m.owner_id = o.id
       ${whereClause}
@@ -24,13 +28,19 @@ export function registerMotorHandlers() {
   })
 
   ipcMain.handle('motor:get-by-id', (_, id) => {
+    const cols = dbOps.all("PRAGMA table_info(motors)")
+    const hasIsActive = cols.some(c => c.name === 'is_active')
+    const isActiveSelect = hasIsActive ? 'm.is_active,' : 'NULL as is_active,'
     return dbOps.get(`
       SELECT
-        m.*,
-        CASE
-          WHEN LOWER(COALESCE(m.type, '')) IN ('aset_pt', 'pribadi') THEN '${ownerLabelForAsetPt}'
-          ELSE o.name
-        END as owner_name
+        m.id,
+        m.model,
+        m.plate_number,
+        m.type,
+        m.owner_id,
+        ${isActiveSelect}
+        m.created_at,
+        o.name as owner_name
       FROM motors m
       LEFT JOIN owners o ON m.owner_id = o.id
       WHERE m.id = ?
@@ -49,12 +59,12 @@ export function registerMotorHandlers() {
     if (hasIsActive) {
       dbOps.runRaw(
         'INSERT INTO motors (model, plate_number, type, owner_id, is_active) VALUES (?, ?, ?, ?, 1)',
-        [data.model, data.plate_number, data.type, isAsetPtType(data.type) ? null : ownerId]
+        [data.model, data.plate_number, data.type, ownerId]
       )
     } else {
       dbOps.runRaw(
         'INSERT INTO motors (model, plate_number, type, owner_id) VALUES (?, ?, ?, ?)',
-        [data.model, data.plate_number, data.type, isAsetPtType(data.type) ? null : ownerId]
+        [data.model, data.plate_number, data.type, ownerId]
       )
     }
     const row = dbOps.get('SELECT last_insert_rowid() as id')
@@ -69,7 +79,7 @@ export function registerMotorHandlers() {
     }
     dbOps.run(
       'UPDATE motors SET model=?, plate_number=?, type=?, owner_id=? WHERE id=?',
-      [data.model, data.plate_number, data.type, isAsetPtType(data.type) ? null : ownerId, id]
+      [data.model, data.plate_number, data.type, ownerId, id]
     )
     return { success: true }
   })

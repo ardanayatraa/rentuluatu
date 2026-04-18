@@ -20,6 +20,27 @@ function normalizeNameKey(input) {
     .trim()
 }
 
+function cellToText(value) {
+  if (value == null) return ''
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value).trim()
+  }
+
+  // ExcelJS bisa mengembalikan object (richText/hyperlink/formula/result/date).
+  if (typeof value === 'object') {
+    if (Array.isArray(value.richText)) {
+      return value.richText.map((item) => String(item?.text || '')).join('').trim()
+    }
+    if (value.text != null) return String(value.text).trim()
+    if (value.result != null) return String(value.result).trim()
+    if (value.hyperlink != null) return String(value.hyperlink).trim()
+    if (value.formula != null && value.result == null) return String(value.formula).trim()
+    if (value instanceof Date) return value.toISOString().split('T')[0]
+  }
+
+  return String(value).trim()
+}
+
 async function parseVehiclesXlsx(filePath) {
   const wb = new ExcelJS.Workbook()
   await wb.xlsx.readFile(filePath)
@@ -31,10 +52,10 @@ async function parseVehiclesXlsx(filePath) {
   let headerRowIndex = null
   for (let r = 1; r <= Math.min(ws.rowCount, 30); r++) {
     const row = ws.getRow(r)
-    const c1 = String(row.getCell(1).value ?? '').trim().toUpperCase()
-    const c2 = String(row.getCell(2).value ?? '').trim().toUpperCase()
-    const c3 = String(row.getCell(3).value ?? '').trim().toUpperCase()
-    const c6 = String(row.getCell(6).value ?? '').trim().toUpperCase()
+    const c1 = cellToText(row.getCell(1).value).toUpperCase()
+    const c2 = cellToText(row.getCell(2).value).toUpperCase()
+    const c3 = cellToText(row.getCell(3).value).toUpperCase()
+    const c6 = cellToText(row.getCell(6).value).toUpperCase()
     // Format baru:
     // NO | STATUS | PEMILIK | NAMA KENDARAAN | WARNA | NO KENDARAAN | KET
     if (c1 === 'NO' && c2 === 'STATUS' && c3.includes('PEMILIK') && c6.includes('KENDARAAN')) {
@@ -43,7 +64,7 @@ async function parseVehiclesXlsx(filePath) {
     }
     // Format lama:
     // NO | OWNER | NAMA KENDARAAN | WARNA | NO KENDARAAN
-    const c5 = String(row.getCell(5).value ?? '').trim().toUpperCase()
+    const c5 = cellToText(row.getCell(5).value).toUpperCase()
     if (c1 === 'NO' && c2 === 'OWNER' && c3.includes('KENDARAAN') && c5.includes('KENDARAAN')) {
       headerRowIndex = r
       break
@@ -53,21 +74,28 @@ async function parseVehiclesXlsx(filePath) {
 
   // Detect format berdasarkan header row
   const headerRow = ws.getRow(headerRowIndex)
-  const h2 = String(headerRow.getCell(2).value ?? '').trim().toUpperCase()
+  const h2 = cellToText(headerRow.getCell(2).value).toUpperCase()
   const isNewFormat = h2 === 'STATUS'
 
   const records = []
   for (let r = headerRowIndex + 1; r <= ws.rowCount; r++) {
     const row = ws.getRow(r)
-    const no = String(row.getCell(1).value ?? '').trim()
-    const status = isNewFormat ? String(row.getCell(2).value ?? '').trim() : ''
-    const owner = isNewFormat ? String(row.getCell(3).value ?? '').trim() : String(row.getCell(2).value ?? '').trim()
-    const model = isNewFormat ? String(row.getCell(4).value ?? '').trim() : String(row.getCell(3).value ?? '').trim()
-    const plate = isNewFormat ? String(row.getCell(6).value ?? '').trim() : String(row.getCell(5).value ?? '').trim()
+    const no = cellToText(row.getCell(1).value)
+    const status = isNewFormat ? cellToText(row.getCell(2).value) : ''
+    const owner = isNewFormat ? cellToText(row.getCell(3).value) : cellToText(row.getCell(2).value)
+    const namaKendaraan = isNewFormat ? cellToText(row.getCell(4).value) : cellToText(row.getCell(3).value)
+    const warna = isNewFormat ? cellToText(row.getCell(5).value) : cellToText(row.getCell(4).value)
+    const plate = isNewFormat ? cellToText(row.getCell(6).value) : cellToText(row.getCell(5).value)
 
     // Stop jika sudah benar-benar kosong (biasanya footer)
-    if (!no && !owner && !model && !plate) continue
+    if (!no && !owner && !namaKendaraan && !plate) continue
     if (!plate) continue
+
+    // Gabungkan nama kendaraan dengan warna jika warna ada
+    let model = namaKendaraan
+    if (warna && warna.trim()) {
+      model = `${namaKendaraan} ${warna}`.trim()
+    }
 
     records.push({
       status,
@@ -126,13 +154,13 @@ export function registerImportHandlers() {
         }
 
         let ownerId = null
-        if (!isAsetPt) {
-          if (!ownerName) {
-            summary.warnings.push(`Plat ${plate}: pemilik kosong, dilewati`)
-            summary.motors_skipped++
-            continue
-          }
+        if (!ownerName && !isAsetPt) {
+          summary.warnings.push(`Plat ${plate}: pemilik kosong, dilewati`)
+          summary.motors_skipped++
+          continue
+        }
 
+        if (ownerName) {
           const ownerKey = normalizeNameKey(ownerName)
           ownerId = ownerCache.get(ownerKey)
           if (!ownerId) {
@@ -166,18 +194,20 @@ export function registerImportHandlers() {
         if (!existingMotor?.id) {
           dbOps.runRaw(
             'INSERT INTO motors (model, plate_number, type, owner_id) VALUES (?, ?, ?, ?)',
-            [model || plate, plate, motorType, isAsetPt ? null : ownerId]
+            [model || plate, plate, motorType, ownerId]
           )
           summary.motors_created++
           continue
         }
 
-        // Jika format Excel menyatakan Aset PT, pastikan owner_id NULL dan type sesuai.
+        // Untuk Aset PT, owner boleh ada (jika diisi Excel), atau kosong.
         if (isAsetPt) {
           const existingType = String(existingMotor.type || '').toLowerCase()
-          const hasOwner = Boolean(existingMotor.owner_id)
-          if (existingType !== 'aset_pt' || hasOwner) {
-            dbOps.runRaw('UPDATE motors SET owner_id = NULL, type = ? WHERE id = ?', [
+          const shouldUpdateOwner = ownerId && Number(existingMotor.owner_id || 0) !== Number(ownerId)
+          const shouldClearOwner = !ownerId && Boolean(existingMotor.owner_id)
+          if (existingType !== 'aset_pt' || shouldUpdateOwner || shouldClearOwner) {
+            dbOps.runRaw('UPDATE motors SET owner_id = ?, type = ? WHERE id = ?', [
+              ownerId || null,
               'aset_pt',
               existingMotor.id
             ])

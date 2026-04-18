@@ -6,7 +6,7 @@
         <p class="text-slate-500 text-sm mt-1">Data armada motor rental</p>
       </div>
       <div class="flex gap-3">
-        <button @click="importExcel" class="btn-secondary">
+        <button @click="openImportConfirm" class="btn-secondary">
           <span class="material-symbols-outlined">upload_file</span>
           Import Excel
         </button>
@@ -75,7 +75,7 @@
                 <button @click="openEdit(m)" class="p-1.5 hover:bg-blue-50 rounded text-slate-400 hover:text-blue-600 transition-colors" title="Edit">
                   <span class="material-symbols-outlined text-base">edit</span>
                 </button>
-                <button @click="deleteMotor(m.id)" class="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-500 transition-colors" title="Hapus">
+                <button @click="requestDeleteMotor(m.id)" class="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-500 transition-colors" title="Hapus">
                   <span class="material-symbols-outlined text-base">delete</span>
                 </button>
               </div>
@@ -118,9 +118,9 @@
               <option value="milik_pemilik">Milik Mitra (Wavy 30% / Mitra 70%)</option>
             </select>
           </div>
-          <div v-if="!isAsetPt(form.type)" class="col-span-2">
+          <div class="col-span-2">
             <div class="flex justify-between items-end mb-1">
-              <label class="block text-xs font-bold text-slate-500">Mitra / Pemilik</label>
+              <label class="block text-xs font-bold text-slate-500">Mitra / Pemilik <span v-if="isAsetPt(form.type)" class="font-normal text-slate-400">(opsional)</span></label>
               <button type="button" @click="isCreatingOwner = !isCreatingOwner"
                 class="text-xs text-primary font-bold hover:underline flex items-center gap-1">
                 <span class="material-symbols-outlined text-sm">{{ isCreatingOwner ? 'person_search' : 'person_add' }}</span>
@@ -137,7 +137,7 @@
                 v-else
                 v-model="form.owner_id"
                 :options="ownerOptions"
-                placeholder="Pilih Mitra / Pemilik..."
+                :placeholder="isAsetPt(form.type) ? 'Pilih Owner Pribadi (opsional)...' : 'Pilih Mitra / Pemilik...'"
               />
               <p v-if="form.owner_id" class="text-xs text-slate-400 mt-1">
                 {{ owners.find(o => o.id == form.owner_id)?.phone || '' }}
@@ -154,11 +154,6 @@
                 class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
             </div>
           </div>
-          <div v-else class="col-span-2">
-            <div class="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-              Pemilik: <span class="font-semibold text-slate-700">Owner Pribadi (PT)</span>
-            </div>
-          </div>
         </div>
         <p v-if="motorError" class="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{{ motorError }}</p>
         <div class="flex justify-end gap-3 pt-2">
@@ -168,6 +163,34 @@
           </button>
         </div>
       </form>
+    </n-modal>
+
+    <n-modal v-model:show="showImportConfirm" preset="card" title="Import Motor & Mitra" style="max-width: 520px" :auto-focus="false" :trap-focus="false">
+      <div class="space-y-3 text-sm text-slate-600">
+        <p>Import dari Excel sekarang?</p>
+        <p>Data yang sudah ada tidak akan dihapus. Plat nomor yang sudah ada akan dilewati (atau diisi pemilik jika masih kosong).</p>
+      </div>
+      <div class="flex justify-end gap-3 pt-5">
+        <button type="button" class="btn-secondary" @click="showImportConfirm = false">Batal</button>
+        <button type="button" class="btn-primary disabled:opacity-60" :disabled="importingExcel" @click="confirmImportExcel">
+          {{ importingExcel ? 'Importing...' : 'Lanjut Import' }}
+        </button>
+      </div>
+    </n-modal>
+
+    <n-modal v-model:show="showDeleteConfirm" preset="card" title="Hapus Motor" style="max-width: 460px" :auto-focus="false" :trap-focus="false">
+      <p class="text-sm text-slate-600">Yakin ingin menghapus motor ini?</p>
+      <div class="flex justify-end gap-3 pt-5">
+        <button type="button" class="btn-secondary" @click="showDeleteConfirm = false">Batal</button>
+        <button type="button" class="btn-primary bg-red-600 hover:bg-red-700 border-red-600" @click="confirmDeleteMotor">Hapus</button>
+      </div>
+    </n-modal>
+
+    <n-modal v-model:show="showMessageModal" preset="card" :title="messageTitle" style="max-width: 560px" :auto-focus="false" :trap-focus="false">
+      <p class="text-sm text-slate-700 whitespace-pre-line">{{ messageText }}</p>
+      <div class="flex justify-end pt-5">
+        <button type="button" class="btn-primary" @click="showMessageModal = false">Tutup</button>
+      </div>
     </n-modal>
   </div>
 </template>
@@ -192,6 +215,13 @@ const form = ref({ model: '', plate_number: '', type: 'aset_pt', owner_id: '' })
 const currentPage = ref(1)
 const pageSize = ref(10)
 const exporting = ref('')
+const importingExcel = ref(false)
+const showImportConfirm = ref(false)
+const showDeleteConfirm = ref(false)
+const showMessageModal = ref(false)
+const messageTitle = ref('Informasi')
+const messageText = ref('')
+const pendingDeleteMotorId = ref(null)
 
 const isCreatingOwner = ref(false)
 const ownerForm = ref({ name: '', phone: '' })
@@ -199,6 +229,12 @@ const ownerForm = ref({ name: '', phone: '' })
 const ownerOptions = computed(() => owners.value.map(o => ({ value: o.id, label: o.name, sub: o.phone || '' })))
 
 const motorError = ref('')
+
+function openMessage(title, text) {
+  messageTitle.value = title || 'Informasi'
+  messageText.value = text || '-'
+  showMessageModal.value = true
+}
 
 const filteredMotors = computed(() => motors.value.filter(m => {
   if (filterType.value && normalizeMotorType(m.type) !== normalizeMotorType(filterType.value)) return false
@@ -241,7 +277,7 @@ async function withExporting(kind, work) {
     if (exporting.value !== '') {
       exporting.value = ''
       warned = true
-      alert('Proses cetak lebih lama dari biasanya. Jika jendela preview tidak muncul, silakan klik Cetak lagi.')
+      openMessage('Proses Masih Berjalan', 'Proses cetak lebih lama dari biasanya. Jika jendela preview tidak muncul, silakan klik Cetak lagi.')
     }
   }, 15000)
 
@@ -299,15 +335,21 @@ async function exportExcel() {
   })
 }
 
-async function importExcel() {
-  if (!confirm('Import Motor & Mitra dari Excel?\n\nData yang sudah ada tidak akan dihapus.\nPlat nomor yang sudah ada akan dilewati (atau diisi pemilik jika masih kosong).')) return
+function openImportConfirm() {
+  showImportConfirm.value = true
+}
+
+async function confirmImportExcel() {
+  importingExcel.value = true
   try {
     const result = await window.api.importVehiclesFromXlsx({})
+    showImportConfirm.value = false
     if (result?.canceled) return
     await loadData()
     const warn = (result.warnings || []).slice(0, 5)
     const warnText = warn.length ? `\n\nCatatan:\n- ${warn.join('\n- ')}` : ''
-    alert(
+    openMessage(
+      'Import Selesai',
       `Import selesai.\n\n` +
       `Mitra dibuat: ${result.owners_created}\n` +
       `Mitra dilewati: ${result.owners_skipped}\n` +
@@ -317,7 +359,9 @@ async function importExcel() {
       warnText
     )
   } catch (err) {
-    alert(String(err?.message || err).replace("Error invoking remote method 'import:vehicles-from-xlsx': Error: ", ''))
+    openMessage('Import Gagal', String(err?.message || err).replace("Error invoking remote method 'import:vehicles-from-xlsx': Error: ", ''))
+  } finally {
+    importingExcel.value = false
   }
 }
 
@@ -362,8 +406,8 @@ async function submitMotor() {
 
   const requireOwner = !isAsetPt(form.value.type)
 
-  // Validasi: jika mode buat mitra baru, nama wajib diisi
-  if (requireOwner && isCreatingOwner.value && !ownerForm.value.name.trim()) {
+  // Validasi: jika mode buat mitra baru, nama wajib diisi (untuk semua tipe).
+  if (isCreatingOwner.value && !ownerForm.value.name.trim()) {
     motorError.value = 'Nama mitra tidak boleh kosong'
     isSubmitting.value = false
     return
@@ -378,7 +422,7 @@ async function submitMotor() {
   let finalOwnerId = form.value.owner_id || null
 
   // Buat owner baru dulu, lalu assign ID-nya ke motor
-  if (requireOwner && isCreatingOwner.value && ownerForm.value.name.trim()) {
+  if (isCreatingOwner.value && ownerForm.value.name.trim()) {
     try {
       const newOwner = await window.api.createOwner({ ...ownerForm.value })
       finalOwnerId = Number(newOwner.id)
@@ -393,7 +437,7 @@ async function submitMotor() {
   const payload = {
     ...form.value,
     type: normalizeMotorType(form.value.type),
-    owner_id: requireOwner && finalOwnerId ? Number(finalOwnerId) : null
+    owner_id: finalOwnerId ? Number(finalOwnerId) : null
   }
 
   try {
@@ -413,14 +457,21 @@ async function submitMotor() {
   }
 }
 
-async function deleteMotor(id) {
-  if (!confirm('Yakin ingin menghapus motor ini?')) return
+function requestDeleteMotor(id) {
+  pendingDeleteMotorId.value = id
+  showDeleteConfirm.value = true
+}
+
+async function confirmDeleteMotor() {
+  if (!pendingDeleteMotorId.value) return
   try {
-    await window.api.deleteMotor(id)
+    await window.api.deleteMotor(pendingDeleteMotorId.value)
+    showDeleteConfirm.value = false
+    pendingDeleteMotorId.value = null
     motors.value = await window.api.getMotors()
     currentPage.value = 1
   } catch (err) {
-    alert(err.message.replace("Error invoking remote method 'motor:delete': Error: ", ''))
+    openMessage('Hapus Gagal', err.message.replace("Error invoking remote method 'motor:delete': Error: ", ''))
   }
 }
 
@@ -431,11 +482,8 @@ onMounted(async () => {
 watch(
   () => form.value.type,
   (next) => {
-    if (isAsetPt(next)) {
-      form.value.owner_id = ''
-      isCreatingOwner.value = false
-      ownerForm.value = { name: '', phone: '' }
-    }
+    if (!isAsetPt(next) && isCreatingOwner.value) return
+    if (isAsetPt(next)) isCreatingOwner.value = false
   }
 )
 </script>

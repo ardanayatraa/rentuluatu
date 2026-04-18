@@ -181,6 +181,20 @@
         </div>
       </div>
     </div>
+
+    <!-- Modal Konfirmasi Hapus -->
+    <n-modal v-model:show="showDeleteConfirm" preset="card" title="Konfirmasi Hapus" style="max-width: 460px" :auto-focus="false" :trap-focus="false">
+      <p class="text-sm text-slate-600">
+        {{ deleteAction === 'file' 
+          ? `Hapus file dan riwayat untuk "${pendingDeleteItem?.file_name}"?` 
+          : `Hapus riwayat unduhan untuk "${pendingDeleteItem?.file_name}"?` 
+        }}
+      </p>
+      <div class="flex justify-end gap-3 pt-5">
+        <button type="button" class="btn-secondary" @click="showDeleteConfirm = false">Batal</button>
+        <button type="button" class="btn-primary bg-red-600 hover:bg-red-700 border-red-600" @click="confirmDelete">Hapus</button>
+      </div>
+    </n-modal>
   </div>
 </template>
 
@@ -197,6 +211,9 @@ const searchQuery = ref('')
 const typeFilter = ref('')
 const currentPage = ref(1)
 const itemsPerPage = ref(10)
+const showDeleteConfirm = ref(false)
+const pendingDeleteItem = ref(null)
+const deleteAction = ref('')
 
 const availableCount = computed(() => downloads.value.filter(item => item.exists).length)
 const missingCount = computed(() => downloads.value.filter(item => !item.exists).length)
@@ -289,15 +306,31 @@ async function showInFolder(item) {
 }
 
 async function deleteRecord(item) {
-  const ok = window.confirm(`Hapus riwayat unduhan untuk "${item.file_name}"?`)
-  if (!ok) return
-  await runAction('delete-record', item.id, () => window.api.deleteDownloadRecord(item.id), 'Riwayat unduhan dihapus.')
+  pendingDeleteItem.value = item
+  deleteAction.value = 'record'
+  showDeleteConfirm.value = true
 }
 
 async function deleteFile(item) {
-  const ok = window.confirm(`Hapus file dan riwayat untuk "${item.file_name}"?`)
-  if (!ok) return
-  await runAction('delete-file', item.id, () => window.api.deleteDownloadFile(item.id), 'File dan riwayat unduhan dihapus.')
+  pendingDeleteItem.value = item
+  deleteAction.value = 'file'
+  showDeleteConfirm.value = true
+}
+
+async function confirmDelete() {
+  if (!pendingDeleteItem.value) return
+  const item = pendingDeleteItem.value
+  const action = deleteAction.value
+  
+  if (action === 'record') {
+    await runAction('delete-record', item.id, () => window.api.deleteDownloadRecord(item.id), 'Riwayat unduhan dihapus.')
+  } else if (action === 'file') {
+    await runAction('delete-file', item.id, () => window.api.deleteDownloadFile(item.id), 'File dan riwayat unduhan dihapus.')
+  }
+  
+  showDeleteConfirm.value = false
+  pendingDeleteItem.value = null
+  deleteAction.value = ''
 }
 
 watch([searchQuery, typeFilter, itemsPerPage], () => {

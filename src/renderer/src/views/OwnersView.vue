@@ -6,7 +6,7 @@
         <p class="text-slate-500 text-sm mt-1">Data mitra pemilik motor titipan</p>
       </div>
       <div class="flex gap-3">
-        <button @click="importExcel" class="btn-secondary">
+        <button @click="openImportConfirm" class="btn-secondary">
           <span class="material-symbols-outlined">upload_file</span>
           Import Excel
         </button>
@@ -78,7 +78,7 @@
                 <button @click="openEdit(o)" class="p-1.5 hover:bg-blue-50 rounded text-slate-400 hover:text-blue-600 transition-colors" title="Edit">
                   <span class="material-symbols-outlined text-base">edit</span>
                 </button>
-                <button @click="deleteOwner(o.id)" class="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-500 transition-colors" title="Hapus">
+                <button @click="requestDeleteOwner(o.id)" class="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-500 transition-colors" title="Hapus">
                   <span class="material-symbols-outlined text-base">delete</span>
                 </button>
               </div>
@@ -120,6 +120,34 @@
         </div>
       </form>
     </n-modal>
+
+    <n-modal v-model:show="showImportConfirm" preset="card" title="Import Motor & Mitra" style="max-width: 520px" :auto-focus="false" :trap-focus="false">
+      <div class="space-y-3 text-sm text-slate-600">
+        <p>Import dari Excel sekarang?</p>
+        <p>Data yang sudah ada tidak akan dihapus. Plat nomor yang sudah ada akan dilewati (atau diisi pemilik jika masih kosong).</p>
+      </div>
+      <div class="flex justify-end gap-3 pt-5">
+        <button type="button" class="btn-secondary" @click="showImportConfirm = false">Batal</button>
+        <button type="button" class="btn-primary disabled:opacity-60" :disabled="importingExcel" @click="confirmImportExcel">
+          {{ importingExcel ? 'Importing...' : 'Lanjut Import' }}
+        </button>
+      </div>
+    </n-modal>
+
+    <n-modal v-model:show="showDeleteConfirm" preset="card" title="Hapus Mitra" style="max-width: 520px" :auto-focus="false" :trap-focus="false">
+      <p class="text-sm text-slate-600">Yakin ingin menghapus mitra ini? Jika masih ada motor/transaksi, data akan dinonaktifkan.</p>
+      <div class="flex justify-end gap-3 pt-5">
+        <button type="button" class="btn-secondary" @click="showDeleteConfirm = false">Batal</button>
+        <button type="button" class="btn-primary bg-red-600 hover:bg-red-700 border-red-600" @click="confirmDeleteOwner">Hapus</button>
+      </div>
+    </n-modal>
+
+    <n-modal v-model:show="showMessageModal" preset="card" :title="messageTitle" style="max-width: 560px" :auto-focus="false" :trap-focus="false">
+      <p class="text-sm text-slate-700 whitespace-pre-line">{{ messageText }}</p>
+      <div class="flex justify-end pt-5">
+        <button type="button" class="btn-primary" @click="showMessageModal = false">Tutup</button>
+      </div>
+    </n-modal>
   </div>
 </template>
 
@@ -134,6 +162,13 @@ const router = useRouter()
 const owners = ref([])
 const loading = ref(false)
 const showModal = ref(false)
+const showImportConfirm = ref(false)
+const importingExcel = ref(false)
+const showDeleteConfirm = ref(false)
+const pendingDeleteOwnerId = ref(null)
+const showMessageModal = ref(false)
+const messageTitle = ref('Informasi')
+const messageText = ref('')
 const searchQuery = ref('')
 const exporting = ref('')
 
@@ -185,7 +220,7 @@ async function withExporting(kind, work) {
     if (exporting.value !== '') {
       exporting.value = ''
       warned = true
-      alert('Proses cetak lebih lama dari biasanya. Jika jendela preview tidak muncul, silakan klik Cetak lagi.')
+      openMessage('Proses Masih Berjalan', 'Proses cetak lebih lama dari biasanya. Jika jendela preview tidak muncul, silakan klik Cetak lagi.')
     }
   }, 15000)
 
@@ -241,16 +276,22 @@ async function exportExcel() {
   })
 }
 
-async function importExcel() {
-  if (!confirm('Import Motor & Mitra dari Excel?\n\nData yang sudah ada tidak akan dihapus.\nPlat nomor yang sudah ada akan dilewati (atau diisi pemilik jika masih kosong).')) return
+function openImportConfirm() {
+  showImportConfirm.value = true
+}
+
+async function confirmImportExcel() {
+  importingExcel.value = true
   try {
     const result = await window.api.importVehiclesFromXlsx({})
+    showImportConfirm.value = false
     if (result?.canceled) return
     owners.value = await window.api.getOwners()
     currentPage.value = 1
     const warn = (result.warnings || []).slice(0, 5)
     const warnText = warn.length ? `\n\nCatatan:\n- ${warn.join('\n- ')}` : ''
-    alert(
+    openMessage(
+      'Import Selesai',
       `Import selesai.\n\n` +
       `Mitra dibuat: ${result.owners_created}\n` +
       `Mitra dilewati: ${result.owners_skipped}\n` +
@@ -260,7 +301,9 @@ async function importExcel() {
       warnText
     )
   } catch (err) {
-    alert(String(err?.message || err).replace("Error invoking remote method 'import:vehicles-from-xlsx': Error: ", ''))
+    openMessage('Import Gagal', String(err?.message || err).replace("Error invoking remote method 'import:vehicles-from-xlsx': Error: ", ''))
+  } finally {
+    importingExcel.value = false
   }
 }
 
@@ -291,14 +334,31 @@ function openDetail(id) {
   router.push('/owners/' + id)
 }
 
-async function deleteOwner(id) {
-  if (!confirm('Yakin ingin menghapus mitra ini?\n\nJika mitra memiliki motor atau riwayat transaksi, data akan dinonaktifkan (tidak dihapus permanen).')) return
-  const result = await window.api.deleteOwner(id)
-  if (result.softDeleted) {
-    alert('Mitra dinonaktifkan karena memiliki data terkait (motor/transaksi).')
+function requestDeleteOwner(id) {
+  pendingDeleteOwnerId.value = id
+  showDeleteConfirm.value = true
+}
+
+async function confirmDeleteOwner() {
+  if (!pendingDeleteOwnerId.value) return
+  try {
+    const result = await window.api.deleteOwner(pendingDeleteOwnerId.value)
+    showDeleteConfirm.value = false
+    pendingDeleteOwnerId.value = null
+    if (result.softDeleted) {
+      openMessage('Mitra Dinonaktifkan', 'Mitra dinonaktifkan karena memiliki data terkait (motor/transaksi).')
+    }
+    owners.value = await window.api.getOwners()
+    currentPage.value = 1
+  } catch (err) {
+    openMessage('Hapus Gagal', String(err?.message || err).replace("Error invoking remote method 'owner:delete': Error: ", ''))
   }
-  owners.value = await window.api.getOwners()
-  currentPage.value = 1
+}
+
+function openMessage(title, text) {
+  messageTitle.value = title || 'Informasi'
+  messageText.value = text || '-'
+  showMessageModal.value = true
 }
 
 onMounted(async () => {

@@ -3,6 +3,30 @@
 
 export const CHANGELOG = [
   {
+    version: '1.0.16',
+    date: '2026-04-18',
+    badge: { text: 'Import & UI Fix', tone: 'emerald' },
+    intro: 'Perbaikan import motor agar menyertakan warna, fix bug edit motor, dan peningkatan UX dengan modal Vue.',
+    items: [
+      {
+        title: 'Import Motor Menyertakan Warna',
+        desc: 'Kolom WARNA dari Excel sekarang digabung dengan NAMA KENDARAAN (contoh: "N-MAX PUTIH", "Scoopy Merah").'
+      },
+      {
+        title: 'Fix Bug Edit Motor',
+        desc: 'Perbaiki bug nama motor berubah jadi "-" saat edit dengan memperbaiki query SQL menggunakan kolom eksplisit.'
+      },
+      {
+        title: 'Nama Owner Sesuai Data',
+        desc: 'Nama owner sekarang ditampilkan sesuai data asli dari database, bukan label fallback "Owner Pribadi (PT)".'
+      },
+      {
+        title: 'Modal Vue Konsisten',
+        desc: 'Semua dialog native (confirm/alert) diganti dengan modal Vue yang konsisten di Hotel/Vendor, Pengeluaran, Downloads, dan Daily Record.'
+      }
+    ]
+  },
+  {
     version: '1.0.15',
     date: '2026-04-18',
     badge: { text: 'Bug Fix', tone: 'slate' },

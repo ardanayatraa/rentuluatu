@@ -1,6 +1,6 @@
 {
   "name": "wavy",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "description": "Wavy - CashFlow Monitoring",
   "type": "module",
   "main": "./out/main/index.js",

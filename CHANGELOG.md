@@ -2,6 +2,15 @@
 
 Format: `MAJOR.MINOR.PATCH` (SemVer)
 
+## 1.0.16 (2026-04-18)
+- **Import Motor**: Kolom WARNA sekarang digabung dengan NAMA KENDARAAN (contoh: "N-MAX PUTIH", "Scoopy Merah").
+- **Perbaikan Bug**: Fix nama motor berubah jadi "-" saat edit (query SQL diperbaiki dengan kolom eksplisit).
+- **Perbaikan Owner Display**: Nama owner sekarang ditampilkan sesuai data asli, bukan label fallback "Owner Pribadi (PT)".
+- **UI Improvement**: Semua dialog native (confirm/alert) diganti dengan modal Vue yang konsisten:
+  - Modal konfirmasi hapus di Hotel/Vendor, Pengeluaran, Downloads, dan Daily Record
+  - Error message inline di form (tidak pakai alert popup lagi)
+  - Modal error untuk kasus khusus (hapus rental yang belum bisa dihapus)
+
 ## 1.0.7 (2026-04-18)
 - Export daftar **Motor** dan **Mitra / Pemilik**: `Cetak (Preview PDF)` dan `Simpan Excel`.
 - Export Mitra menampilkan **Hak Mengendap** dan **Sudah Dibayarkan** (ringkasan + kolom).

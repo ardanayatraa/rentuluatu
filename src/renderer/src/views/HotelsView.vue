@@ -105,7 +105,7 @@
       </div>
     </div>
 
-    <!-- Modal -->
+    <!-- Modal Form -->
     <n-modal v-model:show="showModal" preset="card" :title="isEdit ? 'Edit Hotel / Vendor Hotel' : 'Tambah Hotel / Vendor Hotel'" style="max-width: 500px" :auto-focus="false" :trap-focus="false">
       <form @submit.prevent="submitForm" class="space-y-4">
         <div>
@@ -137,6 +137,15 @@
         <p v-if="formError" class="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{{ formError }}</p>
       </form>
     </n-modal>
+
+    <!-- Modal Konfirmasi Hapus -->
+    <n-modal v-model:show="showDeleteConfirm" preset="card" title="Nonaktifkan Hotel / Vendor" style="max-width: 460px" :auto-focus="false" :trap-focus="false">
+      <p class="text-sm text-slate-600">Yakin ingin menonaktifkan hotel / vendor hotel ini?</p>
+      <div class="flex justify-end gap-3 pt-5">
+        <button type="button" class="btn-secondary" @click="showDeleteConfirm = false">Batal</button>
+        <button type="button" class="btn-primary bg-red-600 hover:bg-red-700 border-red-600" @click="executeDelete">Nonaktifkan</button>
+      </div>
+    </n-modal>
   </div>
 </template>
 
@@ -151,6 +160,8 @@ const loading = ref(false)
 const searchQuery = ref('')
 
 const showModal = ref(false)
+const showDeleteConfirm = ref(false)
+const pendingDeleteId = ref(null)
 const isEdit = ref(false)
 const form = ref({ id: null, name: '', phone: '', bank_account: '', bank_name: '', is_active: 1 })
 const formError = ref('')
@@ -221,10 +232,21 @@ async function submitForm() {
   }
 }
 
-async function confirmDelete(id) {
-  if (confirm('Yakin ingin menonaktifkan hotel / vendor hotel ini?')) {
-    await window.api.deleteHotel(id)
+function confirmDelete(id) {
+  pendingDeleteId.value = id
+  showDeleteConfirm.value = true
+}
+
+async function executeDelete() {
+  if (!pendingDeleteId.value) return
+  try {
+    await window.api.deleteHotel(pendingDeleteId.value)
+    showDeleteConfirm.value = false
+    pendingDeleteId.value = null
     await loadData()
+  } catch (err) {
+    formError.value = err.message
+    showDeleteConfirm.value = false
   }
 }
 
