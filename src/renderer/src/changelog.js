@@ -3,6 +3,18 @@
 
 export const CHANGELOG = [
   {
+    version: '1.0.12',
+    date: '2026-04-18',
+    badge: { text: 'Backup Bulanan', tone: 'emerald' },
+    intro: 'Backup sekarang mengikuti format bulanan agar lebih rapi dan tidak menumpuk file.',
+    items: [
+      {
+        title: '1 File per Bulan',
+        desc: 'Backup lokal dan Google Drive akan overwrite dalam bulan yang sama, dan hanya membuat file baru saat bulan berganti.'
+      }
+    ]
+  },
+  {
     version: '1.0.11',
     date: '2026-04-18',
     badge: { text: 'Ganti Unit', tone: 'emerald' },

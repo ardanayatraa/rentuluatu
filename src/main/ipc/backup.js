@@ -176,27 +176,31 @@ function getBackupDir() {
   return dir
 }
 
-function dayStampLocal(date = new Date()) {
-  return date.toISOString().slice(0, 10)
+function monthStampLocal(date = new Date()) {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  return `${y}-${m}`
 }
 
 function safeUnlink(filePath) {
   try { unlinkSync(filePath) } catch { /* ignore */ }
 }
 
-function pruneLocalBackups({ keepDays = 60 } = {}) {
+function pruneLocalBackups({ keepMonths = 24 } = {}) {
   const dir = getBackupDir()
   const files = readdirSync(dir)
-    .filter((f) => f.startsWith('wavy_backup_daily_') && f.endsWith('.wavy'))
+    .filter((f) => f.startsWith('wavy_backup_monthly_') && f.endsWith('.wavy'))
     .map((name) => ({ name, path: join(dir, name) }))
   if (!files.length) return
 
   const cutoff = new Date()
-  cutoff.setDate(cutoff.getDate() - keepDays)
+  cutoff.setDate(1)
+  cutoff.setHours(0, 0, 0, 0)
+  cutoff.setMonth(cutoff.getMonth() - keepMonths)
   for (const f of files) {
-    const m = f.name.match(/^wavy_backup_daily_(\d{4}-\d{2}-\d{2})\.wavy$/)
+    const m = f.name.match(/^wavy_backup_monthly_(\d{4})-(\d{2})\.wavy$/)
     if (!m) continue
-    const d = new Date(m[1] + 'T00:00:00Z')
+    const d = new Date(Number(m[1]), Number(m[2]) - 1, 1)
     if (d < cutoff) safeUnlink(f.path)
   }
 }
@@ -263,7 +267,8 @@ export async function runAutoCloseBackup() {
   const passphrase = getOrCreatePassphrase()
   const plainData = readFileSync(dbPath)
   const encData = encryptBuffer(plainData, passphrase)
-  const filename = `wavy_backup_daily_${dayStampLocal()}.wavy`
+  // Standar: 1 file per bulan (overwrite). File baru hanya dibuat saat bulan berganti.
+  const filename = `wavy_backup_monthly_${monthStampLocal()}.wavy`
 
   return uploadBackupToDrive({ filename, buffer: encData })
 }
@@ -372,11 +377,11 @@ export function registerBackupHandlers() {
     const plainData = readFileSync(dbPath)
     const encData = encryptBuffer(plainData, passphrase)
 
-    // Standar: 1 backup per hari (overwrite) agar tidak menumpuk banyak file.
-    const backupName = `wavy_backup_daily_${dayStampLocal()}.wavy`
+    // Standar: 1 backup per bulan (overwrite) agar tidak menumpuk banyak file.
+    const backupName = `wavy_backup_monthly_${monthStampLocal()}.wavy`
     const backupPath = join(getBackupDir(), backupName)
     writeFileSync(backupPath, encData)
-    pruneLocalBackups({ keepDays: 60 })
+    pruneLocalBackups({ keepMonths: 24 })
 
     return { success: true, filename: backupName, path: backupPath, encrypted: true }
   })
@@ -437,8 +442,8 @@ export function registerBackupHandlers() {
     const plainData = readFileSync(dbPath)
     const encData = encryptBuffer(plainData, passphrase)
 
-    // Standar: 1 file per hari (overwrite) agar tidak menumpuk.
-    const filename = `wavy_backup_daily_${dayStampLocal()}.wavy`
+    // Standar: 1 file per bulan (overwrite) agar tidak menumpuk.
+    const filename = `wavy_backup_monthly_${monthStampLocal()}.wavy`
     const result = await uploadBackupToDrive({ filename, buffer: encData })
     return { ...result, encrypted: true }
   })

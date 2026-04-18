@@ -229,7 +229,7 @@
                     <div class="min-w-0">
                       <p class="text-[11px] font-bold text-slate-700">Backup otomatis saat tutup app</p>
                       <p class="mt-1 text-[10px] text-slate-400 leading-relaxed">
-                        Simpan ke Google Drive saat aplikasi ditutup. Backup harian akan diperbarui tanpa menumpuk file di tanggal yang sama.
+                        Simpan ke Google Drive saat aplikasi ditutup. Backup bulanan akan diperbarui tanpa menumpuk file dalam bulan yang sama.
                       </p>
                     </div>
                     <div class="flex items-center gap-2 shrink-0">
