@@ -3,6 +3,18 @@
 
 export const CHANGELOG = [
   {
+    version: '1.0.14',
+    date: '2026-04-18',
+    badge: { text: 'Import Status Motor', tone: 'emerald' },
+    intro: 'Import Excel kini membaca status motor (Pribadi/Titipan) dan mengisi tipe motor otomatis.',
+    items: [
+      {
+        title: 'Mapping Pribadi dan Titipan',
+        desc: 'Kolom STATUS pada Excel akan dipetakan ke Aset PT (Pribadi) atau Milik Mitra (Titipan).'
+      }
+    ]
+  },
+  {
     version: '1.0.13',
     date: '2026-04-18',
     badge: { text: 'Import Excel', tone: 'emerald' },

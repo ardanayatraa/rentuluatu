@@ -27,13 +27,22 @@ async function parseVehiclesXlsx(filePath) {
   const ws = wb.getWorksheet('ALL VEHICLES') || wb.worksheets[0]
   if (!ws) throw new Error('Sheet Excel tidak ditemukan')
 
-  // Cari baris header yang berisi "NO", "OWNER", "NAMA KENDARAAN", "NO KENDARAAN"
+  // Cari baris header (format lama atau format baru yang punya kolom STATUS).
   let headerRowIndex = null
   for (let r = 1; r <= Math.min(ws.rowCount, 30); r++) {
     const row = ws.getRow(r)
     const c1 = String(row.getCell(1).value ?? '').trim().toUpperCase()
     const c2 = String(row.getCell(2).value ?? '').trim().toUpperCase()
     const c3 = String(row.getCell(3).value ?? '').trim().toUpperCase()
+    const c6 = String(row.getCell(6).value ?? '').trim().toUpperCase()
+    // Format baru:
+    // NO | STATUS | PEMILIK | NAMA KENDARAAN | WARNA | NO KENDARAAN | KET
+    if (c1 === 'NO' && c2 === 'STATUS' && c3.includes('PEMILIK') && c6.includes('KENDARAAN')) {
+      headerRowIndex = r
+      break
+    }
+    // Format lama:
+    // NO | OWNER | NAMA KENDARAAN | WARNA | NO KENDARAAN
     const c5 = String(row.getCell(5).value ?? '').trim().toUpperCase()
     if (c1 === 'NO' && c2 === 'OWNER' && c3.includes('KENDARAAN') && c5.includes('KENDARAAN')) {
       headerRowIndex = r
@@ -42,19 +51,26 @@ async function parseVehiclesXlsx(filePath) {
   }
   if (!headerRowIndex) throw new Error('Format Excel tidak dikenali (header tidak ditemukan)')
 
+  // Detect format berdasarkan header row
+  const headerRow = ws.getRow(headerRowIndex)
+  const h2 = String(headerRow.getCell(2).value ?? '').trim().toUpperCase()
+  const isNewFormat = h2 === 'STATUS'
+
   const records = []
   for (let r = headerRowIndex + 1; r <= ws.rowCount; r++) {
     const row = ws.getRow(r)
     const no = String(row.getCell(1).value ?? '').trim()
-    const owner = String(row.getCell(2).value ?? '').trim()
-    const model = String(row.getCell(3).value ?? '').trim()
-    const plate = String(row.getCell(5).value ?? '').trim()
+    const status = isNewFormat ? String(row.getCell(2).value ?? '').trim() : ''
+    const owner = isNewFormat ? String(row.getCell(3).value ?? '').trim() : String(row.getCell(2).value ?? '').trim()
+    const model = isNewFormat ? String(row.getCell(4).value ?? '').trim() : String(row.getCell(3).value ?? '').trim()
+    const plate = isNewFormat ? String(row.getCell(6).value ?? '').trim() : String(row.getCell(5).value ?? '').trim()
 
     // Stop jika sudah benar-benar kosong (biasanya footer)
     if (!no && !owner && !model && !plate) continue
     if (!plate) continue
 
     records.push({
+      status,
       owner_name: owner,
       model,
       plate_number: normalizePlate(plate)
@@ -100,6 +116,8 @@ export function registerImportHandlers() {
         const ownerName = String(row.owner_name || '').trim()
         const model = String(row.model || '').trim()
         const plate = normalizePlate(row.plate_number)
+        const statusRaw = String(row.status || '').trim().toLowerCase()
+        const motorType = statusRaw.includes('pribadi') ? 'aset_pt' : statusRaw.includes('titip') ? 'milik_pemilik' : 'milik_pemilik'
 
         if (!ownerName) {
           summary.warnings.push(`Plat ${plate}: owner kosong, dilewati`)
@@ -143,17 +161,17 @@ export function registerImportHandlers() {
         if (!existingMotor?.id) {
           dbOps.runRaw(
             'INSERT INTO motors (model, plate_number, type, owner_id) VALUES (?, ?, ?, ?)',
-            [model || plate, plate, 'milik_pemilik', ownerId]
+            [model || plate, plate, motorType, motorType === 'aset_pt' ? null : ownerId]
           )
           summary.motors_created++
           continue
         }
 
         // Jika motor sudah ada tapi belum punya pemilik, kita isi.
-        if (!existingMotor.owner_id) {
+        if (!existingMotor.owner_id && motorType !== 'aset_pt') {
           dbOps.runRaw('UPDATE motors SET owner_id = ?, type = ? WHERE id = ?', [
             ownerId,
-            'milik_pemilik',
+            motorType,
             existingMotor.id
           ])
           summary.motors_updated++
@@ -171,4 +189,3 @@ export function registerImportHandlers() {
     }
   })
 }
-
