@@ -20,8 +20,7 @@
               v-for="item in group.items"
               :key="item.to"
               :to="item.to"
-              class="sidebar-link"
-              active-class="active"
+              :class="['sidebar-link', isNavActive(item.to) ? 'active' : '']"
             >
               <span class="material-symbols-outlined text-[17px] xl:text-[18px]">{{ item.icon }}</span>
               <span class="text-[13px] xl:text-sm font-medium">{{ item.label }}</span>
@@ -114,12 +113,13 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { useLicenseStore } from '../stores/license'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { CHANGELOG } from '../changelog'
 
 const auth = useAuthStore()
 const license = useLicenseStore()
 const router = useRouter()
+const route = useRoute()
 const showChangelog = ref(false)
 const appVersion = import.meta.env.VITE_APP_VERSION || '1.0.0'
 const changelogEntries = CHANGELOG
@@ -171,6 +171,14 @@ const navGroups = [
 function handleLogout() {
   auth.logout()
   router.push('/login')
+}
+
+function isNavActive(to) {
+  const base = typeof to === 'string' ? to : to?.path
+  if (!base) return false
+  // Detail route (mis. /owners/:id) adalah sibling, jadi router-link tidak otomatis aktif.
+  // Kita anggap aktif kalau path sama atau berada di bawah segmen yang sama.
+  return route.path === base || route.path.startsWith(base + '/')
 }
 
 function badgeClass(tone) {
