@@ -59,18 +59,21 @@ export function registerReportHandlers() {
   })
 
   // Laporan pendapatan per motor (detail transaksi per motor)
-  ipcMain.handle('report:motor-income', (_, { startDate, endDate, motorId }) => {
-    let query = `
-      SELECT r.id, r.date_time, r.customer_name, r.hotel, r.period_days,
-             r.payment_method, r.total_price, r.vendor_fee, r.sisa,
-             r.wavy_gets, r.owner_gets, r.status,
-             m.model, m.plate_number, m.type as motor_type,
-             o.name as owner_name
-      FROM rentals r
-      JOIN motors m ON r.motor_id = m.id
-      LEFT JOIN owners o ON m.owner_id = o.id
-      WHERE r.date_time BETWEEN ? AND ? AND r.status != 'refunded'
-    `
+	  ipcMain.handle('report:motor-income', (_, { startDate, endDate, motorId }) => {
+	    let query = `
+	      SELECT r.id, r.date_time, r.customer_name, r.hotel, r.period_days,
+	             r.payment_method, r.total_price, r.vendor_fee, r.sisa,
+	             r.wavy_gets, r.owner_gets, r.status,
+	             m.model, m.plate_number, m.type as motor_type,
+	             CASE
+	               WHEN LOWER(COALESCE(m.type, '')) IN ('aset_pt', 'pribadi') THEN 'Owner Pribadi (PT)'
+	               ELSE o.name
+	             END as owner_name
+	      FROM rentals r
+	      JOIN motors m ON r.motor_id = m.id
+	      LEFT JOIN owners o ON m.owner_id = o.id
+	      WHERE r.date_time BETWEEN ? AND ? AND r.status != 'refunded'
+	    `
     const params = [startDate, endDate]
     if (motorId) { query += ' AND r.motor_id = ?'; params.push(motorId) }
     query += ' ORDER BY r.date_time DESC'

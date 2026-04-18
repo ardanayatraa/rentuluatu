@@ -118,7 +118,7 @@
               <option value="milik_pemilik">Milik Mitra (Wavy 30% / Mitra 70%)</option>
             </select>
           </div>
-          <div class="col-span-2">
+          <div v-if="!isAsetPt(form.type)" class="col-span-2">
             <div class="flex justify-between items-end mb-1">
               <label class="block text-xs font-bold text-slate-500">Mitra / Pemilik</label>
               <button type="button" @click="isCreatingOwner = !isCreatingOwner"
@@ -154,6 +154,11 @@
                 class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
             </div>
           </div>
+          <div v-else class="col-span-2">
+            <div class="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+              Pemilik: <span class="font-semibold text-slate-700">Owner Pribadi (PT)</span>
+            </div>
+          </div>
         </div>
         <p v-if="motorError" class="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{{ motorError }}</p>
         <div class="flex justify-end gap-3 pt-2">
@@ -168,7 +173,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import SearchSelect from '../components/SearchSelect.vue'
 import { getMotorTypeLabel, getWavyPctLabel, isAsetPt, normalizeMotorType } from '../utils/motorType'
 import { buildSimpleTableHtml, previewReport } from '../utils/pdf'
@@ -355,14 +360,16 @@ async function submitMotor() {
   }
   isSubmitting.value = true
 
+  const requireOwner = !isAsetPt(form.value.type)
+
   // Validasi: jika mode buat mitra baru, nama wajib diisi
-  if (isCreatingOwner.value && !ownerForm.value.name.trim()) {
+  if (requireOwner && isCreatingOwner.value && !ownerForm.value.name.trim()) {
     motorError.value = 'Nama mitra tidak boleh kosong'
     isSubmitting.value = false
     return
   }
 
-  if (!isCreatingOwner.value && !form.value.owner_id) {
+  if (requireOwner && !isCreatingOwner.value && !form.value.owner_id) {
     motorError.value = 'Pemilik motor wajib dipilih'
     isSubmitting.value = false
     return
@@ -371,7 +378,7 @@ async function submitMotor() {
   let finalOwnerId = form.value.owner_id || null
 
   // Buat owner baru dulu, lalu assign ID-nya ke motor
-  if (isCreatingOwner.value && ownerForm.value.name.trim()) {
+  if (requireOwner && isCreatingOwner.value && ownerForm.value.name.trim()) {
     try {
       const newOwner = await window.api.createOwner({ ...ownerForm.value })
       finalOwnerId = Number(newOwner.id)
@@ -386,7 +393,7 @@ async function submitMotor() {
   const payload = {
     ...form.value,
     type: normalizeMotorType(form.value.type),
-    owner_id: finalOwnerId ? Number(finalOwnerId) : null
+    owner_id: requireOwner && finalOwnerId ? Number(finalOwnerId) : null
   }
 
   try {
@@ -420,4 +427,15 @@ async function deleteMotor(id) {
 onMounted(async () => {
   await loadData()
 })
+
+watch(
+  () => form.value.type,
+  (next) => {
+    if (isAsetPt(next)) {
+      form.value.owner_id = ''
+      isCreatingOwner.value = false
+      ownerForm.value = { name: '', phone: '' }
+    }
+  }
+)
 </script>

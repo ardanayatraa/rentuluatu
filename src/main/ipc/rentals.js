@@ -60,7 +60,15 @@ export function registerRentalHandlers() {
 
   ipcMain.handle('rental:get-by-id', (_, id) => {
     return dbOps.get(`
-      SELECT r.*, m.model, m.plate_number, m.type as motor_type, o.name as owner_name
+      SELECT
+        r.*,
+        m.model,
+        m.plate_number,
+        m.type as motor_type,
+        CASE
+          WHEN LOWER(COALESCE(m.type, '')) IN ('aset_pt', 'pribadi') THEN 'Owner Pribadi (PT)'
+          ELSE o.name
+        END as owner_name
       FROM rentals r
       JOIN motors m ON r.motor_id = m.id
       LEFT JOIN owners o ON m.owner_id = o.id

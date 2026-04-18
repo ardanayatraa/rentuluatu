@@ -118,38 +118,43 @@ export function registerImportHandlers() {
         const plate = normalizePlate(row.plate_number)
         const statusRaw = String(row.status || '').trim().toLowerCase()
         const motorType = statusRaw.includes('pribadi') ? 'aset_pt' : statusRaw.includes('titip') ? 'milik_pemilik' : 'milik_pemilik'
+        const isAsetPt = motorType === 'aset_pt'
 
-        if (!ownerName) {
-          summary.warnings.push(`Plat ${plate}: owner kosong, dilewati`)
-          summary.motors_skipped++
-          continue
-        }
         if (!plate) {
           summary.motors_skipped++
           continue
         }
 
-        const ownerKey = normalizeNameKey(ownerName)
-        let ownerId = ownerCache.get(ownerKey)
-        if (!ownerId) {
-          const existingOwner = dbOps.get(
-            "SELECT id FROM owners WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1",
-            [ownerName]
-          )
-          if (existingOwner?.id) {
-            ownerId = Number(existingOwner.id)
-            summary.owners_skipped++
-          } else {
-            dbOps.runRaw('INSERT INTO owners (name, phone, bank_account, bank_name) VALUES (?, ?, ?, ?)', [
-              ownerName,
-              null,
-              null,
-              null
-            ])
-            ownerId = Number(dbOps.get('SELECT last_insert_rowid() as id')?.id || 0)
-            summary.owners_created++
+        let ownerId = null
+        if (!isAsetPt) {
+          if (!ownerName) {
+            summary.warnings.push(`Plat ${plate}: pemilik kosong, dilewati`)
+            summary.motors_skipped++
+            continue
           }
-          ownerCache.set(ownerKey, ownerId)
+
+          const ownerKey = normalizeNameKey(ownerName)
+          ownerId = ownerCache.get(ownerKey)
+          if (!ownerId) {
+            const existingOwner = dbOps.get(
+              "SELECT id FROM owners WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1",
+              [ownerName]
+            )
+            if (existingOwner?.id) {
+              ownerId = Number(existingOwner.id)
+              summary.owners_skipped++
+            } else {
+              dbOps.runRaw('INSERT INTO owners (name, phone, bank_account, bank_name) VALUES (?, ?, ?, ?)', [
+                ownerName,
+                null,
+                null,
+                null
+              ])
+              ownerId = Number(dbOps.get('SELECT last_insert_rowid() as id')?.id || 0)
+              summary.owners_created++
+            }
+            ownerCache.set(ownerKey, ownerId)
+          }
         }
 
         const key = plateKey(plate)
@@ -161,14 +166,30 @@ export function registerImportHandlers() {
         if (!existingMotor?.id) {
           dbOps.runRaw(
             'INSERT INTO motors (model, plate_number, type, owner_id) VALUES (?, ?, ?, ?)',
-            [model || plate, plate, motorType, motorType === 'aset_pt' ? null : ownerId]
+            [model || plate, plate, motorType, isAsetPt ? null : ownerId]
           )
           summary.motors_created++
           continue
         }
 
+        // Jika format Excel menyatakan Aset PT, pastikan owner_id NULL dan type sesuai.
+        if (isAsetPt) {
+          const existingType = String(existingMotor.type || '').toLowerCase()
+          const hasOwner = Boolean(existingMotor.owner_id)
+          if (existingType !== 'aset_pt' || hasOwner) {
+            dbOps.runRaw('UPDATE motors SET owner_id = NULL, type = ? WHERE id = ?', [
+              'aset_pt',
+              existingMotor.id
+            ])
+            summary.motors_updated++
+          } else {
+            summary.motors_skipped++
+          }
+          continue
+        }
+
         // Jika motor sudah ada tapi belum punya pemilik, kita isi.
-        if (!existingMotor.owner_id && motorType !== 'aset_pt') {
+        if (!existingMotor.owner_id) {
           dbOps.runRaw('UPDATE motors SET owner_id = ?, type = ? WHERE id = ?', [
             ownerId,
             motorType,
