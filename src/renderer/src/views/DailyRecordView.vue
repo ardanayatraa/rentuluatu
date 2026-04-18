@@ -521,8 +521,9 @@
             <p v-if="filteredSwapMotorOptions.length" class="text-xs text-slate-400 mt-1">Menampilkan {{ filteredSwapMotorOptions.length }} motor (pilih manual)</p>
           </div>
           <div>
-            <label class="block text-xs font-bold text-slate-500 mb-1">Tarif Motor Pengganti / Hari</label>
-            <input v-model.number="swapForm.new_price_per_day" type="number" min="1" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required />
+            <label class="block text-xs font-bold text-slate-500 mb-1">Harga Total Motor Pengganti</label>
+            <input v-model.number="swapForm.new_total_price" type="number" min="1" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required />
+            <p class="text-[11px] text-slate-400 mt-1">Isi total harga untuk sisa hari setelah ganti unit (bukan tarif per hari).</p>
           </div>
         </div>
 
@@ -682,7 +683,7 @@ const swapForm = ref({
   switch_date_time: nowDateTime(),
   remaining_days: 1,
   new_motor_id: '',
-  new_price_per_day: 0,
+  new_total_price: 0,
   settlement_payment_method: '',
   settlement_note: ''
 })
@@ -828,9 +829,9 @@ const swapUsedTotal = computed(() => {
 })
 const swapNewTotal = computed(() => {
   const remaining = Number(swapForm.value.remaining_days || 0)
-  const ppd = Number(swapForm.value.new_price_per_day || 0)
-  if (!remaining || !ppd) return 0
-  return Math.round(remaining * ppd)
+  const total = Number(swapForm.value.new_total_price || 0)
+  if (!remaining || !total) return 0
+  return Math.round(total)
 })
 const swapDelta = computed(() => Math.round(swapNewTotal.value - swapOldRemainingCredit.value))
 const swapMotorOptions = computed(() => {
@@ -892,7 +893,8 @@ watch(() => swapForm.value.source_rental_id, (value) => {
   swapForm.value.remaining_days = Math.max(1, Number(source.period_days || 1) - 1)
   swapForm.value.new_motor_id = ''
   swapMotorKeyword.value = ''
-  swapForm.value.new_price_per_day = Number(source.price_per_day || 0)
+  // Default: samakan dengan kredit sisa hari agar selisih awal "pas"
+  swapForm.value.new_total_price = swapOldRemainingCredit.value
   swapForm.value.settlement_payment_method = source.payment_method || ''
   swapForm.value.settlement_note = ''
 })
@@ -1010,7 +1012,7 @@ function openSwap(rental) {
     switch_date_time: nowDateTime(),
     remaining_days: maxRemaining,
     new_motor_id: '',
-    new_price_per_day: Number(rental?.price_per_day || 0),
+    new_total_price: swapOldRemainingCredit.value,
     settlement_payment_method: rental?.payment_method || '',
     settlement_note: ''
   }
@@ -1027,7 +1029,7 @@ function openSwapFromTab() {
     switch_date_time: nowDateTime(),
     remaining_days: 1,
     new_motor_id: '',
-    new_price_per_day: 0,
+    new_total_price: 0,
     settlement_payment_method: '',
     settlement_note: ''
   }
@@ -1161,8 +1163,8 @@ async function submitSwap() {
     if (remainingDays >= Number(source.period_days || 0)) throw new Error('Sisa hari harus lebih kecil dari periode sewa awal')
     if (!swapForm.value.new_motor_id) throw new Error('Motor pengganti wajib dipilih')
     if (!swapForm.value.switch_date_time) throw new Error('Tanggal ganti unit wajib diisi')
-    const newPricePerDay = Number(swapForm.value.new_price_per_day || 0)
-    if (!newPricePerDay || newPricePerDay <= 0) throw new Error('Tarif motor pengganti per hari harus lebih dari 0')
+    const newTotalPrice = Number(swapForm.value.new_total_price || 0)
+    if (!newTotalPrice || newTotalPrice <= 0) throw new Error('Harga total motor pengganti wajib diisi')
     if (swapDelta.value !== 0 && !swapForm.value.settlement_payment_method) {
       throw new Error('Metode bayar selisih wajib dipilih')
     }
@@ -1172,7 +1174,7 @@ async function submitSwap() {
       switch_date_time: swapForm.value.switch_date_time,
       remaining_days: remainingDays,
       new_motor_id: Number(swapForm.value.new_motor_id),
-      new_price_per_day: newPricePerDay,
+      new_total_price: newTotalPrice,
       settlement_payment_method: swapDelta.value === 0 ? null : swapForm.value.settlement_payment_method,
       settlement_note: swapForm.value.settlement_note || null
     })

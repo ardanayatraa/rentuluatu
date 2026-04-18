@@ -212,10 +212,21 @@ export function registerRentalHandlers() {
     const newMotor = dbOps.get('SELECT * FROM motors WHERE id = ?', [newMotorId])
     if (!newMotor) throw new Error('Motor pengganti tidak ditemukan')
 
-    const replacementPricePerDay = Number(data.new_price_per_day || 0)
-    if (!replacementPricePerDay || replacementPricePerDay <= 0) {
-      throw new Error('Tarif motor pengganti per hari harus lebih dari 0')
+    // Proses bisnis: saat ganti unit, admin input harga TOTAL untuk sisa sewa (bukan tarif per hari).
+    // Untuk kompatibilitas lama, jika new_total_price tidak diisi, fallback ke new_price_per_day * remainingDays.
+    const replacementTotalInput = Number(data.new_total_price || 0)
+    const replacementPricePerDayInput = Number(data.new_price_per_day || 0)
+    const replacementTotal = replacementTotalInput > 0
+      ? roundCurrency(replacementTotalInput)
+      : replacementPricePerDayInput > 0
+        ? roundCurrency(replacementPricePerDayInput * remainingDays)
+        : 0
+    if (!replacementTotal || replacementTotal <= 0) {
+      throw new Error('Harga total motor pengganti wajib diisi')
     }
+    const replacementPricePerDay = remainingDays > 0
+      ? (replacementTotal / remainingDays)
+      : replacementTotal
 
     const switchDateTime = String(data.switch_date_time || '')
     if (!switchDateTime) throw new Error('Tanggal ganti unit wajib diisi')
@@ -238,7 +249,6 @@ export function registerRentalHandlers() {
       sourceUsedVendorFee
     )
 
-    const replacementTotal = roundCurrency(replacementPricePerDay * remainingDays)
     // Aturan bisnis: transaksi motor pengganti tidak membawa fee vendor hotel.
     const replacementVendorFee = 0
     const replacementCommission = calcCommission(newMotor.type, replacementTotal, replacementVendorFee)

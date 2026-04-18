@@ -3,6 +3,18 @@
 
 export const CHANGELOG = [
   {
+    version: '1.0.11',
+    date: '2026-04-18',
+    badge: { text: 'Ganti Unit', tone: 'emerald' },
+    intro: 'Penyempurnaan input Ganti Unit agar lebih sesuai proses bisnis di lapangan.',
+    items: [
+      {
+        title: 'Harga Total (Bukan Per Hari)',
+        desc: 'Saat ganti unit, input sekarang menggunakan harga total untuk sisa sewa setelah ganti motor.'
+      }
+    ]
+  },
+  {
     version: '1.0.10',
     date: '2026-04-18',
     badge: { text: 'Backup & Restore', tone: 'emerald' },
