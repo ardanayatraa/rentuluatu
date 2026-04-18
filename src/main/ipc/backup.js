@@ -176,6 +176,31 @@ function getBackupDir() {
   return dir
 }
 
+function dayStampLocal(date = new Date()) {
+  return date.toISOString().slice(0, 10)
+}
+
+function safeUnlink(filePath) {
+  try { unlinkSync(filePath) } catch { /* ignore */ }
+}
+
+function pruneLocalBackups({ keepDays = 60 } = {}) {
+  const dir = getBackupDir()
+  const files = readdirSync(dir)
+    .filter((f) => f.startsWith('wavy_backup_daily_') && f.endsWith('.wavy'))
+    .map((name) => ({ name, path: join(dir, name) }))
+  if (!files.length) return
+
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - keepDays)
+  for (const f of files) {
+    const m = f.name.match(/^wavy_backup_daily_(\d{4}-\d{2}-\d{2})\.wavy$/)
+    if (!m) continue
+    const d = new Date(m[1] + 'T00:00:00Z')
+    if (d < cutoff) safeUnlink(f.path)
+  }
+}
+
 function getBackupSettingsPath() {
   return join(app.getPath('userData'), BACKUP_SETTINGS_FILENAME)
 }
@@ -238,8 +263,7 @@ export async function runAutoCloseBackup() {
   const passphrase = getOrCreatePassphrase()
   const plainData = readFileSync(dbPath)
   const encData = encryptBuffer(plainData, passphrase)
-  const dayStamp = new Date().toISOString().slice(0, 10)
-  const filename = `wavy_backup_daily_${dayStamp}.wavy`
+  const filename = `wavy_backup_daily_${dayStampLocal()}.wavy`
 
   return uploadBackupToDrive({ filename, buffer: encData })
 }
@@ -348,10 +372,11 @@ export function registerBackupHandlers() {
     const plainData = readFileSync(dbPath)
     const encData = encryptBuffer(plainData, passphrase)
 
-    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-    const backupName = `wavy_backup_${ts}.wavy`
+    // Standar: 1 backup per hari (overwrite) agar tidak menumpuk banyak file.
+    const backupName = `wavy_backup_daily_${dayStampLocal()}.wavy`
     const backupPath = join(getBackupDir(), backupName)
     writeFileSync(backupPath, encData)
+    pruneLocalBackups({ keepDays: 60 })
 
     return { success: true, filename: backupName, path: backupPath, encrypted: true }
   })
@@ -372,6 +397,10 @@ export function registerBackupHandlers() {
   ipcMain.handle('backup:restore-local', (_, { path: backupPath }) => {
     if (!existsSync(backupPath)) throw new Error('File backup tidak ditemukan')
 
+    // sql.js memuat DB ke memory. Setelah restore file, aplikasi harus relaunch
+    // agar DB baru kebaca dan tidak ditimpa state memory lama.
+    forceSaveDb()
+
     const dbPath = getDbPath()
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
 
@@ -390,7 +419,12 @@ export function registerBackupHandlers() {
     }
 
     writeFileSync(dbPath, plainData)
-    return { success: true }
+    setTimeout(() => {
+      try { app.relaunch() } catch { /* ignore */ }
+      app.exit(0)
+    }, 800)
+
+    return { success: true, relaunching: true }
   })
 
   // ── Upload ke Google Drive (terenkripsi) ───────────────────────────────────
@@ -403,8 +437,8 @@ export function registerBackupHandlers() {
     const plainData = readFileSync(dbPath)
     const encData = encryptBuffer(plainData, passphrase)
 
-    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-    const filename = `wavy_backup_${ts}.wavy`
+    // Standar: 1 file per hari (overwrite) agar tidak menumpuk.
+    const filename = `wavy_backup_daily_${dayStampLocal()}.wavy`
     const result = await uploadBackupToDrive({ filename, buffer: encData })
     return { ...result, encrypted: true }
   })
@@ -423,6 +457,8 @@ export function registerBackupHandlers() {
     const auth = await getAuthenticatedClient()
     if (!auth) throw new Error('Belum terhubung ke Google Drive')
 
+    forceSaveDb()
+
     const google = await getGoogle()
     const drive = google.drive({ version: 'v3', auth })
     const res = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' })
@@ -438,7 +474,12 @@ export function registerBackupHandlers() {
     }
 
     writeFileSync(dbPath, plainData)
-    return { success: true, filename: fileName }
+    setTimeout(() => {
+      try { app.relaunch() } catch { /* ignore */ }
+      app.exit(0)
+    }, 800)
+
+    return { success: true, filename: fileName, relaunching: true }
   })
 
   ipcMain.handle('backup:gdrive-delete', async (_, { fileId }) => {

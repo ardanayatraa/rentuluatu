@@ -3,6 +3,22 @@
 
 export const CHANGELOG = [
   {
+    version: '1.0.10',
+    date: '2026-04-18',
+    badge: { text: 'Backup & Restore', tone: 'emerald' },
+    intro: 'Rilis ini merapikan backup harian dan memastikan restore benar-benar terpakai.',
+    items: [
+      {
+        title: 'Backup Harian Tidak Menumpuk',
+        desc: 'Backup lokal dan upload Google Drive sekarang 1 file per hari (overwrite), bukan membuat banyak file dalam hari yang sama.'
+      },
+      {
+        title: 'Restore Auto Restart',
+        desc: 'Setelah restore, aplikasi otomatis restart agar database baru terbaca dan tidak tertimpa state lama.'
+      }
+    ]
+  },
+  {
     version: '1.0.9',
     date: '2026-04-18',
     badge: { text: 'Vendor Hotel', tone: 'emerald' },
