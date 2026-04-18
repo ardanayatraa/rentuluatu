@@ -21,7 +21,14 @@ export function registerHotelHandlers() {
   ipcMain.handle('hotel:get-all', () => {
     return dbOps.all(`
       SELECT h.*, 
-        0 as unpaid_commission
+        (
+          SELECT COALESCE(SUM(r.vendor_fee), 0)
+          FROM rentals r
+          WHERE r.hotel_id = h.id
+            AND r.status != 'refunded'
+            AND r.vendor_fee > 0
+            AND COALESCE(r.relation_type, 'rental') IN ('rental', 'swap_source')
+        ) as unpaid_commission
       FROM hotels h ORDER BY name ASC
     `)
   })

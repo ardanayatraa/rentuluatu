@@ -3,6 +3,18 @@
 
 export const CHANGELOG = [
   {
+    version: '1.0.9',
+    date: '2026-04-18',
+    badge: { text: 'Vendor Hotel', tone: 'emerald' },
+    intro: 'Perbaikan tampilan Fee Vendor di menu Hotel/Vendor agar mengikuti data Daily Record.',
+    items: [
+      {
+        title: 'Fee Vendor Muncul di List Hotel',
+        desc: 'Kolom Fee Vendor (Tunai) sekarang menghitung total vendor_fee dari transaksi rental yang terhubung ke vendor.'
+      }
+    ]
+  },
+  {
     version: '1.0.8',
     date: '2026-04-18',
     badge: { text: 'Perhitungan Dashboard', tone: 'slate' },
