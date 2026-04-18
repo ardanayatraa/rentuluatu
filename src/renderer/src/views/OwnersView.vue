@@ -260,7 +260,7 @@ async function importExcel() {
       warnText
     )
   } catch (err) {
-    alert(String(err?.message || err).replace(\"Error invoking remote method 'import:vehicles-from-xlsx': Error: \", ''))
+    alert(String(err?.message || err).replace("Error invoking remote method 'import:vehicles-from-xlsx': Error: ", ''))
   }
 }
 
