@@ -87,6 +87,7 @@ export function registerReportHandlers() {
       FROM expenses e
       LEFT JOIN motors m ON e.motor_id = m.id
       WHERE e.date BETWEEN ? AND ?
+        AND e.type = 'motor'
     `
     const params = [sd, ed]
     if (motorId) { query += ' AND e.motor_id = ?'; params.push(motorId) }
