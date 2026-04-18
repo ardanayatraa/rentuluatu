@@ -72,10 +72,6 @@
         <p class="mt-2 text-2xl font-black text-primary">{{ previewData.rentals.length }}</p>
       </div>
       <div class="card">
-        <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Omzet Rental Vendor</p>
-        <p class="mt-2 text-2xl font-black text-slate-800">{{ formatRp(totalPendingRentalValue) }}</p>
-      </div>
-      <div class="card">
         <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Total Dibayar (Periode Ini)</p>
         <p class="mt-2 text-2xl font-black text-emerald-600">{{ formatRp(totalPaidHistorical) }}</p>
       </div>
@@ -297,14 +293,10 @@
           </div>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div class="rounded-xl border border-slate-200 px-4 py-3">
             <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Jumlah Rental</p>
             <p class="mt-2 text-lg font-black text-primary">{{ previewData.rentals.length }}</p>
-          </div>
-          <div class="rounded-xl border border-slate-200 px-4 py-3">
-            <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Total Omzet</p>
-            <p class="mt-2 text-lg font-black text-slate-800">{{ formatRp(totalPendingRentalValue) }}</p>
           </div>
           <div class="rounded-xl border border-slate-200 px-4 py-3">
             <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Fee Vendor</p>
@@ -352,10 +344,6 @@
             <div class="px-4 py-4">
               <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Jumlah Rental</p>
               <p class="mt-2 text-xl font-black text-primary">{{ previewData.rentals.length }}</p>
-            </div>
-            <div class="px-4 py-4">
-              <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Total Omzet</p>
-              <p class="mt-2 text-xl font-black text-slate-800">{{ formatRp(totalPendingRentalValue) }}</p>
             </div>
             <div class="px-4 py-4">
               <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400">Fee Vendor Pending</p>

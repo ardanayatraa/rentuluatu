@@ -499,7 +499,6 @@ export function buildOwnerCommissionHtml({ data, period }) {
 export function printOwnerCommissionReport(args) { printWindow(buildOwnerCommissionHtml(args)) }
 
 export function buildHotelCommissionHtml({ hotel, rentals = [], period }) {
-  const totalRent = rentals.reduce((sum, item) => sum + Number(item.total_price || 0), 0)
   const totalCommission = rentals.reduce((sum, item) => sum + Number(item.vendor_fee || 0), 0)
   const averageCommission = rentals.length ? Math.round(totalCommission / rentals.length) : 0
 
@@ -508,7 +507,6 @@ export function buildHotelCommissionHtml({ hotel, rentals = [], period }) {
     <td>${esc(r.customer_name)}</td>
     <td>${esc(r.model)} ${esc(r.plate_number)}</td>
     <td class="right">${esc(r.period_days)} hari</td>
-    <td class="right">${rp(r.total_price)}</td>
     <td class="right">${rp(r.vendor_fee)}</td>
   </tr>`).join('')
 
@@ -523,25 +521,24 @@ export function buildHotelCommissionHtml({ hotel, rentals = [], period }) {
         Status Dokumen: Fee vendor yang belum dibayarkan pada periode terpilih
       </div>
     </div>
-    <div style="flex:1">
-      <div class="summary-grid" style="grid-template-columns:repeat(2,1fr)">
-        <div class="summary-card"><div class="label">Jumlah Rental</div><div class="value">${rentals.length}x</div></div>
-        <div class="summary-card"><div class="label">Total Omzet Rental</div><div class="value">${rp(totalRent)}</div></div>
-        <div class="summary-card"><div class="label">Total Fee Vendor</div><div class="value">${rp(totalCommission)}</div></div>
-        <div class="summary-card"><div class="label">Rata-rata Fee Vendor</div><div class="value">${rp(averageCommission)}</div></div>
-      </div>
-    </div>
-  </div>
-  <div class="section-title">Rincian Fee Vendor</div>
-  <table><thead><tr>
-    <th>Tanggal</th><th>Pelanggan</th><th>Motor</th><th class="right">Durasi</th>
-    <th class="right">Total Sewa</th><th class="right">Fee Vendor</th>
-  </tr></thead><tbody>${rentalRows || '<tr><td colspan="6" style="text-align:center;padding:16px;color:#888">Tidak ada fee vendor pada periode ini</td></tr>'}</tbody></table>
-  <div class="sign-area"><div class="sign-box">
-    <div style="font-size:10px;color:#555">Hormat kami,</div>
-    <div class="sign-line">PT. Artha Bali Wisata</div>
-  </div></div>
-  ${footerHtml()}`
+	    <div style="flex:1">
+	      <div class="summary-grid" style="grid-template-columns:repeat(2,1fr)">
+	        <div class="summary-card"><div class="label">Jumlah Rental</div><div class="value">${rentals.length}x</div></div>
+	        <div class="summary-card"><div class="label">Total Fee Vendor</div><div class="value">${rp(totalCommission)}</div></div>
+	        <div class="summary-card"><div class="label">Rata-rata Fee Vendor</div><div class="value">${rp(averageCommission)}</div></div>
+	      </div>
+	    </div>
+	  </div>
+	  <div class="section-title">Rincian Fee Vendor</div>
+	  <table><thead><tr>
+	    <th>Tanggal</th><th>Pelanggan</th><th>Motor</th><th class="right">Durasi</th>
+	    <th class="right">Fee Vendor</th>
+	  </tr></thead><tbody>${rentalRows || '<tr><td colspan="5" style="text-align:center;padding:16px;color:#888">Tidak ada fee vendor pada periode ini</td></tr>'}</tbody></table>
+	  <div class="sign-area"><div class="sign-box">
+	    <div style="font-size:10px;color:#555">Hormat kami,</div>
+	    <div class="sign-line">PT. Artha Bali Wisata</div>
+	  </div></div>
+	  ${footerHtml()}`
 }
 
 // ─── 6. Laporan Laba Rugi ──────────────────────────────────────────────────
