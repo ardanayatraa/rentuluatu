@@ -428,6 +428,8 @@ export function registerReportHandlers() {
     const totalAssets = assetRows.reduce((sum, row) => sum + row.amount, 0)
     const totalLiabilities = liabilityRows.reduce((sum, row) => sum + row.amount, 0)
     const equityAmount = totalAssets - totalLiabilities
+    const profitToDate = Number(currentPeriodProfit?.total || 0)
+    const retainedEarnings = equityAmount - profitToDate
 
     return {
       asOfDate: cutoffDate,
@@ -441,8 +443,8 @@ export function registerReportHandlers() {
       },
       equity: {
         rows: [
-          { label: 'Saldo Ditahan / Ekuitas Bersih', amount: equityAmount },
-          { label: 'Laba Bersih Sampai Tanggal Laporan', amount: Number(currentPeriodProfit?.total || 0) }
+          { label: 'Saldo Ditahan', amount: retainedEarnings },
+          { label: 'Laba Bersih s/d Tanggal Laporan', amount: profitToDate }
         ],
         total: equityAmount
       },
