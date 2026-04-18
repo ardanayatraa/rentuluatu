@@ -3,6 +3,18 @@
 
 export const CHANGELOG = [
   {
+    version: '1.0.15',
+    date: '2026-04-18',
+    badge: { text: 'Bug Fix', tone: 'slate' },
+    intro: 'Perbaikan kecil agar fitur import stabil di halaman Motor.',
+    items: [
+      {
+        title: 'Import Motor Tidak Error',
+        desc: 'Perbaiki fungsi reload data setelah import supaya tidak muncul error "loadData is not defined".'
+      }
+    ]
+  },
+  {
     version: '1.0.14',
     date: '2026-04-18',
     badge: { text: 'Import Status Motor', tone: 'emerald' },

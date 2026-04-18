@@ -316,6 +316,19 @@ async function importExcel() {
   }
 }
 
+async function loadData() {
+  loading.value = true
+  ownersLoading.value = true
+  try {
+    motors.value = await window.api.getMotors()
+    owners.value = await window.api.getOwners({ activeOnly: true })
+    currentPage.value = 1
+  } finally {
+    loading.value = false
+    ownersLoading.value = false
+  }
+}
+
 function openAdd() {
   editId.value = null
   form.value = { model: '', plate_number: '', type: 'aset_pt', owner_id: '' }
@@ -405,15 +418,6 @@ async function deleteMotor(id) {
 }
 
 onMounted(async () => {
-  loading.value = true
-  ownersLoading.value = true
-  try {
-    motors.value = await window.api.getMotors()
-    owners.value = await window.api.getOwners({ activeOnly: true })
-    currentPage.value = 1
-  } finally {
-    loading.value = false
-    ownersLoading.value = false
-  }
+  await loadData()
 })
 </script>
