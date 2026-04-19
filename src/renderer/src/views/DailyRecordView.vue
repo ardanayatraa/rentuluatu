@@ -118,6 +118,10 @@
         <span class="material-symbols-outlined">restart_alt</span>
         Reset
       </button>
+      <select v-model="sortOrder" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+        <option value="oldest">Terlama</option>
+        <option value="newest">Terbaru</option>
+      </select>
       <select v-model.number="pageSize" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
         <option :value="10">10 / halaman</option>
         <option :value="25">25 / halaman</option>
@@ -703,6 +707,7 @@ const showMotorDropdown = ref(false)
 const showVendorDropdown = ref(false)
 const currentPage = ref(1)
 const pageSize = ref(10)
+const sortOrder = ref('oldest')
 const highlightedRentalId = ref(null)
 
 const defaultFilters = Object.freeze({ startDate: '', endDate: '', status: '', keyword: '' })
@@ -812,13 +817,21 @@ const filteredRentals = computed(() => {
   }) : byTab
 
   const keyword = String(filters.value.keyword || '').toLowerCase().trim()
-  if (!keyword) return byPayout
-  return byPayout.filter(r => {
+  const byKeyword = !keyword ? byPayout : byPayout.filter(r => {
     const customer = String(r.customer_name || '').toLowerCase()
     const plate = String(r.plate_number || '').toLowerCase()
     const model = String(r.model || '').toLowerCase()
     const invoice = String(r.invoice_number || '').toLowerCase()
     return customer.includes(keyword) || plate.includes(keyword) || model.includes(keyword) || invoice.includes(keyword)
+  })
+
+  return [...byKeyword].sort((a, b) => {
+    const aTime = new Date(a.date_time).getTime()
+    const bTime = new Date(b.date_time).getTime()
+    if (aTime === bTime) {
+      return sortOrder.value === 'oldest' ? Number(a.id || 0) - Number(b.id || 0) : Number(b.id || 0) - Number(a.id || 0)
+    }
+    return sortOrder.value === 'oldest' ? aTime - bTime : bTime - aTime
   })
 })
 const extendSourceOptions = computed(() => {
@@ -911,6 +924,10 @@ const pageStart = computed(() => filteredRentals.value.length ? ((currentPage.va
 const pageEnd = computed(() => Math.min(currentPage.value * pageSize.value, filteredRentals.value.length))
 
 watch(() => filters.value.keyword, () => {
+  currentPage.value = 1
+})
+
+watch(sortOrder, () => {
   currentPage.value = 1
 })
 
