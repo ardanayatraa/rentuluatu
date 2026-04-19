@@ -1,4 +1,4 @@
-import { ipcMain, app, shell } from 'electron'
+import { ipcMain, app, shell, dialog } from 'electron'
 import { join } from 'path'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'fs'
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypto'
@@ -6,6 +6,7 @@ import { createServer } from 'http'
 import { forceSaveDb } from '../db'
 import { Readable } from 'stream'
 import { logActivity } from '../lib/activity-log'
+import { getMachineIdSync } from '../lib/license'
 
 // googleapis di-lazy load supaya tidak crash saat startup
 let _google = null
@@ -204,6 +205,26 @@ function decryptBackupWithRecoveryKey({ fileData, keyBuffer, backupFilename }) {
 
 function parsePassphraseFromRecoveryKeyBuffer({ keyBuffer, backupFilename }) {
   return parseRecoveryKeyBuffer({ buffer: keyBuffer, backupFilename })
+}
+
+function restoreDbFromPlainData({ plainData, sourceLabel }) {
+  forceSaveDb()
+
+  const dbPath = getDbPath()
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+  if (existsSync(dbPath)) {
+    writeFileSync(join(getBackupDir(), `wavy_before_restore_${ts}.db`), readFileSync(dbPath))
+  }
+
+  writeFileSync(dbPath, plainData)
+  logActivity({
+    action: 'backup.restore-from-file',
+    detail: `Restore backup file (${sourceLabel})`
+  })
+  setTimeout(() => {
+    try { app.relaunch() } catch { /* ignore */ }
+    app.exit(0)
+  }, 800)
 }
 
 function monthStampLocal(date = new Date()) {
@@ -555,6 +576,63 @@ export function registerBackupHandlers() {
     if (!existsSync(normalizedPath)) throw new Error('File backup tidak ditemukan')
     shell.showItemInFolder(normalizedPath)
     return { success: true }
+  })
+
+  ipcMain.handle('backup:pick-restore-file', async (_, { kind }) => {
+    const type = String(kind || '').trim().toLowerCase()
+    if (!['backup', 'key'].includes(type)) {
+      throw new Error('Jenis file restore tidak valid')
+    }
+    const fileTypes = type === 'backup'
+      ? [{ name: 'Wavy Backup', extensions: ['wavy', 'db'] }]
+      : [{ name: 'Wavy Recovery Key', extensions: ['wavy'] }]
+    const result = await dialog.showOpenDialog({
+      title: type === 'backup' ? 'Pilih file backup' : 'Pilih file recovery key',
+      properties: ['openFile'],
+      filters: fileTypes
+    })
+    if (result.canceled || !result.filePaths?.length) return { canceled: true }
+    return { canceled: false, path: result.filePaths[0] }
+  })
+
+  ipcMain.handle('backup:restore-with-files', (_, { backupPath, keyPath, targetMachineId }) => {
+    if (!backupPath) throw new Error('File backup wajib dipilih')
+    const normalizedBackupPath = String(backupPath)
+    if (!existsSync(normalizedBackupPath)) throw new Error('File backup tidak ditemukan')
+
+    const machineId = getMachineIdSync()
+    const targetId = String(targetMachineId || '').trim().toUpperCase()
+    if (!targetId) throw new Error('ID perangkat target wajib diisi')
+    if (targetId !== machineId) {
+      throw new Error(`ID perangkat target tidak cocok dengan perangkat ini (${machineId})`)
+    }
+
+    const backupFileData = readFileSync(normalizedBackupPath)
+    let plainData = backupFileData
+    const backupName = normalizedBackupPath.split(/[/\\]/).pop() || normalizedBackupPath
+
+    if (normalizedBackupPath.endsWith('.wavy')) {
+      try {
+        plainData = decryptBackupWithLocalPassphrase({ fileData: backupFileData })
+      } catch (firstError) {
+        let keyBuffer = null
+        if (keyPath && existsSync(String(keyPath))) {
+          keyBuffer = readFileSync(String(keyPath))
+        } else {
+          const pairedLocalKeyPath = getRecoveryKeyPathForLocalBackup(normalizedBackupPath)
+          if (existsSync(pairedLocalKeyPath)) keyBuffer = readFileSync(pairedLocalKeyPath)
+        }
+        if (!keyBuffer) throw firstError
+        plainData = decryptBackupWithRecoveryKey({
+          fileData: backupFileData,
+          keyBuffer,
+          backupFilename: backupName
+        })
+      }
+    }
+
+    restoreDbFromPlainData({ plainData, sourceLabel: backupName })
+    return { success: true, relaunching: true }
   })
 
   // Restore dari backup lokal
