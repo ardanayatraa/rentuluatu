@@ -14,6 +14,13 @@
         Umum
       </button>
       <button
+        @click="settingsTab = 'activity-log'"
+        :class="settingsTab === 'activity-log' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'"
+        class="rounded-lg px-4 py-2 text-sm font-bold transition-colors"
+      >
+        Log Admin
+      </button>
+      <button
         v-if="transactionResetStatus.visible"
         @click="settingsTab = 'reset-transactions'"
         :class="settingsTab === 'reset-transactions' ? 'bg-white text-red-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'"
@@ -438,6 +445,80 @@
       </div>
     </div>
 
+    <div v-else-if="settingsTab === 'activity-log'" class="space-y-6">
+      <div class="card">
+        <div class="grid grid-cols-5 gap-3 mb-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-500 mb-1">Dari Tanggal</label>
+            <input v-model="activityFilters.dateFrom" type="date" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-500 mb-1">Sampai Tanggal</label>
+            <input v-model="activityFilters.dateTo" type="date" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-500 mb-1">Cari</label>
+            <input v-model="activityFilters.search" type="text" placeholder="aksi / username" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-500 mb-1">Sumber Log</label>
+            <select v-model="activityFilters.source" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
+              <option value="user">User saja</option>
+              <option value="system">System saja</option>
+              <option value="">Semua</option>
+            </select>
+          </div>
+          <div class="flex items-end gap-2">
+            <button @click="loadActivityLogs" :disabled="activityLoading" class="btn-primary text-xs px-3 py-2">
+              <span class="material-symbols-outlined text-sm">refresh</span>
+              {{ activityLoading ? 'Memuat...' : 'Muat Log' }}
+            </button>
+            <button @click="resetActivityFilters" class="btn-secondary text-xs px-3 py-2">Reset</button>
+          </div>
+        </div>
+
+        <div v-if="activityError" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 mb-3">
+          {{ activityError }}
+        </div>
+
+        <div class="rounded-xl border border-slate-200 overflow-hidden">
+          <div class="grid grid-cols-12 bg-slate-100 px-4 py-2 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+            <div class="col-span-3">Tanggal & Jam</div>
+            <div class="col-span-2">Admin</div>
+            <div class="col-span-3">Aksi</div>
+            <div class="col-span-4">Keterangan</div>
+          </div>
+          <div v-if="activityLoading" class="px-4 py-6 text-xs text-slate-400">Memuat log aktivitas...</div>
+          <div v-else-if="!activityLogs.length" class="px-4 py-6 text-xs text-slate-400">Belum ada log aktivitas.</div>
+          <div v-else class="max-h-[28rem] overflow-y-auto divide-y divide-slate-100">
+            <div v-for="item in paginatedActivityLogs" :key="item.id" class="grid grid-cols-12 px-4 py-3 text-xs text-slate-700">
+              <div class="col-span-3 font-semibold">{{ formatFileDate(item.created_at) }}</div>
+              <div class="col-span-2">{{ item.actor_username || '-' }}</div>
+              <div class="col-span-3 font-semibold text-indigo-700">
+                <span
+                  class="mr-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold"
+                  :class="item.source === 'user' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'"
+                >
+                  {{ item.source === 'user' ? 'USER' : 'SYSTEM' }}
+                </span>
+                {{ item.action }}
+              </div>
+              <div class="col-span-4">{{ item.detail || '-' }}</div>
+            </div>
+          </div>
+        </div>
+
+        <TablePagination
+          v-model:page="activityPage"
+          v-model:pageSize="activityPageSize"
+          :total="activityLogs.length"
+          :pageSizeOptions="[10,20,30,50]"
+          :showPageSize="true"
+          :disabled="activityLoading"
+        />
+      </div>
+    </div>
+
     <div v-else-if="settingsTab === 'reset-transactions'" class="space-y-6">
       <div class="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
         <div class="flex items-center gap-2 text-red-700">
@@ -612,6 +693,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { useLicenseStore } from '../stores/license'
+import TablePagination from '../components/TablePagination.vue'
 
 const auth = useAuthStore()
 const license = useLicenseStore()
@@ -624,6 +706,21 @@ const transactionResetConfirmText = ref('')
 const transactionResetLoading = ref(false)
 const transactionResetMessage = ref('')
 const transactionResetSuccess = ref(true)
+const activityLogs = ref([])
+const activityLoading = ref(false)
+const activityError = ref('')
+const activityPage = ref(1)
+const activityPageSize = ref(20)
+const activityFilters = ref({
+  dateFrom: '',
+  dateTo: '',
+  search: '',
+  source: 'user'
+})
+const paginatedActivityLogs = computed(() => {
+  const start = (activityPage.value - 1) * activityPageSize.value
+  return activityLogs.value.slice(start, start + activityPageSize.value)
+})
 
 // ── Lisensi ──────────────────────────────────────────────────────────────────
 const activationCode = ref('')
@@ -734,6 +831,27 @@ async function executeTransactionReset() {
 }
 
 // ── Backup ────────────────────────────────────────────────────────────────────
+async function loadActivityLogs() {
+  activityLoading.value = true
+  activityError.value = ''
+  activityPage.value = 1
+  try {
+    activityLogs.value = await window.api.getActivityLogs({
+      ...activityFilters.value,
+      limit: 200
+    })
+  } catch (error) {
+    activityError.value = `Gagal memuat log aktivitas: ${error.message}`
+  } finally {
+    activityLoading.value = false
+  }
+}
+
+function resetActivityFilters() {
+  activityFilters.value = { dateFrom: '', dateTo: '', search: '', source: 'user' }
+  loadActivityLogs()
+}
+
 const gdriveConnected = ref(false)
 const gdriveConfigured = ref(false)
 const backupLoading = ref(false)
@@ -1030,6 +1148,7 @@ onMounted(async () => {
   await loadBackupList()
   await runSystemAudit()
   await loadTransactionResetStatus()
+  await loadActivityLogs()
   if (!isDev) {
     try {
       productionReset.value = await window.api.getProductionResetStatus()

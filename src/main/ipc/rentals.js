@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import { dbOps, saveDb } from '../db'
 import { calcCommission } from '../lib/finance'
+import { logActivity } from '../lib/activity-log'
 
 export function registerRentalHandlers() {
   const allowedPaymentMethods = ['tunai', 'transfer', 'qris', 'debit_card']
@@ -52,6 +53,135 @@ export function registerRentalHandlers() {
     )
     if (legacyTx) reverseCashTransactionRows([legacyTx])
     dbOps.run("DELETE FROM cash_transactions WHERE reference_type = 'rental' AND reference_id = ?", [rentalId])
+  }
+  const deleteRefundTransactionsByRentalId = (rentalId) => {
+    const refunds = dbOps.all('SELECT * FROM refunds WHERE rental_id = ? ORDER BY id DESC', [rentalId])
+    for (const refund of refunds) {
+      const refundTxRows = dbOps.all(
+        `SELECT * FROM cash_transactions
+         WHERE reference_type = 'refund'
+           AND reference_id = ?
+         ORDER BY id DESC`,
+        [refund.id]
+      )
+      if (refundTxRows.length) {
+        reverseCashTransactionRows(refundTxRows)
+        dbOps.run(
+          `DELETE FROM cash_transactions
+           WHERE reference_type = 'refund'
+             AND reference_id = ?`,
+          [refund.id]
+        )
+      }
+    }
+    dbOps.run('DELETE FROM refunds WHERE rental_id = ?', [rentalId])
+  }
+  const deleteSwapSettlementTransactions = (replacementRentalId) => {
+    const settlementTxRows = dbOps.all(
+      `SELECT * FROM cash_transactions
+       WHERE reference_type = 'rental_swap_settlement'
+         AND reference_id = ?
+       ORDER BY id DESC`,
+      [replacementRentalId]
+    )
+    if (!settlementTxRows.length) return
+    reverseCashTransactionRows(settlementTxRows)
+    dbOps.run(
+      `DELETE FROM cash_transactions
+       WHERE reference_type = 'rental_swap_settlement'
+         AND reference_id = ?`,
+      [replacementRentalId]
+    )
+  }
+  const getExtendChildren = (parentRentalId) => dbOps.all(
+    `SELECT * FROM rentals
+     WHERE parent_rental_id = ?
+       AND relation_type = 'extend'
+     ORDER BY id DESC`,
+    [parentRentalId]
+  )
+  const ensureRentalDeleteAllowed = (rental) => {
+    if (!rental) throw new Error('Rental tidak ditemukan')
+    if (rental.payout_id && rental.payout_id !== 0) {
+      throw new Error('Rental tidak bisa dihapus karena sudah masuk ke pencairan hak mitra')
+    }
+    if (rental.hotel_payout_id) {
+      throw new Error('Rental tidak bisa dihapus karena sudah masuk ke pencairan fee vendor')
+    }
+  }
+  const validateDeleteCascade = (rentalId, visited = new Set()) => {
+    const normalizedId = Number(rentalId || 0)
+    if (!normalizedId || visited.has(normalizedId)) return
+    visited.add(normalizedId)
+
+    const rental = dbOps.get('SELECT * FROM rentals WHERE id = ?', [normalizedId])
+    ensureRentalDeleteAllowed(rental)
+
+    const extendChildren = getExtendChildren(normalizedId)
+    for (const child of extendChildren) {
+      validateDeleteCascade(child.id, visited)
+    }
+  }
+  const deleteRentalCascade = (rentalId, visited = new Set()) => {
+    const normalizedId = Number(rentalId || 0)
+    if (!normalizedId || visited.has(normalizedId)) return
+    visited.add(normalizedId)
+
+    const extendChildren = getExtendChildren(normalizedId)
+    for (const child of extendChildren) {
+      deleteRentalCascade(child.id, visited)
+    }
+
+    deleteRefundTransactionsByRentalId(normalizedId)
+    deleteRentalCashTransactions(normalizedId)
+    dbOps.run('DELETE FROM rentals WHERE id = ?', [normalizedId])
+  }
+  const restoreSourceRentalFromSwap = (swapRow, sourceRental) => {
+    const sourceTotal = roundCurrency(Number(sourceRental.total_price || 0) + Number(swapRow.original_remaining_credit || 0))
+    const sourcePeriodDays = Number(swapRow.used_days || 0) + Number(swapRow.remaining_days || 0)
+    const sourceVendorRatio = Number(sourceRental.total_price || 0) > 0
+      ? Number(sourceRental.vendor_fee || 0) / Number(sourceRental.total_price || 0)
+      : 0
+    const restoredVendorFee = roundCurrency(sourceVendorRatio * sourceTotal)
+    const sourceMotor = dbOps.get('SELECT * FROM motors WHERE id = ?', [sourceRental.motor_id])
+    const commission = calcCommission(
+      sourceMotor?.type || 'pribadi',
+      sourceTotal,
+      restoredVendorFee
+    )
+
+    dbOps.run(`
+      UPDATE rentals
+      SET period_days = ?, total_price = ?, price_per_day = ?, vendor_fee = ?, sisa = ?, wavy_gets = ?, owner_gets = ?, relation_type = 'rental'
+      WHERE id = ?
+    `, [
+      sourcePeriodDays,
+      sourceTotal,
+      Number(swapRow.original_price_per_day || 0),
+      restoredVendorFee,
+      commission.sisa,
+      commission.wavy_gets,
+      commission.owner_gets,
+      sourceRental.id
+    ])
+  }
+  const cancelSwapAndMaybeDelete = (swapRow, targetRentalId) => {
+    const sourceRental = dbOps.get('SELECT * FROM rentals WHERE id = ?', [swapRow.source_rental_id])
+    const replacementRental = dbOps.get('SELECT * FROM rentals WHERE id = ?', [swapRow.replacement_rental_id])
+
+    ensureRentalDeleteAllowed(sourceRental)
+    ensureRentalDeleteAllowed(replacementRental)
+    validateDeleteCascade(replacementRental.id)
+
+    deleteSwapSettlementTransactions(replacementRental.id)
+    deleteRentalCascade(replacementRental.id)
+    dbOps.run('DELETE FROM rental_swaps WHERE id = ?', [swapRow.id])
+    restoreSourceRentalFromSwap(swapRow, sourceRental)
+
+    if (Number(targetRentalId) === Number(sourceRental.id)) {
+      validateDeleteCascade(sourceRental.id)
+      deleteRentalCascade(sourceRental.id)
+    }
   }
   const applyRentalCashTransactions = ({
     rentalId,
@@ -212,6 +342,11 @@ export function registerRentalHandlers() {
       }
       dbOps.runRaw('COMMIT')
       saveDb()
+      logActivity({
+        source: 'user',
+        action: 'rental.create',
+        detail: `Tambah rental #${rentalId} (${invoiceNumber})`
+      })
       return { id: rentalId, invoice_number: invoiceNumber }
     } catch (error) {
       dbOps.runRaw('ROLLBACK')
@@ -281,6 +416,11 @@ export function registerRentalHandlers() {
       })
       dbOps.runRaw('COMMIT')
       saveDb()
+      logActivity({
+        source: 'user',
+        action: 'rental.extend',
+        detail: `Extend rental #${parentRental.id} menjadi transaksi #${rentalId} (${invoiceNumber})`
+      })
       return { id: rentalId, invoice_number: invoiceNumber }
     } catch (error) {
       dbOps.runRaw('ROLLBACK')
@@ -466,6 +606,11 @@ export function registerRentalHandlers() {
 
       dbOps.runRaw('COMMIT')
       saveDb()
+      logActivity({
+        source: 'user',
+        action: 'rental.swap-unit',
+        detail: `Ganti unit rental #${sourceRentalId} -> #${replacementRentalId} (${replacementInvoice})`
+      })
 
       return {
         success: true,
@@ -538,6 +683,11 @@ export function registerRentalHandlers() {
 
       dbOps.runRaw('COMMIT')
       saveDb()
+      logActivity({
+        source: 'user',
+        action: 'rental.update',
+        detail: `Update rental #${id}`
+      })
     } catch (error) {
       dbOps.runRaw('ROLLBACK')
       throw error
@@ -547,30 +697,24 @@ export function registerRentalHandlers() {
 
   ipcMain.handle('rental:delete', (_, id) => {
     const rental = dbOps.get('SELECT * FROM rentals WHERE id = ?', [id])
-    if (!rental) throw new Error('Rental tidak ditemukan')
-
-    // Tidak boleh hapus kalau sudah masuk payout owner atau hotel
-    if (rental.payout_id && rental.payout_id !== 0) {
-      throw new Error('Rental tidak bisa dihapus karena sudah masuk ke pencairan hak mitra')
-    }
-    if (rental.hotel_payout_id) {
-      throw new Error('Rental tidak bisa dihapus karena sudah masuk ke pencairan fee vendor')
-    }
-    const swapRelation = dbOps.get('SELECT id FROM rental_swaps WHERE source_rental_id = ? OR replacement_rental_id = ?', [id, id])
-    if (swapRelation) {
-      throw new Error('Rental terkait ganti unit tidak bisa dihapus satuan. Batalkan data ganti unit dari menu Ganti Unit.')
-    }
+    ensureRentalDeleteAllowed(rental)
+    const swapRelation = dbOps.get('SELECT * FROM rental_swaps WHERE source_rental_id = ? OR replacement_rental_id = ?', [id, id])
 
     dbOps.runRaw('BEGIN TRANSACTION')
     try {
-      // Kembalikan saldo kas berdasarkan transaksi kas rental + fee vendor yang tercatat.
-      deleteRentalCashTransactions(id)
-
-      // Hapus refund terkait jika ada
-      dbOps.run('DELETE FROM refunds WHERE rental_id = ?', [id])
-      dbOps.run('DELETE FROM rentals WHERE id = ?', [id])
+      if (swapRelation) {
+        cancelSwapAndMaybeDelete(swapRelation, id)
+      } else {
+        validateDeleteCascade(id)
+        deleteRentalCascade(id)
+      }
       dbOps.runRaw('COMMIT')
       saveDb()
+      logActivity({
+        source: 'user',
+        action: 'rental.delete',
+        detail: `Hapus rental #${id}`
+      })
     } catch (error) {
       dbOps.runRaw('ROLLBACK')
       throw error
@@ -582,6 +726,11 @@ export function registerRentalHandlers() {
     const rental = dbOps.get('SELECT * FROM rentals WHERE id = ?', [id])
     if (!rental) throw new Error('Rental tidak ditemukan')
     dbOps.run("UPDATE rentals SET status = 'completed' WHERE id = ?", [id])
+    logActivity({
+      source: 'user',
+      action: 'rental.complete',
+      detail: `Set status completed untuk rental #${id}`
+    })
     return { success: true }
   })
 }

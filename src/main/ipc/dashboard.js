@@ -207,31 +207,21 @@ export function registerDashboardHandlers() {
   ipcMain.handle('dashboard:payment-breakdown', (_, { startDate, endDate }) => {
     const start = startDate.split('T')[0]
     const end = endDate.split('T')[0]
-    
-    const rentals = dbOps.all(`
-      SELECT r.payment_method, COALESCE(SUM(${NET_RENTAL_INCOME_EXPR}), 0) as total, COUNT(*) as count
-      FROM rentals r
-      WHERE date(r.date_time) BETWEEN ? AND ? AND r.status != 'refunded'
-      GROUP BY r.payment_method
-    `, [start, end])
 
-    const manuals = dbOps.all(`
-      SELECT ca.type as payment_method, COALESCE(SUM(ct.amount), 0) as amount, COUNT(*) as count
+    const inflows = dbOps.all(`
+      SELECT
+        ca.type as payment_method,
+        COALESCE(SUM(ct.amount), 0) as total,
+        COUNT(*) as count
       FROM cash_transactions ct
       JOIN cash_accounts ca ON ct.cash_account_id = ca.id
-      WHERE ct.reference_type = 'manual_income' AND ct.date BETWEEN ? AND ?
+      WHERE ct.type = 'in'
+        AND ct.date BETWEEN ? AND ?
+        AND ct.reference_type IN ('rental', 'manual_income', 'rental_swap_settlement')
       GROUP BY ca.type
     `, [start, end])
 
-    const map = new Map()
-    rentals.forEach(r => map.set(r.payment_method, { ...r }))
-    manuals.forEach(m => {
-      const ex = map.get(m.payment_method) || { payment_method: m.payment_method, total: 0, count: 0 }
-      ex.total += m.amount
-      ex.count += m.count
-      map.set(m.payment_method, ex)
-    })
-    return Array.from(map.values())
+    return inflows
   })
 
   ipcMain.handle('dashboard:top-motors', (_, { startDate, endDate }) => {

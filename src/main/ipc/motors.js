@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import { dbOps, saveDb } from '../db'
+import { logActivity } from '../lib/activity-log'
 
 export function registerMotorHandlers() {
   const ownerLabelForAsetPt = 'Owner Pribadi (PT)'
@@ -69,6 +70,11 @@ export function registerMotorHandlers() {
     }
     const row = dbOps.get('SELECT last_insert_rowid() as id')
     saveDb()
+    logActivity({
+      source: 'user',
+      action: 'motor.create',
+      detail: `Tambah motor ${data.model} (${data.plate_number})`
+    })
     return { id: row.id }
   })
 
@@ -81,6 +87,11 @@ export function registerMotorHandlers() {
       'UPDATE motors SET model=?, plate_number=?, type=?, owner_id=? WHERE id=?',
       [data.model, data.plate_number, data.type, ownerId, id]
     )
+    logActivity({
+      source: 'user',
+      action: 'motor.update',
+      detail: `Update motor #${id} menjadi ${data.model} (${data.plate_number})`
+    })
     return { success: true }
   })
 
@@ -94,8 +105,18 @@ export function registerMotorHandlers() {
       } else {
         throw new Error('Motor tidak bisa dihapus karena memiliki riwayat sewa.')
       }
+      logActivity({
+        source: 'user',
+        action: 'motor.soft-delete',
+        detail: `Nonaktifkan motor #${id} karena memiliki riwayat transaksi`
+      })
     } else {
       dbOps.run('DELETE FROM motors WHERE id = ?', [id])
+      logActivity({
+        source: 'user',
+        action: 'motor.delete',
+        detail: `Hapus motor #${id}`
+      })
     }
     return { success: true }
   })

@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import { dbOps, saveDb } from '../db'
+import { logActivity } from '../lib/activity-log'
 
 function getReservedOwnerFunds() {
   const ownerRentalRows = dbOps.all(`
@@ -116,6 +117,11 @@ export function registerExpenseHandlers() {
       VALUES (?, 'out', ?, 'expense', ?, ?, ?)
     `, [cashAccount.id, amount, expenseId, data.description || data.category, data.date])
     dbOps.run('UPDATE cash_accounts SET balance = balance - ? WHERE id = ?', [amount, cashAccount.id])
+    logActivity({
+      source: 'user',
+      action: 'expense.create',
+      detail: `Tambah pengeluaran #${expenseId} sebesar Rp ${Math.round(amount).toLocaleString('id-ID')}`
+    })
 
     return { id: expenseId }
   })
@@ -131,6 +137,11 @@ export function registerExpenseHandlers() {
       }
     }
     dbOps.run('DELETE FROM expenses WHERE id = ?', [id])
+    logActivity({
+      source: 'user',
+      action: 'expense.delete',
+      detail: `Hapus pengeluaran #${id}`
+    })
     return { success: true }
   })
 }

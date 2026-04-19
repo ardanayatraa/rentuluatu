@@ -3,6 +3,7 @@ import { dbOps, getDb, saveDb, forceSaveDb } from '../db'
 import { calcCommission } from '../lib/finance'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
+import { logActivity } from '../lib/activity-log'
 
 const RESET_SETTINGS_FILENAME = 'reset-settings.json'
 const TRANSACTION_RESET_WINDOW_DAYS = 3
@@ -860,7 +861,12 @@ export function registerResetHandlers() {
 
   ipcMain.handle('db:reset-all', () => {
     assertDevOnly()
-    return performResetAllData()
+    const result = performResetAllData()
+    logActivity({
+      action: 'system.reset-all',
+      detail: 'Reset semua data dilakukan dari pengaturan (development mode)'
+    })
+    return result
   })
 
   ipcMain.handle('db:production-reset-status', () => {
@@ -877,6 +883,10 @@ export function registerResetHandlers() {
     }
 
     const result = performResetAllData()
+    logActivity({
+      action: 'system.reset-production-once',
+      detail: 'Reset data production sekali pakai dijalankan'
+    })
     saveResetSettings({
       ...current,
       productionResetUsed: true,
@@ -899,6 +909,10 @@ export function registerResetHandlers() {
     }
 
     const result = performResetTransactionsOnly()
+    logActivity({
+      action: 'system.reset-transactions-only',
+      detail: 'Reset transaksi saja dijalankan dari pengaturan'
+    })
     return {
       ...result,
       expiresAt: status.expiresAt

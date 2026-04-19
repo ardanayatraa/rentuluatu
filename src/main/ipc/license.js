@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import { dbOps, saveDb } from '../db'
 import { getMachineIdSync, checkLicenseStatus, parseActivationCode, verifySerial } from '../lib/license'
+import { logActivity } from '../lib/activity-log'
 
 export function registerLicenseHandlers() {
 
@@ -37,6 +38,10 @@ export function registerLicenseHandlers() {
         [now, machineId]
       )
     }
+    logActivity({
+      action: 'license.start-trial',
+      detail: 'Trial lisensi dimulai'
+    })
     return { success: true }
   })
 
@@ -55,6 +60,10 @@ export function registerLicenseHandlers() {
     const { valid } = verifySerial(serial, machineId, expiryDate)
 
     if (!valid) {
+      logActivity({
+        action: 'license.activate.failed',
+        detail: 'Aktivasi lisensi gagal karena kode tidak valid'
+      })
       return { success: false, message: 'Kode aktivasi tidak valid atau tidak sesuai dengan perangkat ini' }
     }
 
@@ -76,6 +85,10 @@ export function registerLicenseHandlers() {
 
     const license = dbOps.get('SELECT * FROM license WHERE id = 1')
     const status = checkLicenseStatus(license)
+    logActivity({
+      action: 'license.activate.success',
+      detail: `Lisensi berhasil diaktifkan hingga ${expiryDate}`
+    })
     return { success: true, ...status }
   })
 }

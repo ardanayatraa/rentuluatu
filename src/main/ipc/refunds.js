@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import { dbOps, saveDb } from '../db'
+import { logActivity } from '../lib/activity-log'
 
 export function registerRefundHandlers() {
   ipcMain.handle('refund:calculate', (_, { rentalId, remainingDays, percentage }) => {
@@ -46,6 +47,11 @@ export function registerRefundHandlers() {
       `, [cashAccount.id, data.refund_amount, refundId, `Refund rental #${data.rental_id}`, today])
       dbOps.run('UPDATE cash_accounts SET balance = balance - ? WHERE id = ?', [data.refund_amount, cashAccount.id])
     }
+    logActivity({
+      source: 'user',
+      action: 'refund.create',
+      detail: `Refund rental #${data.rental_id} sebesar Rp ${Math.round(Number(data.refund_amount || 0)).toLocaleString('id-ID')}`
+    })
 
     return { id: refundId }
   })

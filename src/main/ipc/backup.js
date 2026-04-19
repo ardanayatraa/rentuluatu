@@ -5,6 +5,7 @@ import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypt
 import { createServer } from 'http'
 import { forceSaveDb } from '../db'
 import { Readable } from 'stream'
+import { logActivity } from '../lib/activity-log'
 
 // googleapis di-lazy load supaya tidak crash saat startup
 let _google = null
@@ -290,6 +291,10 @@ export function registerBackupHandlers() {
     const current = loadBackupSettings()
     const next = { ...current, autoBackupOnClose: Boolean(enabled) }
     saveBackupSettings(next)
+    logActivity({
+      action: 'backup.auto-close-set',
+      detail: `Backup otomatis saat tutup app ${next.autoBackupOnClose ? 'diaktifkan' : 'dimatikan'}`
+    })
     return { success: true, enabled: next.autoBackupOnClose }
   })
 
@@ -326,6 +331,10 @@ export function registerBackupHandlers() {
             res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
             res.end('<html><body style="font-family:sans-serif;text-align:center;padding:40px;background:#f0fdf4"><h2 style="color:#16a34a">Berhasil terhubung!</h2><p>Google Drive sudah terhubung ke Wavy Rental.</p><p style="color:#64748b">Silakan tutup tab ini dan kembali ke aplikasi.</p></body></html>')
             server.close()
+            logActivity({
+              action: 'backup.gdrive-connect.success',
+              detail: 'Google Drive berhasil dihubungkan'
+            })
             resolve({ success: true })
           }
         } catch (err) {
@@ -352,7 +361,14 @@ export function registerBackupHandlers() {
     })
   })
 
-  ipcMain.handle('backup:gdrive-disconnect', () => { clearToken(); return { success: true } })
+  ipcMain.handle('backup:gdrive-disconnect', () => {
+    clearToken()
+    logActivity({
+      action: 'backup.gdrive-disconnect',
+      detail: 'Google Drive diputus'
+    })
+    return { success: true }
+  })
 
   // Cek apakah passphrase sudah di-set (custom atau auto)
   ipcMain.handle('backup:get-passphrase-status', () => {
@@ -364,6 +380,10 @@ export function registerBackupHandlers() {
   ipcMain.handle('backup:set-passphrase', (_, { passphrase }) => {
     if (!passphrase || passphrase.length < 6) throw new Error('Passphrase minimal 6 karakter')
     setCustomPassphrase(passphrase)
+    logActivity({
+      action: 'backup.set-passphrase',
+      detail: 'Passphrase backup diperbarui'
+    })
     return { success: true }
   })
 
@@ -382,6 +402,10 @@ export function registerBackupHandlers() {
     const backupPath = join(getBackupDir(), backupName)
     writeFileSync(backupPath, encData)
     pruneLocalBackups({ keepMonths: 24 })
+    logActivity({
+      action: 'backup.create-local',
+      detail: `Checkpoint lokal dibuat (${backupName})`
+    })
 
     return { success: true, filename: backupName, path: backupPath, encrypted: true }
   })
@@ -424,6 +448,10 @@ export function registerBackupHandlers() {
     }
 
     writeFileSync(dbPath, plainData)
+    logActivity({
+      action: 'backup.restore-local',
+      detail: `Restore backup lokal (${backupPath.split(/[/\\]/).pop() || backupPath})`
+    })
     setTimeout(() => {
       try { app.relaunch() } catch { /* ignore */ }
       app.exit(0)
@@ -445,6 +473,10 @@ export function registerBackupHandlers() {
     // Standar: 1 file per bulan (overwrite) agar tidak menumpuk.
     const filename = `wavy_backup_monthly_${monthStampLocal()}.wavy`
     const result = await uploadBackupToDrive({ filename, buffer: encData })
+    logActivity({
+      action: 'backup.gdrive-upload',
+      detail: `Backup berhasil di-upload ke Google Drive (${filename})`
+    })
     return { ...result, encrypted: true }
   })
 
@@ -479,6 +511,10 @@ export function registerBackupHandlers() {
     }
 
     writeFileSync(dbPath, plainData)
+    logActivity({
+      action: 'backup.gdrive-restore',
+      detail: `Restore backup dari Google Drive (${fileName || fileId})`
+    })
     setTimeout(() => {
       try { app.relaunch() } catch { /* ignore */ }
       app.exit(0)
@@ -493,6 +529,10 @@ export function registerBackupHandlers() {
     const google = await getGoogle()
     const drive = google.drive({ version: 'v3', auth })
     await drive.files.delete({ fileId })
+    logActivity({
+      action: 'backup.gdrive-delete',
+      detail: `Backup Google Drive dihapus (${fileId})`
+    })
     return { success: true }
   })
 }

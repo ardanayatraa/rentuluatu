@@ -13,7 +13,7 @@ const SAVE_DEBOUNCE_MS = 250
 // Versi schema — naikkan angka ini setiap kali ada perubahan struktur database.
 // Sistem akan otomatis jalankan migrasi yang belum pernah dijalankan.
 // ─────────────────────────────────────────────────────────────────────────────
-const SCHEMA_VERSION = 12
+const SCHEMA_VERSION = 14
 
 export async function initDb() {
   const wasmPath = join(
@@ -306,6 +306,18 @@ function createBaseSchema() {
       created_at TEXT DEFAULT (datetime('now','localtime'))
     )
   `)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS activity_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      actor_user_id INTEGER REFERENCES users(id),
+      actor_username TEXT NOT NULL,
+      source TEXT DEFAULT 'system',
+      action TEXT NOT NULL,
+      detail TEXT,
+      metadata TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    )
+  `)
 }
 
 function createBaseIndexes() {
@@ -326,6 +338,9 @@ function createBaseIndexes() {
     'CREATE INDEX IF NOT EXISTS idx_payouts_owner_date ON payouts(owner_id, date)',
     'CREATE INDEX IF NOT EXISTS idx_hotel_payouts_hotel_date ON hotel_payouts(hotel_id, date)',
     'CREATE INDEX IF NOT EXISTS idx_downloads_created_at ON downloads(created_at)',
+    'CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON activity_logs(created_at)',
+    'CREATE INDEX IF NOT EXISTS idx_activity_logs_actor_created ON activity_logs(actor_username, created_at)',
+    'CREATE INDEX IF NOT EXISTS idx_activity_logs_source_created ON activity_logs(source, created_at)',
     'CREATE INDEX IF NOT EXISTS idx_motors_owner_active ON motors(owner_id, is_active)',
     'CREATE INDEX IF NOT EXISTS idx_hotels_active_name ON hotels(is_active, name)',
     'CREATE INDEX IF NOT EXISTS idx_owners_active_name ON owners(is_active, name)'
@@ -529,6 +544,36 @@ const migrations = [
           )
         `)
       } catch (_) {}
+      createBaseIndexes()
+    }
+  },
+  // v13 - tabel log aktivitas admin
+  {
+    version: 13,
+    up() {
+      try {
+        db.run(`
+          CREATE TABLE IF NOT EXISTS activity_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            actor_user_id INTEGER REFERENCES users(id),
+            actor_username TEXT NOT NULL,
+            source TEXT DEFAULT 'system',
+            action TEXT NOT NULL,
+            detail TEXT,
+            metadata TEXT,
+            created_at TEXT DEFAULT (datetime('now','localtime'))
+          )
+        `)
+      } catch (_) {}
+      createBaseIndexes()
+    }
+  },
+  // v14 - sumber log (user vs system)
+  {
+    version: 14,
+    up() {
+      try { db.run("ALTER TABLE activity_logs ADD COLUMN source TEXT DEFAULT 'system'") } catch (_) {}
+      try { db.run("UPDATE activity_logs SET source = 'system' WHERE source IS NULL OR TRIM(source) = ''") } catch (_) {}
       createBaseIndexes()
     }
   },

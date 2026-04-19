@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import { dbOps, saveDb } from '../db'
+import { logActivity } from '../lib/activity-log'
 
 export function registerOwnerHandlers() {
   ipcMain.handle('owner:get-all', (_, { activeOnly = false } = {}) => {
@@ -64,6 +65,11 @@ export function registerOwnerHandlers() {
     )
     const row = dbOps.get('SELECT last_insert_rowid() as id')
     saveDb()
+    logActivity({
+      source: 'user',
+      action: 'owner.create',
+      detail: `Tambah pemilik ${data.name}`
+    })
     return { id: row.id }
   })
 
@@ -72,6 +78,11 @@ export function registerOwnerHandlers() {
       'UPDATE owners SET name=?, phone=?, bank_account=?, bank_name=?, is_active=? WHERE id=?',
       [data.name, data.phone, null, null, data.is_active ?? 1, id]
     )
+    logActivity({
+      source: 'user',
+      action: 'owner.update',
+      detail: `Update pemilik #${id} (${data.name})`
+    })
     return { success: true }
   })
 
@@ -88,11 +99,21 @@ export function registerOwnerHandlers() {
     if (hasMotors || hasPayouts || hasRentals) {
       // Ada data terkait → soft delete saja
       dbOps.run('UPDATE owners SET is_active = 0 WHERE id = ?', [id])
+      logActivity({
+        source: 'user',
+        action: 'owner.soft-delete',
+        detail: `Nonaktifkan pemilik #${id}`
+      })
       return { success: true, softDeleted: true }
     }
 
     // Tidak ada data terkait → hard delete
     dbOps.run('DELETE FROM owners WHERE id = ?', [id])
+    logActivity({
+      source: 'user',
+      action: 'owner.delete',
+      detail: `Hapus pemilik #${id}`
+    })
     return { success: true, softDeleted: false }
   })
 
@@ -330,6 +351,12 @@ export function registerOwnerHandlers() {
           data.date])
       dbOps.run('UPDATE cash_accounts SET balance = balance - ? WHERE id = ?', [serverNetAmount, data.cash_account_id])
     }
+
+    logActivity({
+      source: 'user',
+      action: 'owner.payout',
+      detail: `Payout mitra #${data.owner_id} sebesar Rp ${Math.round(serverNetAmount).toLocaleString('id-ID')}`
+    })
 
     return { success: true, payoutId }
   })

@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import { dbOps } from '../db'
+import { logActivity } from '../lib/activity-log'
 
 function getReservedOwnerFunds() {
   const ownerRentalRows = dbOps.all(`
@@ -108,6 +109,11 @@ export function registerCashHandlers() {
       INSERT INTO cash_transactions (cash_account_id, type, amount, reference_type, description, date)
       VALUES (?, 'in', ?, 'opening_balance', 'Saldo Awal', ?)
     `, [accountId, amount, today])
+    logActivity({
+      source: 'user',
+      action: 'cash.set-opening-balance',
+      detail: `Set saldo awal akun #${accountId} menjadi Rp ${Math.round(Number(amount || 0)).toLocaleString('id-ID')}`
+    })
     return { success: true }
   })
 
@@ -159,6 +165,11 @@ export function registerCashHandlers() {
       VALUES (?, 'in', ?, ?, ?, ?)
     `, [account.id, payload.amount, payload.entryType, payload.description, payload.date])
     dbOps.run('UPDATE cash_accounts SET balance = balance + ? WHERE id = ?', [payload.amount, account.id])
+    logActivity({
+      source: 'user',
+      action: 'cash.add-income',
+      detail: `Input pemasukan manual Rp ${Math.round(payload.amount).toLocaleString('id-ID')} (${payload.entryType})`
+    })
     return { success: true }
   })
 
@@ -176,6 +187,11 @@ export function registerCashHandlers() {
       VALUES (?, 'out', ?, 'manual_expense', ?, ?)
     `, [account.id, payload.amount, payload.description, payload.date])
     dbOps.run('UPDATE cash_accounts SET balance = balance - ? WHERE id = ?', [payload.amount, account.id])
+    logActivity({
+      source: 'user',
+      action: 'cash.add-expense',
+      detail: `Input pengeluaran manual Rp ${Math.round(payload.amount).toLocaleString('id-ID')}`
+    })
     return { success: true }
   })
 }

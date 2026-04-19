@@ -13,6 +13,7 @@ export const useAuthStore = defineStore('auth', () => {
       if (result.success) {
         user.value = result.user
         sessionStorage.setItem('wavy_user', JSON.stringify(result.user))
+        await window.api.setActiveUser(result.user)
       }
       return result
     } catch (e) {
@@ -22,6 +23,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function logout() {
+    try { window.api.clearActiveUser() } catch (_) {}
     user.value = null
     sessionStorage.removeItem('wavy_user')
     resetLicenseCache()

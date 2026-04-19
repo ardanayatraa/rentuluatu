@@ -4,6 +4,8 @@ const invoke = (channel, ...args) => ipcRenderer.invoke(channel, ...args)
 
 contextBridge.exposeInMainWorld('api', {
   login: (data) => invoke('auth:login', data),
+  setActiveUser: (data) => invoke('auth:set-active-user', data),
+  clearActiveUser: () => invoke('auth:clear-active-user'),
   changePassword: (data) => invoke('auth:change-password', data),
   setInitialPassword: (data) => invoke('auth:set-initial-password', data),
   getMotors: () => invoke('motor:get-all'),
@@ -75,6 +77,7 @@ contextBridge.exposeInMainWorld('api', {
   resetProductionDataOnce: () => invoke('db:production-reset-once'),
   getTransactionResetStatus: () => invoke('db:reset-transactions-status'),
   resetTransactionsOnly: () => invoke('db:reset-transactions-only'),
+  getActivityLogs: (filters) => invoke('logs:get-activities', filters),
   seedProdSimulationData: () => invoke('db:seed-prod-simulation'),
   getDevSandboxStats: () => invoke('db:dev-stats'),
   seedDevSandboxData: (data) => invoke('db:dev-seed', data),

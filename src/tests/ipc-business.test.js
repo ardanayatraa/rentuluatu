@@ -147,6 +147,31 @@ describe('IPC business logic', () => {
     ])
   })
 
+  it('dashboard payment breakdown memakai mutasi kas masuk per metode bayar', async () => {
+    dbOps.all.mockImplementation((sql) => {
+      if (sql.includes('FROM cash_transactions ct') && sql.includes("ct.reference_type IN ('rental', 'manual_income', 'rental_swap_settlement')")) {
+        return [
+          { payment_method: 'tunai', total: 400_000, count: 1 },
+          { payment_method: 'debit_card', total: 450_000, count: 1 },
+          { payment_method: 'transfer', total: 300_000, count: 2 }
+        ]
+      }
+      return []
+    })
+
+    registerDashboardHandlers()
+    const rows = handlers.get('dashboard:payment-breakdown')(null, {
+      startDate: '2026-04-01T00:00:00',
+      endDate: '2026-04-30T23:59:59'
+    })
+
+    expect(rows).toEqual([
+      { payment_method: 'tunai', total: 400_000, count: 1 },
+      { payment_method: 'debit_card', total: 450_000, count: 1 },
+      { payment_method: 'transfer', total: 300_000, count: 2 }
+    ])
+  })
+
   it('owner slip period meta mengambil payout terakhir dan aktivitas paling awal', async () => {
     dbOps.get.mockImplementation((sql) => {
       if (sql.includes('FROM payouts p')) return { date: '2026-04-06' }
@@ -291,18 +316,158 @@ describe('IPC business logic', () => {
     expect(saveDb).toHaveBeenCalled()
   })
 
-  it('rental delete menolak hapus data yang terkait rantai ganti unit', async () => {
-    dbOps.get.mockImplementation((sql) => {
+  it('rental delete menghapus refund beserta mutasi kasnya', async () => {
+    dbOps.get.mockImplementation((sql, params) => {
       if (sql.includes('SELECT * FROM rentals WHERE id = ?')) {
-        return { id: 11, payout_id: null, hotel_payout_id: null, status: 'completed' }
+        return { id: params[0], payout_id: null, hotel_payout_id: null, payment_method: 'debit_card' }
       }
-      if (sql.includes('SELECT id FROM rental_swaps')) return { id: 5 }
+      if (sql.includes('SELECT * FROM rental_swaps')) return null
       return null
+    })
+    dbOps.all.mockImplementation((sql, params) => {
+      if (sql.includes('FROM rentals') && sql.includes("relation_type = 'extend'")) return []
+      if (sql.includes('SELECT * FROM refunds WHERE rental_id = ?')) {
+        return [{ id: 71, rental_id: params[0], refund_amount: 200_000 }]
+      }
+      if (sql.includes("reference_type = 'refund'")) {
+        return [{ id: 81, cash_account_id: 4, type: 'out', amount: 200_000 }]
+      }
+      if (sql.includes('reference_type IN (\'rental\', \'rental_vendor_fee\')')) {
+        return [{ id: 91, cash_account_id: 4, type: 'in', amount: 450_000 }]
+      }
+      return []
     })
 
     registerRentalHandlers()
-    expect(() => handlers.get('rental:delete')(null, 11))
-      .toThrow('Rental terkait ganti unit tidak bisa dihapus satuan. Batalkan data ganti unit dari menu Ganti Unit.')
+    const result = handlers.get('rental:delete')(null, 11)
+
+    expect(result).toEqual({ success: true })
+    expect(dbOps.run).toHaveBeenCalledWith(
+      'UPDATE cash_accounts SET balance = balance + ? WHERE id = ?',
+      [200_000, 4]
+    )
+    expect(dbOps.run).toHaveBeenCalledWith(
+      'UPDATE cash_accounts SET balance = balance + ? WHERE id = ?',
+      [-450_000, 4]
+    )
+    expect(dbOps.run).toHaveBeenCalledWith(
+      expect.stringContaining("DELETE FROM cash_transactions"),
+      [71]
+    )
+    expect(dbOps.run).toHaveBeenCalledWith('DELETE FROM refunds WHERE rental_id = ?', [11])
+    expect(dbOps.run).toHaveBeenCalledWith('DELETE FROM rentals WHERE id = ?', [11])
+    expect(saveDb).toHaveBeenCalled()
+  })
+
+  it('rental delete menghapus extend turunan secara berantai', async () => {
+    dbOps.get.mockImplementation((sql, params) => {
+      if (sql.includes('SELECT * FROM rentals WHERE id = ?')) {
+        if (params[0] === 20) return { id: 20, payout_id: null, hotel_payout_id: null }
+        if (params[0] === 21) return { id: 21, payout_id: null, hotel_payout_id: null }
+      }
+      if (sql.includes('SELECT * FROM rental_swaps')) return null
+      return null
+    })
+    dbOps.all.mockImplementation((sql, params) => {
+      if (sql.includes('FROM rentals') && sql.includes("relation_type = 'extend'")) {
+        if (params[0] === 20) return [{ id: 21, parent_rental_id: 20, relation_type: 'extend' }]
+        return []
+      }
+      if (sql.includes('SELECT * FROM refunds WHERE rental_id = ?')) return []
+      if (sql.includes('reference_type IN (\'rental\', \'rental_vendor_fee\')')) {
+        if (params[0] === 21) return [{ id: 101, cash_account_id: 1, type: 'in', amount: 300_000 }]
+        if (params[0] === 20) return [{ id: 102, cash_account_id: 1, type: 'in', amount: 150_000 }]
+      }
+      return []
+    })
+
+    registerRentalHandlers()
+    const result = handlers.get('rental:delete')(null, 20)
+
+    expect(result).toEqual({ success: true })
+    expect(dbOps.run).toHaveBeenCalledWith('DELETE FROM rentals WHERE id = ?', [21])
+    expect(dbOps.run).toHaveBeenCalledWith('DELETE FROM rentals WHERE id = ?', [20])
+    expect(dbOps.run).toHaveBeenCalledWith(
+      'UPDATE cash_accounts SET balance = balance + ? WHERE id = ?',
+      [-300_000, 1]
+    )
+    expect(dbOps.run).toHaveBeenCalledWith(
+      'UPDATE cash_accounts SET balance = balance + ? WHERE id = ?',
+      [-150_000, 1]
+    )
+  })
+
+  it('rental delete pada ganti unit menghapus transaksi pengganti dan restore transaksi sumber', async () => {
+    dbOps.get.mockImplementation((sql, params) => {
+      if (sql.includes('SELECT * FROM rentals WHERE id = ?')) {
+        if (params[0] === 11) {
+          return {
+            id: 11,
+            payout_id: null,
+            hotel_payout_id: null,
+            total_price: 250_000,
+            vendor_fee: 50_000,
+            motor_id: 7
+          }
+        }
+        if (params[0] === 12) {
+          return {
+            id: 12,
+            payout_id: null,
+            hotel_payout_id: null,
+            total_price: 400_000,
+            vendor_fee: 0,
+            motor_id: 8
+          }
+        }
+      }
+      if (sql.includes('SELECT * FROM rental_swaps')) {
+        return {
+          id: 5,
+          source_rental_id: 11,
+          replacement_rental_id: 12,
+          used_days: 1,
+          remaining_days: 5,
+          original_price_per_day: 150_000,
+          original_remaining_credit: 750_000
+        }
+      }
+      if (sql.includes('SELECT * FROM motors WHERE id = ?')) {
+        return { id: params[0], type: 'titipan' }
+      }
+      return null
+    })
+    dbOps.all.mockImplementation((sql, params) => {
+      if (sql.includes('FROM rentals') && sql.includes("relation_type = 'extend'")) return []
+      if (sql.includes('SELECT * FROM refunds WHERE rental_id = ?')) return []
+      if (sql.includes("reference_type = 'rental_swap_settlement'")) {
+        return [{ id: 201, cash_account_id: 4, type: 'in', amount: 400_000 }]
+      }
+      if (sql.includes('reference_type IN (\'rental\', \'rental_vendor_fee\')')) {
+        if (params[0] === 12) return [{ id: 202, cash_account_id: 2, type: 'in', amount: 400_000 }]
+        return []
+      }
+      return []
+    })
+
+    registerRentalHandlers()
+    const result = handlers.get('rental:delete')(null, 12)
+
+    expect(result).toEqual({ success: true })
+    expect(dbOps.run).toHaveBeenCalledWith(
+      'UPDATE cash_accounts SET balance = balance + ? WHERE id = ?',
+      [-400_000, 4]
+    )
+    expect(dbOps.run).toHaveBeenCalledWith(
+      'UPDATE cash_accounts SET balance = balance + ? WHERE id = ?',
+      [-400_000, 2]
+    )
+    expect(dbOps.run).toHaveBeenCalledWith('DELETE FROM rental_swaps WHERE id = ?', [5])
+    expect(dbOps.run).toHaveBeenCalledWith('DELETE FROM rentals WHERE id = ?', [12])
+    expect(dbOps.run).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE rentals'),
+      [6, 1_000_000, 150_000, 200_000, 800_000, 240_000, 560_000, 11]
+    )
   })
 
   it('owner payout tetap bisa diproses saat net payout Rp 0 tanpa akun kas', async () => {
@@ -657,5 +822,55 @@ describe('IPC business logic', () => {
         category: 'expense'
       })
     ]))
+  })
+
+  it('system audit auto-fix membuat ulang mutasi expense dan sinkronkan saldo akun', async () => {
+    dbOps.all.mockImplementation((sql) => {
+      if (sql.includes('SELECT r.*, m.type as motor_type, m.model as motor_model')) return []
+      if (sql.includes('SELECT * FROM expenses ORDER BY id ASC')) {
+        return [{ id: 44, amount: 75_000, payment_method: 'tunai', date: '2026-04-18', description: 'Beli ATK' }]
+      }
+      if (sql.includes('FROM refunds rf')) return []
+      if (sql.includes('SELECT * FROM payouts ORDER BY id ASC')) return []
+      if (sql.includes('SELECT * FROM rental_swaps ORDER BY id ASC')) return []
+      if (sql.includes('SELECT * FROM cash_accounts ORDER BY type ASC')) {
+        return [{ id: 1, name: 'Kas Tunai', type: 'tunai', balance: 1_000_000 }]
+      }
+      if (sql.includes('SELECT * FROM cash_accounts ORDER BY id ASC')) {
+        return [{ id: 1, name: 'Kas Tunai', type: 'tunai', balance: 1_000_000 }]
+      }
+      if (sql.includes('FROM cash_transactions') && sql.includes('GROUP BY cash_account_id')) {
+        return [{ cash_account_id: 1, ledger_balance: -75_000 }]
+      }
+      return []
+    })
+    dbOps.get.mockImplementation((sql, params) => {
+      if (sql.includes('SELECT * FROM cash_accounts WHERE type = ?')) {
+        return { id: 1, name: 'Kas Tunai', type: params[0], balance: 1_000_000 }
+      }
+      if (sql.includes('FROM cash_transactions') && sql.includes('reference_type = ?')) return null
+      if (sql.includes('SUM(CASE WHEN type = \'out\'')) return { total: -75_000 }
+      return null
+    })
+
+    registerAuditHandlers()
+    const result = handlers.get('audit:auto-fix')(null)
+
+    expect(result.success).toBe(true)
+    expect(result.fixedCount).toBeGreaterThan(0)
+    expect(dbOps.runRaw).toHaveBeenCalledWith('BEGIN TRANSACTION')
+    expect(dbOps.run).toHaveBeenCalledWith(
+      expect.stringContaining('DELETE FROM cash_transactions WHERE reference_type = ? AND reference_id = ?'),
+      ['expense', 44]
+    )
+    expect(dbOps.run).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO cash_transactions'),
+      [1, 'out', 75_000, 'expense', 44, 'Beli ATK', '2026-04-18']
+    )
+    expect(dbOps.run).toHaveBeenCalledWith(
+      'UPDATE cash_accounts SET balance = ? WHERE id = ?',
+      [-75_000, 1]
+    )
+    expect(saveDb).toHaveBeenCalled()
   })
 })

@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import { dbOps, saveDb } from '../db'
+import { logActivity } from '../lib/activity-log'
 
 export function registerHotelHandlers() {
   const buildDateFilter = (column, startDate, endDate, params) => {
@@ -60,6 +61,11 @@ export function registerHotelHandlers() {
     )
     const row = dbOps.get('SELECT last_insert_rowid() as id')
     saveDb()
+    logActivity({
+      source: 'user',
+      action: 'hotel.create',
+      detail: `Tambah vendor/hotel ${name}`
+    })
     return { id: row.id }
   })
 
@@ -75,11 +81,21 @@ export function registerHotelHandlers() {
       'UPDATE hotels SET name=?, is_active=? WHERE id=?',
       [data.name, data.is_active ?? 1, id]
     )
+    logActivity({
+      source: 'user',
+      action: 'hotel.update',
+      detail: `Update vendor/hotel #${id} menjadi ${data.name}`
+    })
     return { success: true }
   })
 
   ipcMain.handle('hotel:delete', (_, id) => {
     dbOps.run('UPDATE hotels SET is_active = 0 WHERE id = ?', [id])
+    logActivity({
+      source: 'user',
+      action: 'hotel.soft-delete',
+      detail: `Nonaktifkan vendor/hotel #${id}`
+    })
     return { success: true }
   })
 
