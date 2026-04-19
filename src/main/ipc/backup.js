@@ -45,6 +45,8 @@ const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || ''
 const DRIVE_FOLDER_NAME = 'Wavy Rental Backups'
 const DB_FILENAME = 'wavy.db'
 const BACKUP_SETTINGS_FILENAME = 'backup-settings.json'
+const RECOVERY_KEY_SUFFIX = '.key.wavy'
+const DEFAULT_RECOVERY_PASSWORD = process.env.BACKUP_RECOVERY_PASSWORD || 'wavy2026'
 
 // Port untuk localhost callback — Google Cloud Console harus punya:
 // http://127.0.0.1:42813/callback di Authorized Redirect URIs
@@ -161,11 +163,20 @@ async function getOrCreateFolder(drive) {
 
 async function listBackupFiles(drive, folderId) {
   const res = await drive.files.list({
-    q: `'${folderId}' in parents and name contains 'wavy_backup' and trashed=false`,
+    q: `'${folderId}' in parents and name contains 'wavy_backup' and name does not contain '${RECOVERY_KEY_SUFFIX}' and trashed=false`,
     fields: 'files(id, name, size, modifiedTime)',
     orderBy: 'modifiedTime desc'
   })
   return res.data.files
+}
+
+async function findFileInFolderByName(drive, folderId, filename) {
+  const res = await drive.files.list({
+    q: `'${folderId}' in parents and name='${filename}' and trashed=false`,
+    fields: 'files(id, name)',
+    pageSize: 1
+  })
+  return res.data.files?.[0] || null
 }
 
 // ── Paths ────────────────────────────────────────────────────────────────────
@@ -175,6 +186,20 @@ function getBackupDir() {
   const dir = join(app.getPath('userData'), 'backups')
   mkdirSync(dir, { recursive: true })
   return dir
+}
+
+function getRecoveryKeyPathForLocalBackup(backupPath) {
+  return `${backupPath}${RECOVERY_KEY_SUFFIX}`
+}
+
+function decryptBackupWithLocalPassphrase({ fileData }) {
+  const passphrase = getOrCreatePassphrase()
+  return decryptBuffer(fileData, passphrase)
+}
+
+function decryptBackupWithRecoveryKey({ fileData, keyBuffer, backupFilename }) {
+  const recoveredPassphrase = parseRecoveryKeyBuffer({ buffer: keyBuffer, backupFilename })
+  return decryptBuffer(fileData, recoveredPassphrase)
 }
 
 function monthStampLocal(date = new Date()) {
@@ -204,6 +229,31 @@ function pruneLocalBackups({ keepMonths = 24 } = {}) {
     const d = new Date(Number(m[1]), Number(m[2]) - 1, 1)
     if (d < cutoff) safeUnlink(f.path)
   }
+}
+
+function getRecoveryKeyFilename(backupFilename) {
+  return `${backupFilename}${RECOVERY_KEY_SUFFIX}`
+}
+
+function buildRecoveryKeyBuffer({ backupFilename, passphrase }) {
+  const payload = {
+    backupFilename: String(backupFilename || ''),
+    passphrase: String(passphrase || ''),
+    createdAt: new Date().toISOString()
+  }
+  return encryptBuffer(Buffer.from(JSON.stringify(payload), 'utf-8'), DEFAULT_RECOVERY_PASSWORD)
+}
+
+function parseRecoveryKeyBuffer({ buffer, backupFilename }) {
+  const decrypted = decryptBuffer(buffer, DEFAULT_RECOVERY_PASSWORD)
+  const parsed = JSON.parse(decrypted.toString('utf-8'))
+  if (!parsed || typeof parsed !== 'object' || !parsed.passphrase) {
+    throw new Error('Recovery key tidak valid')
+  }
+  if (backupFilename && parsed.backupFilename && parsed.backupFilename !== backupFilename) {
+    throw new Error('Recovery key tidak cocok dengan file backup')
+  }
+  return String(parsed.passphrase)
 }
 
 function getBackupSettingsPath() {
@@ -238,6 +288,10 @@ async function uploadBackupToDrive({ filename, buffer }) {
   const drive = google.drive({ version: 'v3', auth })
   const folderId = await getOrCreateFolder(drive)
 
+  return uploadFileToDrive({ drive, folderId, filename, buffer })
+}
+
+async function uploadFileToDrive({ drive, folderId, filename, buffer }) {
   const existing = await drive.files.list({
     q: `'${folderId}' in parents and name='${filename}' and trashed=false`,
     fields: 'files(id, name)',
@@ -270,8 +324,12 @@ export async function runAutoCloseBackup() {
   const encData = encryptBuffer(plainData, passphrase)
   // Standar: 1 file per bulan (overwrite). File baru hanya dibuat saat bulan berganti.
   const filename = `wavy_backup_monthly_${monthStampLocal()}.wavy`
+  const keyFilename = getRecoveryKeyFilename(filename)
+  const keyBuffer = buildRecoveryKeyBuffer({ backupFilename: filename, passphrase })
 
-  return uploadBackupToDrive({ filename, buffer: encData })
+  const result = await uploadBackupToDrive({ filename, buffer: encData })
+  await uploadBackupToDrive({ filename: keyFilename, buffer: keyBuffer })
+  return result
 }
 
 // ── Register handlers ────────────────────────────────────────────────────────
@@ -400,21 +458,28 @@ export function registerBackupHandlers() {
     // Standar: 1 backup per bulan (overwrite) agar tidak menumpuk banyak file.
     const backupName = `wavy_backup_monthly_${monthStampLocal()}.wavy`
     const backupPath = join(getBackupDir(), backupName)
+    const recoveryKeyPath = getRecoveryKeyPathForLocalBackup(backupPath)
+    const recoveryKeyBuffer = buildRecoveryKeyBuffer({ backupFilename: backupName, passphrase })
     writeFileSync(backupPath, encData)
+    writeFileSync(recoveryKeyPath, recoveryKeyBuffer)
     pruneLocalBackups({ keepMonths: 24 })
     logActivity({
       action: 'backup.create-local',
       detail: `Checkpoint lokal dibuat (${backupName})`
     })
 
-    return { success: true, filename: backupName, path: backupPath, encrypted: true }
+    return { success: true, filename: backupName, path: backupPath, encrypted: true, recoveryKeyPath }
   })
 
   // List backup lokal
   ipcMain.handle('backup:list-local', () => {
     const dir = getBackupDir()
     return readdirSync(dir)
-      .filter(f => f.startsWith('wavy_backup') && (f.endsWith('.wavy') || f.endsWith('.db')))
+      .filter((f) => {
+        if (!f.startsWith('wavy_backup')) return false
+        if (f.endsWith(RECOVERY_KEY_SUFFIX)) return false
+        return f.endsWith('.wavy') || f.endsWith('.db')
+      })
       .map(f => {
         const stat = statSync(join(dir, f))
         return { name: f, size: stat.size, modifiedTime: stat.mtime.toISOString(), path: join(dir, f), encrypted: f.endsWith('.wavy') }
@@ -443,8 +508,18 @@ export function registerBackupHandlers() {
 
     // Kalau file terenkripsi (.wavy), decrypt dulu
     if (backupPath.endsWith('.wavy')) {
-      const passphrase = getOrCreatePassphrase()
-      plainData = decryptBuffer(fileData, passphrase)
+      try {
+        plainData = decryptBackupWithLocalPassphrase({ fileData })
+      } catch (error) {
+        const recoveryKeyPath = getRecoveryKeyPathForLocalBackup(backupPath)
+        if (!existsSync(recoveryKeyPath)) throw error
+        const keyBuffer = readFileSync(recoveryKeyPath)
+        plainData = decryptBackupWithRecoveryKey({
+          fileData,
+          keyBuffer,
+          backupFilename: backupPath.split(/[/\\]/).pop()
+        })
+      }
     }
 
     writeFileSync(dbPath, plainData)
@@ -472,7 +547,10 @@ export function registerBackupHandlers() {
 
     // Standar: 1 file per bulan (overwrite) agar tidak menumpuk.
     const filename = `wavy_backup_monthly_${monthStampLocal()}.wavy`
+    const keyFilename = getRecoveryKeyFilename(filename)
+    const keyBuffer = buildRecoveryKeyBuffer({ backupFilename: filename, passphrase })
     const result = await uploadBackupToDrive({ filename, buffer: encData })
+    await uploadBackupToDrive({ filename: keyFilename, buffer: keyBuffer })
     logActivity({
       action: 'backup.gdrive-upload',
       detail: `Backup berhasil di-upload ke Google Drive (${filename})`
@@ -501,8 +579,24 @@ export function registerBackupHandlers() {
     const res = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' })
     const encData = Buffer.from(res.data)
 
-    const passphrase = getOrCreatePassphrase()
-    const plainData = fileName.endsWith('.wavy') ? decryptBuffer(encData, passphrase) : encData
+    let plainData = encData
+    if (fileName.endsWith('.wavy')) {
+      try {
+        plainData = decryptBackupWithLocalPassphrase({ fileData: encData })
+      } catch (error) {
+        const folderId = await getOrCreateFolder(drive)
+        const keyFilename = getRecoveryKeyFilename(fileName)
+        const keyFile = await findFileInFolderByName(drive, folderId, keyFilename)
+        if (!keyFile?.id) throw error
+        const keyRes = await drive.files.get({ fileId: keyFile.id, alt: 'media' }, { responseType: 'arraybuffer' })
+        const keyBuffer = Buffer.from(keyRes.data)
+        plainData = decryptBackupWithRecoveryKey({
+          fileData: encData,
+          keyBuffer,
+          backupFilename: fileName
+        })
+      }
+    }
 
     const dbPath = getDbPath()
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
@@ -523,11 +617,18 @@ export function registerBackupHandlers() {
     return { success: true, filename: fileName, relaunching: true }
   })
 
-  ipcMain.handle('backup:gdrive-delete', async (_, { fileId }) => {
+  ipcMain.handle('backup:gdrive-delete', async (_, { fileId, fileName }) => {
     const auth = await getAuthenticatedClient()
     if (!auth) throw new Error('Belum terhubung ke Google Drive')
     const google = await getGoogle()
     const drive = google.drive({ version: 'v3', auth })
+    if (fileName) {
+      const folderId = await getOrCreateFolder(drive)
+      const keyFile = await findFileInFolderByName(drive, folderId, getRecoveryKeyFilename(fileName))
+      if (keyFile?.id) {
+        try { await drive.files.delete({ fileId: keyFile.id }) } catch { /* ignore */ }
+      }
+    }
     await drive.files.delete({ fileId })
     logActivity({
       action: 'backup.gdrive-delete',

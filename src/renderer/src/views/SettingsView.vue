@@ -1093,7 +1093,7 @@ async function restoreDrive(backup) {
 
 async function deleteDriveBackup(backup) {
   if (!confirm(`Hapus backup "${backup.name}" dari Drive?`)) return
-  try { await window.api.backupGdriveDelete({ fileId: backup.id }); driveBackups.value = driveBackups.value.filter(b => b.id !== backup.id); setMsg('Backup dihapus.') }
+  try { await window.api.backupGdriveDelete({ fileId: backup.id, fileName: backup.name }); driveBackups.value = driveBackups.value.filter(b => b.id !== backup.id); setMsg('Backup dihapus.') }
   catch (e) { setMsg('Gagal hapus: ' + e.message, false) }
 }
 
