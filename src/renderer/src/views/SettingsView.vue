@@ -455,38 +455,6 @@
             </div>
           </div>
 
-          <div class="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <h4 class="text-xs font-black text-slate-700 mb-3 flex items-center gap-2">
-              <span class="material-symbols-outlined text-sm text-slate-500">settings_backup_restore</span>
-              Restore dengan File
-            </h4>
-            <div class="grid grid-cols-2 gap-3">
-              <div class="col-span-2">
-                <label class="block text-[11px] font-bold text-slate-500 mb-1">ID Perangkat Target (Laptop Baru)</label>
-                <input v-model="restoreFileTargetMachineId" type="text" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono" placeholder="Contoh: ABCD1234EFGH5678" />
-              </div>
-              <div class="col-span-2">
-                <label class="block text-[11px] font-bold text-slate-500 mb-1">File Backup (.wavy / .db)</label>
-                <div class="flex gap-2">
-                  <input :value="restoreFileBackupPath" type="text" readonly class="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-xs bg-white" placeholder="Belum pilih file backup" />
-                  <button @click="pickRestoreFile('backup')" :disabled="backupLoading" class="btn-secondary text-xs px-3">Pilih</button>
-                </div>
-              </div>
-              <div class="col-span-2">
-                <label class="block text-[11px] font-bold text-slate-500 mb-1">File Recovery Key (.key.wavy)</label>
-                <div class="flex gap-2">
-                  <input :value="restoreFileKeyPath" type="text" readonly class="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-xs bg-white" placeholder="Opsional (disarankan diisi)" />
-                  <button @click="pickRestoreFile('key')" :disabled="backupLoading" class="btn-secondary text-xs px-3">Pilih</button>
-                </div>
-              </div>
-              <div class="col-span-2 flex justify-end">
-                <button @click="restoreWithSelectedFiles" :disabled="backupLoading || !restoreFileBackupPath || !restoreFileTargetMachineId" class="btn-primary text-xs px-4 py-2">
-                  <span class="material-symbols-outlined text-sm">restore</span>
-                  {{ backupLoading ? 'Memproses...' : 'Restore Sekarang' }}
-                </button>
-              </div>
-            </div>
-          </div>
         </div>
 
       </div>
@@ -925,9 +893,6 @@ const driveBackups = ref([])
 const showPassphraseForm = ref(false)
 const newPassphrase = ref('')
 const autoBackupOnClose = ref(true)
-const restoreFileTargetMachineId = ref('')
-const restoreFileBackupPath = ref('')
-const restoreFileKeyPath = ref('')
 const sandboxLoading = ref(false)
 const sandboxBenchmarkLoading = ref(false)
 const sandboxMessage = ref('')
@@ -1133,50 +1098,6 @@ async function restoreLocal(backup) {
   finally { backupLoading.value = false }
 }
 
-async function pickRestoreFile(kind) {
-  try {
-    const result = await window.api.backupPickRestoreFile({ kind })
-    if (!result || result.canceled || !result.path) return
-    if (kind === 'backup') {
-      restoreFileBackupPath.value = result.path
-      if (!restoreFileKeyPath.value) {
-        restoreFileKeyPath.value = `${result.path}.key.wavy`
-      }
-    } else {
-      restoreFileKeyPath.value = result.path
-    }
-  } catch (e) {
-    setMsg('Gagal memilih file restore: ' + e.message, false)
-  }
-}
-
-async function restoreWithSelectedFiles() {
-  if (!restoreFileBackupPath.value) {
-    setMsg('File backup wajib dipilih.', false)
-    return
-  }
-  if (!restoreFileTargetMachineId.value.trim()) {
-    setMsg('ID perangkat target wajib diisi.', false)
-    return
-  }
-  if (!confirm('Restore dari file terpilih? Data saat ini akan diganti.')) return
-
-  backupLoading.value = true
-  try {
-    await window.api.backupRestoreWithFiles({
-      backupPath: restoreFileBackupPath.value,
-      keyPath: restoreFileKeyPath.value || null,
-      targetMachineId: restoreFileTargetMachineId.value.trim()
-    })
-    setMsg('Restore berhasil! App akan reload...')
-    setTimeout(() => window.location.reload(), 1500)
-  } catch (e) {
-    setMsg('Restore file gagal: ' + e.message, false)
-  } finally {
-    backupLoading.value = false
-  }
-}
-
 async function showLocalBackupInFolder(backup) {
   try {
     await window.api.backupShowLocalInFolder({ path: backup.path })
@@ -1286,7 +1207,6 @@ async function runSandboxBenchmarks() {
 
 onMounted(async () => {
   await license.load()
-  restoreFileTargetMachineId.value = license.machineId || ''
   await checkGdriveStatus()
   await loadBackupList()
   await runSystemAudit()

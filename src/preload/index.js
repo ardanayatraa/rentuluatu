@@ -88,8 +88,6 @@ contextBridge.exposeInMainWorld('api', {
   backupCreateLocal: () => invoke('backup:create-local'),
   backupListLocal: () => invoke('backup:list-local'),
   backupShowLocalInFolder: (data) => invoke('backup:show-local-in-folder', data),
-  backupPickRestoreFile: (data) => invoke('backup:pick-restore-file', data),
-  backupRestoreWithFiles: (data) => invoke('backup:restore-with-files', data),
   backupAdoptLocalPassphrase: (data) => invoke('backup:adopt-local-passphrase', data),
   backupRestoreLocal: (data) => invoke('backup:restore-local', data),
   backupGdriveUpload: () => invoke('backup:gdrive-upload'),
