@@ -432,8 +432,7 @@ export function printTransactionsReport(args) { printWindow(buildTransactionsHtm
 
 // ─── 5. Laporan Hak Mitra (Slip Pembayaran) ─────────────────────────────
 export function buildOwnerCommissionHtml({ data, period }) {
-  const { owner, motors, rentals, byMotor = [], payouts, totalOwnerGets, totalPaid, totalUnpaid, totalExpenses = 0, totalNet = 0 } = data
-  const motorList = motors.map(m => m.model + ' (' + m.plate_number + ')').join(', ')
+  const { owner, rentals, byMotor = [], payouts, totalOwnerGets, totalPaid, totalUnpaid, totalExpenses = 0, totalNet = 0 } = data
   const rentalRows = rentals.map(r => `<tr>
     <td>${fmtDateTime(r.date_time)}</td>
     <td>${r.model} ${r.plate_number}</td>
@@ -447,33 +446,29 @@ export function buildOwnerCommissionHtml({ data, period }) {
     <td>${fmtDate(p.date)}</td><td>${p.cash_account_name}</td>
     <td class="right">${rp(p.amount)}</td>
   </tr>`).join('')
-  const motorBreakdownHtml = byMotor.map(m => {
-    const expenseItems = m.expenses.map(e => `<tr>
-      <td>${fmtDate(e.date)}</td>
-      <td>Pengeluaran${e.category ? ' - ' + e.category : ''}</td>
-      <td>${e.description || '-'}</td>
-      <td class="right">( ${rp(e.amount)} )</td>
-    </tr>`).join('')
-    const itemRows = expenseItems
-    return `
-      <div class="section-title">Rincian Motor - ${m.model} (${m.plate_number})</div>
+  const motorExpenseRows = byMotor.flatMap(m => (m.expenses || []).map(e => `<tr>
+    <td>${m.model} (${m.plate_number})</td>
+    <td>${fmtDate(e.date)}</td>
+    <td>${e.category || '-'}</td>
+    <td>${e.description || '-'}</td>
+    <td class="right">${rp(e.amount)}</td>
+  </tr>`)).join('')
+  const motorExpenseSectionHtml = motorExpenseRows
+    ? `<div class="section-title">Pengeluaran per Motor</div>
       <table>
-        <thead><tr><th>Tanggal</th><th>Uraian</th><th>Keterangan</th><th class="right">Jumlah</th></tr></thead>
+        <thead><tr><th>Motor</th><th>Tanggal</th><th>Kategori</th><th>Keterangan</th><th class="right">Jumlah</th></tr></thead>
         <tbody>
-          ${itemRows || '<tr><td colspan="4" style="text-align:center;padding:16px;color:#888">Tidak ada pengeluaran motor</td></tr>'}
-          <tr><td colspan="3" style="font-weight:700">Total Hak Motor</td><td class="right">${rp(m.rental_total)}</td></tr>
-          <tr><td colspan="3" style="font-weight:700">Total Pengeluaran Motor</td><td class="right">( ${rp(m.expense_total)} )</td></tr>
-          <tr style="font-weight:700;background:#f9f9f9"><td colspan="3">Hasil Bersih Motor</td><td class="right">${rp(m.net_total)}</td></tr>
+          ${motorExpenseRows}
+          <tr><td colspan="4" style="font-weight:700">Total Pengeluaran Motor</td><td class="right">( ${rp(totalExpenses)} )</td></tr>
         </tbody>
-      </table>
-    `
-  }).join('')
+      </table>`
+    : ''
   return `${headerHtml('Laporan Hak Mitra', period, 'Mitra: ' + owner.name)}
   <div style="display:flex;gap:20px;margin-bottom:20px">
     <div class="info-box" style="flex:1">
       <div class="info-label">Data Mitra</div>
       <div class="info-name">${owner.name}</div>
-      <div class="info-detail">No. HP: ${owner.phone || '-'}<br>Motor: ${motorList || '-'}</div>
+      <div class="info-detail">No. HP: ${owner.phone || '-'}</div>
     </div>
     <div style="flex:1">
       <div class="summary-grid" style="grid-template-columns:repeat(2,1fr)">
@@ -491,7 +486,7 @@ export function buildOwnerCommissionHtml({ data, period }) {
     <th>Tanggal</th><th>Motor</th><th>Pelanggan</th><th class="right">Durasi</th>
     <th class="right">Total Sewa</th><th class="right">Bagian Mitra</th><th>Status</th>
   </tr></thead><tbody>${rentalRows || '<tr><td colspan="7" style="text-align:center;padding:16px;color:#888">Tidak ada data</td></tr>'}</tbody></table>
-  ${motorBreakdownHtml}
+  ${motorExpenseSectionHtml}
   ${payouts.length ? '<div class="section-title">Riwayat Pembayaran</div><table><thead><tr><th>Tanggal</th><th>Akun Kas</th><th class="right">Jumlah Dibayar</th></tr></thead><tbody>' + payoutRows + '</tbody></table>' : ''}
   <div class="sign-area"><div class="sign-box">
     <div style="font-size:10px;color:#555">Hormat kami,</div>
