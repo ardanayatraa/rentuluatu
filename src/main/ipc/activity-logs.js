@@ -1,9 +1,14 @@
 import { ipcMain } from 'electron'
 import { dbOps } from '../db'
 
-function clampLimit(value) {
-  const parsed = Number(value) || 100
-  return Math.max(1, Math.min(300, parsed))
+function clampPage(value) {
+  const parsed = Number(value) || 1
+  return Math.max(1, parsed)
+}
+
+function clampPageSize(value) {
+  const parsed = Number(value) || 20
+  return Math.max(10, Math.min(100, parsed))
 }
 
 export function registerActivityLogHandlers() {
@@ -32,16 +37,30 @@ export function registerActivityLogHandlers() {
     }
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
-    const limit = clampLimit(filters?.limit)
-    params.push(limit)
-
-    return dbOps.all(
+    const page = clampPage(filters?.page)
+    const pageSize = clampPageSize(filters?.pageSize || filters?.limit)
+    const offset = (page - 1) * pageSize
+    const totalRow = dbOps.get(
+      `SELECT COUNT(*) as total
+       FROM activity_logs
+       ${whereSql}`,
+      params
+    )
+    const queryParams = [...params, pageSize, offset]
+    const items = dbOps.all(
       `SELECT id, actor_user_id, actor_username, source, action, detail, metadata, created_at
        FROM activity_logs
        ${whereSql}
        ORDER BY id DESC
-       LIMIT ?`,
-      params
+       LIMIT ? OFFSET ?`,
+      queryParams
     )
+
+    return {
+      items,
+      total: Number(totalRow?.total || 0),
+      page,
+      pageSize
+    }
   })
 }

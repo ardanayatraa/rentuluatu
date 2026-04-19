@@ -469,7 +469,7 @@
             </select>
           </div>
           <div class="flex items-end gap-2">
-            <button @click="loadActivityLogs" :disabled="activityLoading" class="btn-primary text-xs px-3 py-2">
+            <button @click="loadActivityLogs({ resetPage: true })" :disabled="activityLoading" class="btn-primary text-xs px-3 py-2">
               <span class="material-symbols-outlined text-sm">refresh</span>
               {{ activityLoading ? 'Memuat...' : 'Muat Log' }}
             </button>
@@ -491,7 +491,7 @@
           <div v-if="activityLoading" class="px-4 py-6 text-xs text-slate-400">Memuat log aktivitas...</div>
           <div v-else-if="!activityLogs.length" class="px-4 py-6 text-xs text-slate-400">Belum ada log aktivitas.</div>
           <div v-else class="max-h-[28rem] overflow-y-auto divide-y divide-slate-100">
-            <div v-for="item in paginatedActivityLogs" :key="item.id" class="grid grid-cols-12 px-4 py-3 text-xs text-slate-700">
+            <div v-for="item in activityLogs" :key="item.id" class="grid grid-cols-12 px-4 py-3 text-xs text-slate-700">
               <div class="col-span-3 font-semibold">{{ formatFileDate(item.created_at) }}</div>
               <div class="col-span-2">{{ item.actor_username || '-' }}</div>
               <div class="col-span-3 font-semibold text-indigo-700">
@@ -511,7 +511,7 @@
         <TablePagination
           v-model:page="activityPage"
           v-model:pageSize="activityPageSize"
-          :total="activityLogs.length"
+          :total="activityTotal"
           :pageSizeOptions="[10,20,30,50]"
           :showPageSize="true"
           :disabled="activityLoading"
@@ -690,7 +690,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { useLicenseStore } from '../stores/license'
 import TablePagination from '../components/TablePagination.vue'
@@ -707,6 +707,7 @@ const transactionResetLoading = ref(false)
 const transactionResetMessage = ref('')
 const transactionResetSuccess = ref(true)
 const activityLogs = ref([])
+const activityTotal = ref(0)
 const activityLoading = ref(false)
 const activityError = ref('')
 const activityPage = ref(1)
@@ -716,10 +717,6 @@ const activityFilters = ref({
   dateTo: '',
   search: '',
   source: 'user'
-})
-const paginatedActivityLogs = computed(() => {
-  const start = (activityPage.value - 1) * activityPageSize.value
-  return activityLogs.value.slice(start, start + activityPageSize.value)
 })
 
 // ── Lisensi ──────────────────────────────────────────────────────────────────
@@ -831,16 +828,29 @@ async function executeTransactionReset() {
 }
 
 // ── Backup ────────────────────────────────────────────────────────────────────
-async function loadActivityLogs() {
+async function loadActivityLogs({ resetPage = false } = {}) {
+  if (resetPage && activityPage.value !== 1) {
+    activityPage.value = 1
+    return
+  }
   activityLoading.value = true
   activityError.value = ''
-  activityPage.value = 1
   try {
-    activityLogs.value = await window.api.getActivityLogs({
+    const result = await window.api.getActivityLogs({
       ...activityFilters.value,
-      limit: 200
+      page: activityPage.value,
+      pageSize: activityPageSize.value
     })
+    if (Array.isArray(result)) {
+      activityLogs.value = result
+      activityTotal.value = result.length
+    } else {
+      activityLogs.value = Array.isArray(result?.items) ? result.items : []
+      activityTotal.value = Number(result?.total || 0)
+    }
   } catch (error) {
+    activityLogs.value = []
+    activityTotal.value = 0
     activityError.value = `Gagal memuat log aktivitas: ${error.message}`
   } finally {
     activityLoading.value = false
@@ -849,8 +859,12 @@ async function loadActivityLogs() {
 
 function resetActivityFilters() {
   activityFilters.value = { dateFrom: '', dateTo: '', search: '', source: 'user' }
-  loadActivityLogs()
+  loadActivityLogs({ resetPage: true })
 }
+
+watch([activityPage, activityPageSize], () => {
+  loadActivityLogs()
+})
 
 const gdriveConnected = ref(false)
 const gdriveConfigured = ref(false)
