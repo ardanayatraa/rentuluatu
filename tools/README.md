@@ -90,3 +90,27 @@ python tools/recovery-passphrase-tool.py --key-file "D:\restore\xxx.key.wavy" --
 - `--backup-name "wavy_backup_monthly_2026-04.wavy"` untuk validasi nama backup.
 - `--show-passphrase` untuk tampilkan passphrase asli di console.
 - `--recovery-password` kalau password recovery bukan default `wavy2026`.
+
+---
+
+## Recovery Passphrase GUI (Python)
+
+Versi GUI untuk developer (lebih mudah daripada CLI).
+
+### Jalankan
+
+```bash
+pip install cryptography
+python tools/recovery-passphrase-gui.py
+```
+
+### Fitur GUI
+
+- Pilih file backup `.wavy`
+- Pilih file recovery key `.key.wavy`
+- Tombol **Check Cocok / Tidak** (cek pasangan valid + tes decrypt backup)
+- Tombol **Apply Key ke Device Ini** (tulis passphrase ke `.backup-key`)
+- Tombol **Cek + Apply** sekali klik
+
+Tujuannya: kalau sudah ada pasangan backup + key yang valid, file backup `.wavy`
+itu bisa direstore di perangkat mana pun setelah passphrase di-apply.
