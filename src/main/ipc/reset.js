@@ -5,6 +5,7 @@ import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
 const RESET_SETTINGS_FILENAME = 'reset-settings.json'
+const TRANSACTION_RESET_WINDOW_DAYS = 3
 
 function assertDevOnly() {
   if (app.isPackaged || process.env.NODE_ENV === 'production') {
@@ -43,6 +44,37 @@ function getProductionResetStatus() {
   const settings = loadResetSettings()
   const used = Boolean(settings.productionResetUsed)
   return { visible: !used, used }
+}
+
+function ensureTransactionResetWindow() {
+  const settings = loadResetSettings()
+  const now = Date.now()
+  const parsedStart = Date.parse(String(settings.transactionResetStartedAt || ''))
+  const startedAtMs = Number.isFinite(parsedStart) ? parsedStart : now
+  const expiresAtMs = startedAtMs + (TRANSACTION_RESET_WINDOW_DAYS * 24 * 60 * 60 * 1000)
+
+  if (!Number.isFinite(parsedStart) || !settings.transactionResetStartedAt) {
+    saveResetSettings({
+      ...settings,
+      transactionResetStartedAt: new Date(startedAtMs).toISOString(),
+      transactionResetExpiresAt: new Date(expiresAtMs).toISOString()
+    })
+  }
+
+  return {
+    startedAtMs,
+    expiresAtMs,
+    visible: now <= expiresAtMs
+  }
+}
+
+function getTransactionResetStatus() {
+  const windowState = ensureTransactionResetWindow()
+  return {
+    visible: windowState.visible,
+    startedAt: new Date(windowState.startedAtMs).toISOString(),
+    expiresAt: new Date(windowState.expiresAtMs).toISOString()
+  }
 }
 
 function randomInt(min, max) {
@@ -150,6 +182,299 @@ function getSandboxStats() {
   return {
     counts,
     dbSizeBytes: db.export().length
+  }
+}
+
+function normalizePlate(value) {
+  return String(value || '').toUpperCase().replace(/\s+/g, '')
+}
+
+function assertDatabaseEmptyForSeed() {
+  const nonEmptyTable = [
+    ['owners', 'mitra'],
+    ['motors', 'motor'],
+    ['hotels', 'hotel'],
+    ['rentals', 'rental'],
+    ['expenses', 'pengeluaran'],
+    ['refunds', 'refund'],
+    ['cash_transactions', 'mutasi kas']
+  ].find(([table]) => Number(dbOps.get(`SELECT COUNT(*) as count FROM ${table}`)?.count || 0) > 0)
+
+  if (nonEmptyTable) {
+    throw new Error(`Database belum kosong (${nonEmptyTable[1]} masih ada). Hapus semua data dulu, baru jalankan seed.`)
+  }
+}
+
+function seedProductionSimulationData() {
+  assertDatabaseEmptyForSeed()
+  const owners = ['Mitra A', 'Mitra B', 'Mitra C', 'Mitra D']
+  const ownerIdByName = {}
+  owners.forEach((name, index) => {
+    dbOps.run('INSERT INTO owners (name, phone, bank_account, bank_name) VALUES (?, ?, ?, ?)', [
+      name,
+      `08123${String(index + 111111).slice(-6)}`,
+      null,
+      null
+    ])
+    ownerIdByName[name] = Number(dbOps.get('SELECT last_insert_rowid() as id')?.id || 0)
+  })
+
+  const motorRows = [
+    { plate: 'DK 1001 WA', model: 'NMAX BLACK', owner: 'Mitra A', type: 'milik_pemilik' },
+    { plate: 'DK 1002 WA', model: 'VARIO WHITE', owner: 'Mitra A', type: 'aset_pt' },
+    { plate: 'DK 1003 WA', model: 'SCOOPY GREY', owner: 'Mitra B', type: 'milik_pemilik' },
+    { plate: 'DK 1004 WA', model: 'LEXI RED', owner: 'Mitra B', type: 'milik_pemilik' },
+    { plate: 'DK 1005 WA', model: 'FAZZIO BLUE', owner: 'Mitra C', type: 'aset_pt' },
+    { plate: 'DK 1006 WA', model: 'GEAR BLACK', owner: 'Mitra C', type: 'milik_pemilik' },
+    { plate: 'DK 1007 WA', model: 'PCX BLACK', owner: 'Mitra D', type: 'aset_pt' },
+    { plate: 'DK 1008 WA', model: 'ADV GREEN', owner: 'Mitra D', type: 'milik_pemilik' }
+  ]
+
+  const motorByPlate = {}
+  motorRows.forEach((motor) => {
+    dbOps.run('INSERT INTO motors (model, plate_number, type, owner_id) VALUES (?, ?, ?, ?)', [
+      motor.model,
+      motor.plate,
+      motor.type,
+      ownerIdByName[motor.owner]
+    ])
+    const id = Number(dbOps.get('SELECT last_insert_rowid() as id')?.id || 0)
+    motorByPlate[normalizePlate(motor.plate)] = { id, ...motor }
+  })
+
+  const cashAccounts = dbOps.all('SELECT id, type FROM cash_accounts ORDER BY id ASC')
+  const cashByType = Object.fromEntries(cashAccounts.map((account) => [account.type, account]))
+  const fallbackAccount = cashAccounts[0]
+
+  const getCashAccountId = (paymentMethod) => (cashByType[paymentMethod] || fallbackAccount)?.id
+  const runRentalIncome = (rentalId, paymentMethod, amount, description, date) => {
+    const accountId = getCashAccountId(paymentMethod)
+    dbOps.run(
+      `INSERT INTO cash_transactions (cash_account_id, type, amount, reference_type, reference_id, description, date)
+       VALUES (?, 'in', ?, 'rental', ?, ?, ?)`,
+      [accountId, amount, rentalId, description, date]
+    )
+    dbOps.run('UPDATE cash_accounts SET balance = balance + ? WHERE id = ?', [amount, accountId])
+  }
+  const runVendorFee = (rentalId, amount, description, date) => {
+    if (amount <= 0) return
+    const tunaiId = getCashAccountId('tunai')
+    dbOps.run(
+      `INSERT INTO cash_transactions (cash_account_id, type, amount, reference_type, reference_id, description, date)
+       VALUES (?, 'out', ?, 'rental_vendor_fee', ?, ?, ?)`,
+      [tunaiId, amount, rentalId, description, date]
+    )
+    dbOps.run('UPDATE cash_accounts SET balance = balance - ? WHERE id = ?', [amount, tunaiId])
+  }
+
+  let invoiceCounter = 1
+  const insertRental = ({
+    dateTime,
+    customerName,
+    plate,
+    periodDays,
+    paymentMethod,
+    totalPrice,
+    vendorFee = 0,
+    relationType = 'rental',
+    isExtension = 0,
+    parentRentalId = null
+  }) => {
+    const motor = motorByPlate[normalizePlate(plate)]
+    if (!motor) throw new Error(`Motor ${plate} tidak ditemukan pada seeder simulasi`)
+    const fee = Number(vendorFee || 0)
+    const total = Number(totalPrice || 0)
+    const pricePerDay = periodDays > 0 ? total / periodDays : total
+    const { sisa, wavy_gets, owner_gets } = calcCommission(motor.type, total, fee)
+    const invoice = `SIM-${String(dateTime).slice(0, 10).replace(/-/g, '')}-${String(invoiceCounter).padStart(4, '0')}`
+    invoiceCounter += 1
+
+    dbOps.run(`
+      INSERT INTO rentals (
+        date_time, customer_name, hotel, hotel_id, motor_id, period_days, payment_method, total_price,
+        price_per_day, vendor_fee, sisa, wavy_gets, owner_gets, status, invoice_number, is_extension, relation_type, parent_rental_id
+      ) VALUES (?, ?, '', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?)
+    `, [
+      dateTime,
+      customerName,
+      motor.id,
+      periodDays,
+      paymentMethod,
+      total,
+      pricePerDay,
+      fee,
+      sisa,
+      wavy_gets,
+      owner_gets,
+      invoice,
+      isExtension,
+      relationType,
+      parentRentalId
+    ])
+
+    const rentalId = Number(dbOps.get('SELECT last_insert_rowid() as id')?.id || 0)
+    const txDate = String(dateTime).slice(0, 10)
+    runRentalIncome(rentalId, paymentMethod, total, `Sewa ${plate} - ${customerName}`, txDate)
+    runVendorFee(rentalId, fee, `Fee Vendor - ${customerName}`, txDate)
+    return { rentalId, invoice, motor }
+  }
+
+  const baseRentals = []
+  baseRentals.push(insertRental({
+    dateTime: '2026-04-01T09:00:00',
+    customerName: 'Andi',
+    plate: 'DK 1001 WA',
+    periodDays: 3,
+    paymentMethod: 'debit_card',
+    totalPrice: 450000,
+    vendorFee: 0
+  }))
+  baseRentals.push(insertRental({
+    dateTime: '2026-04-01T10:00:00',
+    customerName: 'Budi',
+    plate: 'DK 1002 WA',
+    periodDays: 2,
+    paymentMethod: 'tunai',
+    totalPrice: 260000,
+    vendorFee: 15000
+  }))
+  baseRentals.push(insertRental({
+    dateTime: '2026-04-02T08:30:00',
+    customerName: 'Citra',
+    plate: 'DK 1003 WA',
+    periodDays: 4,
+    paymentMethod: 'transfer',
+    totalPrice: 520000,
+    vendorFee: 0
+  }))
+  baseRentals.push(insertRental({
+    dateTime: '2026-04-02T11:15:00',
+    customerName: 'Dewa',
+    plate: 'DK 1004 WA',
+    periodDays: 5,
+    paymentMethod: 'qris',
+    totalPrice: 700000,
+    vendorFee: 0
+  }))
+
+  const extendParent = baseRentals[0]
+  insertRental({
+    dateTime: '2026-04-03T09:30:00',
+    customerName: 'Andi',
+    plate: 'DK 1001 WA',
+    periodDays: 2,
+    paymentMethod: 'tunai',
+    totalPrice: 260000,
+    vendorFee: 0,
+    relationType: 'extend',
+    isExtension: 1,
+    parentRentalId: extendParent.rentalId
+  })
+
+  const swapSource = insertRental({
+    dateTime: '2026-04-04T10:00:00',
+    customerName: 'Eka',
+    plate: 'DK 1006 WA',
+    periodDays: 6,
+    paymentMethod: 'debit_card',
+    totalPrice: 900000,
+    vendorFee: 0
+  })
+
+  const usedDays = 2
+  const remainingDays = 4
+  const originalTotal = 900000
+  const originalVendorFee = 0
+  const originalPricePerDay = originalTotal / 6
+  const oldRemainingCredit = Math.round(originalTotal * (remainingDays / 6))
+  const sourceUsedTotal = Math.round(originalTotal - oldRemainingCredit)
+  const sourceUsedVendorFee = Math.round((originalTotal > 0 ? originalVendorFee / originalTotal : 0) * sourceUsedTotal)
+  const sourceUsedCommission = calcCommission(swapSource.motor.type, sourceUsedTotal, sourceUsedVendorFee)
+
+  dbOps.run(`
+    UPDATE rentals
+    SET period_days = ?, total_price = ?, price_per_day = ?, vendor_fee = ?, sisa = ?, wavy_gets = ?, owner_gets = ?, relation_type = 'swap_source'
+    WHERE id = ?
+  `, [
+    usedDays,
+    sourceUsedTotal,
+    usedDays > 0 ? sourceUsedTotal / usedDays : sourceUsedTotal,
+    sourceUsedVendorFee,
+    sourceUsedCommission.sisa,
+    sourceUsedCommission.wavy_gets,
+    sourceUsedCommission.owner_gets,
+    swapSource.rentalId
+  ])
+
+  const replacementTotal = 800000
+  const replacement = insertRental({
+    dateTime: '2026-04-06T10:30:00',
+    customerName: 'Eka',
+    plate: 'DK 1008 WA',
+    periodDays: remainingDays,
+    paymentMethod: 'debit_card',
+    totalPrice: replacementTotal,
+    vendorFee: 0,
+    relationType: 'swap',
+    isExtension: 0,
+    parentRentalId: swapSource.rentalId
+  })
+
+  const settlementDelta = Math.round(replacementTotal - oldRemainingCredit)
+  const settlementType = settlementDelta > 0 ? 'topup' : settlementDelta < 0 ? 'refund' : 'none'
+  const settlementAmount = Math.abs(settlementDelta)
+  const settlementMethod = settlementType === 'none' ? null : 'tunai'
+  if (settlementType !== 'none') {
+    const settlementAccountId = getCashAccountId(settlementMethod)
+    dbOps.run(`
+      INSERT INTO cash_transactions (cash_account_id, type, amount, reference_type, reference_id, description, date)
+      VALUES (?, ?, ?, 'rental_swap_settlement', ?, ?, ?)
+    `, [
+      settlementAccountId,
+      settlementType === 'topup' ? 'in' : 'out',
+      settlementAmount,
+      replacement.rentalId,
+      settlementType === 'topup' ? 'Top up ganti unit (Seeder)' : 'Refund ganti unit (Seeder)',
+      '2026-04-06'
+    ])
+    dbOps.run('UPDATE cash_accounts SET balance = balance + ? WHERE id = ?', [
+      settlementType === 'topup' ? settlementAmount : -settlementAmount,
+      settlementAccountId
+    ])
+  }
+
+  dbOps.run(`
+    INSERT INTO rental_swaps (
+      source_rental_id, replacement_rental_id, switch_date_time, used_days, remaining_days,
+      original_price_per_day, original_remaining_credit, replacement_price_per_day, replacement_total_price,
+      settlement_type, settlement_amount, settlement_payment_method, settlement_note
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [
+    swapSource.rentalId,
+    replacement.rentalId,
+    '2026-04-06T10:30:00',
+    usedDays,
+    remainingDays,
+    originalPricePerDay,
+    oldRemainingCredit,
+    replacementTotal / remainingDays,
+    replacementTotal,
+    settlementType,
+    settlementAmount,
+    settlementMethod,
+    'Seeder simulasi ganti unit'
+  ])
+
+  const seededRentalCount = Number(dbOps.get('SELECT COUNT(*) as count FROM rentals')?.count || 0)
+  forceSaveDb()
+  return {
+    ...getSandboxStats(),
+    addedMasters: {
+      owners: owners.length,
+      hotels: 0,
+      motors: motorRows.length
+    },
+    rentalSeeded: seededRentalCount
   }
 }
 
@@ -463,6 +788,34 @@ function seedSandboxData({ rentalCount = 500, daysBack = 365 }) {
 }
 
 export function registerResetHandlers() {
+  const performResetTransactionsOnly = () => {
+    const db = getDb()
+
+    db.run('PRAGMA foreign_keys = OFF')
+
+    try {
+      db.run('DELETE FROM rental_swaps')
+      db.run('DELETE FROM payout_deductions')
+      db.run('DELETE FROM refunds')
+      db.run('DELETE FROM cash_transactions')
+      db.run('DELETE FROM hotel_payouts')
+      db.run('DELETE FROM payouts')
+      db.run('DELETE FROM rentals')
+      db.run('DELETE FROM expenses')
+      db.run('UPDATE cash_accounts SET balance = 0')
+      db.run(`DELETE FROM sqlite_sequence WHERE name IN (
+        'payout_deductions', 'refunds', 'cash_transactions',
+        'hotel_payouts', 'rentals', 'rental_swaps', 'expenses', 'payouts'
+      )`)
+    } finally {
+      db.run('PRAGMA foreign_keys = ON')
+      db.run('VACUUM')
+      saveDb()
+    }
+
+    return { success: true }
+  }
+
   const performResetAllData = () => {
     const db = getDb()
 
@@ -535,6 +888,23 @@ export function registerResetHandlers() {
     }
   })
 
+  ipcMain.handle('db:reset-transactions-status', () => {
+    return getTransactionResetStatus()
+  })
+
+  ipcMain.handle('db:reset-transactions-only', () => {
+    const status = getTransactionResetStatus()
+    if (!status.visible) {
+      throw new Error('Masa reset transaksi (3 hari) sudah berakhir.')
+    }
+
+    const result = performResetTransactionsOnly()
+    return {
+      ...result,
+      expiresAt: status.expiresAt
+    }
+  })
+
   ipcMain.handle('db:dev-stats', () => {
     assertDevOnly()
     return getSandboxStats()
@@ -549,6 +919,15 @@ export function registerResetHandlers() {
       success: true,
       rentalCount,
       daysBack,
+      stats
+    }
+  })
+
+  ipcMain.handle('db:seed-prod-simulation', () => {
+    assertDevOnly()
+    const stats = seedProductionSimulationData()
+    return {
+      success: true,
       stats
     }
   })

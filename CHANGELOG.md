@@ -2,6 +2,12 @@
 
 Format: `MAJOR.MINOR.PATCH` (SemVer)
 
+## 1.0.19 (2026-04-19)
+- **Pengaturan - Reset Transaksi**:
+  - Tambah tab khusus **Reset Transaksi** untuk kebutuhan testing admin.
+  - Reset hanya menghapus data transaksi (rental, pengeluaran, refund, payout, mutasi kas, ganti unit), **data motor/pemilik/hotel tetap aman**.
+  - Fitur reset transaksi dibatasi masa aktif **3 hari**, setelah habis tab otomatis tidak tampil lagi.
+
 ## 1.0.18 (2026-04-18)
 - **Dashboard & Kas**:
   - Saldo kas di dashboard sekarang mengikuti tanggal akhir filter yang dipilih, jadi tidak lagi membingungkan dengan saldo live lintas periode.

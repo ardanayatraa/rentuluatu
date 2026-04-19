@@ -14,6 +14,14 @@
         Umum
       </button>
       <button
+        v-if="transactionResetStatus.visible"
+        @click="settingsTab = 'reset-transactions'"
+        :class="settingsTab === 'reset-transactions' ? 'bg-white text-red-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'"
+        class="rounded-lg px-4 py-2 text-sm font-bold transition-colors"
+      >
+        Reset Transaksi
+      </button>
+      <button
         v-if="isDev"
         @click="settingsTab = 'sandbox'"
         :class="settingsTab === 'sandbox' ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'"
@@ -64,10 +72,16 @@
               </h3>
               <p class="text-xs text-slate-400 mt-1">Cek cepat apakah saldo kas, mutasi, payout, refund, dan hitungan transaksi masih konsisten.</p>
             </div>
-            <button @click="runSystemAudit" :disabled="auditLoading" class="btn-secondary text-xs px-3 py-1.5 shrink-0">
-              <span class="material-symbols-outlined text-sm">fact_check</span>
-              {{ auditLoading ? 'Mengecek...' : 'Cek Sekarang' }}
-            </button>
+            <div class="flex gap-2 shrink-0">
+              <button @click="runSystemAudit" :disabled="auditLoading || auditFixing" class="btn-secondary text-xs px-3 py-1.5">
+                <span class="material-symbols-outlined text-sm">fact_check</span>
+                {{ auditLoading ? 'Mengecek...' : 'Cek Sekarang' }}
+              </button>
+              <button @click="runAuditAutoFix" :disabled="auditFixing || auditLoading" class="btn-primary text-xs px-3 py-1.5">
+                <span class="material-symbols-outlined text-sm">build_circle</span>
+                {{ auditFixing ? 'Memperbaiki...' : 'Perbaiki Otomatis' }}
+              </button>
+            </div>
           </div>
 
           <div
@@ -108,6 +122,10 @@
 
           <div v-if="auditError" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 mb-4">
             {{ auditError }}
+          </div>
+
+          <div v-if="auditFixMessage" class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-700 mb-4">
+            {{ auditFixMessage }}
           </div>
 
           <div v-if="auditResult?.findings?.length" class="space-y-2 max-h-72 overflow-y-auto">
@@ -420,6 +438,46 @@
       </div>
     </div>
 
+    <div v-else-if="settingsTab === 'reset-transactions'" class="space-y-6">
+      <div class="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+        <div class="flex items-center gap-2 text-red-700">
+          <span class="material-symbols-outlined text-base">history</span>
+          <p class="text-sm font-black">Reset Transaksi (Mode Testing Admin)</p>
+        </div>
+        <p class="mt-1 text-xs text-red-600">
+          Fitur ini hanya menghapus data transaksi. Data master seperti motor, pemilik, dan hotel tidak ikut dihapus.
+        </p>
+      </div>
+
+      <div
+        v-if="transactionResetMessage"
+        :class="transactionResetSuccess ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'"
+        class="rounded-xl border px-4 py-3 text-sm"
+      >
+        {{ transactionResetMessage }}
+      </div>
+
+      <div class="card border border-red-200 bg-red-50/40">
+        <h3 class="font-bold text-red-700 text-sm mb-2 flex items-center gap-2">
+          <span class="material-symbols-outlined text-base">warning</span> Reset Transaksi Saja
+        </h3>
+        <p class="text-xs text-red-500 mb-2">
+          Masa aktif sampai: <span class="font-bold">{{ transactionResetExpiresLabel }}</span>
+        </p>
+        <p class="text-xs text-red-500 mb-4">
+          Sisa waktu: <span class="font-bold">{{ transactionResetRemainingLabel }}</span>
+        </p>
+        <button
+          @click="openTransactionResetModal"
+          :disabled="transactionResetLoading || !transactionResetStatus.visible"
+          class="btn-primary !bg-red-600 hover:!bg-red-700 w-full justify-center text-sm"
+        >
+          <span class="material-symbols-outlined text-sm">{{ transactionResetLoading ? 'hourglass_empty' : 'delete_sweep' }}</span>
+          {{ transactionResetLoading ? 'Mereset...' : 'Reset Semua Transaksi' }}
+        </button>
+      </div>
+    </div>
+
     <div v-else-if="isDev" class="space-y-6">
       <div class="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
         <div class="flex items-center gap-2 text-amber-800">
@@ -458,6 +516,13 @@
               <p class="mt-1 text-xs text-slate-400">{{ preset.rentalCount.toLocaleString('id-ID') }} rental • {{ preset.daysBack }} hari</p>
             </button>
           </div>
+          <button
+            @click="runProductionSeed"
+            :disabled="sandboxLoading || productionSeedLoading"
+            class="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left transition hover:bg-amber-100 disabled:opacity-60 mb-4">
+            <p class="text-sm font-black text-amber-800">Seed Simulasi Prod (Fixed)</p>
+            <p class="mt-1 text-xs text-amber-700">Gunakan dataset simulasi internal (owner, motor, daily record, extend, ganti motor).</p>
+          </button>
           <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
             Ukuran database saat ini: <span class="font-bold text-slate-700">{{ formatSize(sandboxStats.dbSizeBytes) }}</span>
           </div>
@@ -521,6 +586,25 @@
         </div>
       </div>
     </n-modal>
+
+    <n-modal v-model:show="showTransactionResetModal" preset="card" title="Konfirmasi Reset Transaksi" class="max-w-sm"
+      :auto-focus="false" :trap-focus="false">
+      <div class="space-y-4">
+        <div class="bg-red-50 text-red-600 p-3 rounded-lg text-xs font-bold border border-red-200">
+          Semua transaksi akan dihapus dan tidak bisa dikembalikan. Data motor, pemilik, dan hotel tetap aman.
+        </div>
+        <p class="text-sm text-slate-600">Ketik <strong>RESET TRANSAKSI</strong> untuk konfirmasi:</p>
+        <input v-model="transactionResetConfirmText" type="text" placeholder="Ketik RESET TRANSAKSI"
+          class="w-full border border-red-200 rounded-lg px-3 py-2 text-sm" />
+        <div class="flex justify-end gap-3">
+          <button @click="showTransactionResetModal = false" class="btn-secondary">Batal</button>
+          <button @click="executeTransactionReset" :disabled="transactionResetLoading || transactionResetConfirmText !== 'RESET TRANSAKSI'"
+            class="btn-primary !bg-red-600 hover:!bg-red-700 disabled:opacity-50">
+            Reset Transaksi
+          </button>
+        </div>
+      </div>
+    </n-modal>
   </div>
 </template>
 
@@ -534,6 +618,12 @@ const license = useLicenseStore()
 const isDev = import.meta.env.DEV
 const appVersion = import.meta.env.VITE_APP_VERSION || '1.0.0'
 const settingsTab = ref('general')
+const transactionResetStatus = ref({ visible: false, startedAt: null, expiresAt: null })
+const showTransactionResetModal = ref(false)
+const transactionResetConfirmText = ref('')
+const transactionResetLoading = ref(false)
+const transactionResetMessage = ref('')
+const transactionResetSuccess = ref(true)
 
 // ── Lisensi ──────────────────────────────────────────────────────────────────
 const activationCode = ref('')
@@ -579,8 +669,13 @@ const isResetting = ref(false)
 const showResetModal = ref(false)
 const resetConfirmText = ref('')
 const productionReset = ref({ visible: false, used: false })
+const productionSeedLoading = ref(false)
+const productionSeedMessage = ref('')
+const productionSeedSuccess = ref(true)
 const auditLoading = ref(false)
+const auditFixing = ref(false)
 const auditError = ref('')
+const auditFixMessage = ref('')
 const auditResult = ref(null)
 
 function handleReset() { resetConfirmText.value = ''; showResetModal.value = true }
@@ -601,6 +696,40 @@ async function executeReset() {
   } finally {
     isResetting.value = false
     showResetModal.value = false
+  }
+}
+
+async function loadTransactionResetStatus() {
+  try {
+    const status = await window.api.getTransactionResetStatus()
+    transactionResetStatus.value = status
+    if (!status.visible && settingsTab.value === 'reset-transactions') {
+      settingsTab.value = 'general'
+    }
+  } catch {
+    transactionResetStatus.value = { visible: false, startedAt: null, expiresAt: null }
+  }
+}
+
+function openTransactionResetModal() {
+  transactionResetConfirmText.value = ''
+  showTransactionResetModal.value = true
+}
+
+async function executeTransactionReset() {
+  if (transactionResetConfirmText.value !== 'RESET TRANSAKSI') return
+  transactionResetLoading.value = true
+  try {
+    await window.api.resetTransactionsOnly()
+    setTransactionResetMsg('Reset transaksi berhasil. Data transaksi sudah kembali ke nol.', true)
+    await loadTransactionResetStatus()
+    setTimeout(() => window.location.reload(), 700)
+  } catch (error) {
+    setTransactionResetMsg(`Reset transaksi gagal: ${error.message}`, false)
+    await loadTransactionResetStatus()
+  } finally {
+    transactionResetLoading.value = false
+    showTransactionResetModal.value = false
   }
 }
 
@@ -648,6 +777,12 @@ function setSandboxMsg(msg, ok = true) {
   setTimeout(() => { sandboxMessage.value = '' }, 5000)
 }
 
+function setTransactionResetMsg(msg, ok = true) {
+  transactionResetMessage.value = msg
+  transactionResetSuccess.value = ok
+  setTimeout(() => { transactionResetMessage.value = '' }, 5000)
+}
+
 function formatFileDate(iso) {
   return new Date(iso).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
@@ -657,6 +792,23 @@ function formatSize(bytes) {
   const kb = Number(bytes) / 1024
   return kb > 1024 ? (kb / 1024).toFixed(1) + ' MB' : kb.toFixed(0) + ' KB'
 }
+
+const transactionResetExpiresLabel = computed(() => {
+  if (!transactionResetStatus.value.expiresAt) return '-'
+  return formatFileDate(transactionResetStatus.value.expiresAt)
+})
+
+const transactionResetRemainingLabel = computed(() => {
+  const expiresAt = transactionResetStatus.value.expiresAt
+  if (!expiresAt) return '-'
+  const delta = new Date(expiresAt).getTime() - Date.now()
+  if (delta <= 0) return 'Sudah berakhir'
+  const totalHours = Math.floor(delta / (1000 * 60 * 60))
+  const days = Math.floor(totalHours / 24)
+  const hours = totalHours % 24
+  if (days > 0) return `${days} hari ${hours} jam`
+  return `${Math.max(1, hours)} jam`
+})
 
 const auditCheckedLabel = computed(() => {
   const checked = auditResult.value?.summary?.checked
@@ -672,12 +824,54 @@ const auditCheckedLabel = computed(() => {
 async function runSystemAudit() {
   auditLoading.value = true
   auditError.value = ''
+  auditFixMessage.value = ''
   try {
     auditResult.value = await window.api.runSystemAudit()
   } catch (error) {
     auditError.value = `Audit gagal dijalankan: ${error.message}`
   } finally {
     auditLoading.value = false
+  }
+}
+
+function setProductionSeedMsg(message, ok = true) {
+  productionSeedMessage.value = message
+  productionSeedSuccess.value = ok
+  setTimeout(() => {
+    productionSeedMessage.value = ''
+  }, 5000)
+}
+
+async function runProductionSeed() {
+  productionSeedLoading.value = true
+  try {
+    const result = await window.api.seedProdSimulationData()
+    const added = result.stats?.addedMasters || {}
+    const successMsg = `Seed simulasi prod selesai: ${result.stats?.rentalSeeded?.toLocaleString('id-ID') || 0} rental, +${(added.owners || 0).toLocaleString('id-ID')} mitra, +${(added.hotels || 0).toLocaleString('id-ID')} hotel, +${(added.motors || 0).toLocaleString('id-ID')} motor.`
+    setProductionSeedMsg(successMsg)
+    if (isDev) setSandboxMsg(successMsg, true)
+  } catch (error) {
+    setProductionSeedMsg(`Seed simulasi prod gagal: ${error.message}`, false)
+    if (isDev) setSandboxMsg(`Seed simulasi prod gagal: ${error.message}`, false)
+  } finally {
+    productionSeedLoading.value = false
+  }
+}
+
+async function runAuditAutoFix() {
+  auditFixing.value = true
+  auditError.value = ''
+  auditFixMessage.value = ''
+  try {
+    const result = await window.api.autoFixSystemAudit()
+    auditResult.value = result.report
+    auditFixMessage.value = result.fixedCount > 0
+      ? `Perbaikan otomatis selesai. ${result.fixedCount} penyesuaian diterapkan.`
+      : 'Perbaikan otomatis selesai. Tidak ada penyesuaian yang perlu diterapkan.'
+  } catch (error) {
+    auditError.value = `Perbaikan otomatis gagal: ${error.message}`
+  } finally {
+    auditFixing.value = false
   }
 }
 
@@ -835,6 +1029,7 @@ onMounted(async () => {
   await checkGdriveStatus()
   await loadBackupList()
   await runSystemAudit()
+  await loadTransactionResetStatus()
   if (!isDev) {
     try {
       productionReset.value = await window.api.getProductionResetStatus()

@@ -68,10 +68,14 @@ contextBridge.exposeInMainWorld('api', {
   getTopMotors: (data) => invoke('dashboard:top-motors', data),
   getExpenseCategories: (data) => invoke('dashboard:expense-categories', data),
   runSystemAudit: () => invoke('audit:run-system-check'),
+  autoFixSystemAudit: () => invoke('audit:auto-fix'),
   // System
   resetAllData: () => invoke('db:reset-all'),
   getProductionResetStatus: () => invoke('db:production-reset-status'),
   resetProductionDataOnce: () => invoke('db:production-reset-once'),
+  getTransactionResetStatus: () => invoke('db:reset-transactions-status'),
+  resetTransactionsOnly: () => invoke('db:reset-transactions-only'),
+  seedProdSimulationData: () => invoke('db:seed-prod-simulation'),
   getDevSandboxStats: () => invoke('db:dev-stats'),
   seedDevSandboxData: (data) => invoke('db:dev-seed', data),
   // Backup & Restore
