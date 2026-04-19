@@ -3,6 +3,30 @@
 
 export const CHANGELOG = [
   {
+    version: '1.0.20',
+    date: '2026-04-19',
+    badge: { text: 'Admin Tooling & Report Cleanup', tone: 'emerald' },
+    intro: 'Rilis ini menambahkan kontrol admin untuk recovery data, log aktivitas, dan merapikan layout dokumen Hak Mitra agar lebih hemat kertas.',
+    items: [
+      {
+        title: 'Log Aktivitas Admin',
+        desc: 'Aksi manual user (fokus CRUD) kini tercatat di tab Log Aktivitas Admin agar bisa ditelusuri berdasarkan tanggal dan jam.'
+      },
+      {
+        title: 'Reset Transaksi Bertempo',
+        desc: 'Tab reset transaksi di Pengaturan tersedia sesuai masa aktif yang ditetapkan untuk kebutuhan testing admin.'
+      },
+      {
+        title: 'Backup/Restore & Recovery Tool',
+        desc: 'Alur backup-restore diperkuat untuk skenario pindah perangkat, termasuk utilitas recovery passphrase eksternal untuk kebutuhan dev/admin.'
+      },
+      {
+        title: 'PDF Hak Mitra Lebih Ringkas',
+        desc: 'Daftar motor di header mitra disederhanakan, pengeluaran per motor dijadikan satu tabel, dan bagian kosong otomatis disembunyikan.'
+      }
+    ]
+  },
+  {
     version: '1.0.18',
     date: '2026-04-18',
     badge: { text: 'Audit & Cash Accuracy', tone: 'emerald' },
