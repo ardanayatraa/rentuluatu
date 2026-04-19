@@ -109,7 +109,8 @@ python tools/recovery-passphrase-gui.py
 - Pilih file backup `.wavy`
 - Pilih file recovery key `.key.wavy`
 - Tombol **Check Cocok / Tidak** (cek pasangan valid + tes decrypt backup)
-- Tombol **Apply Key ke Device Ini** (tulis passphrase ke `.backup-key`)
+- Input **ID Perangkat Target**
+- Tombol **Apply Key ke Device Ini** (tulis passphrase ke `.backup-key` perangkat)
 - Tombol **Cek + Apply** sekali klik
 
 Tujuannya: kalau sudah ada pasangan backup + key yang valid, file backup `.wavy`

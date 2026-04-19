@@ -16,6 +16,7 @@ import os
 import platform
 from pathlib import Path
 import hashlib
+import socket
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
@@ -90,6 +91,19 @@ def default_user_data_dir(app_name: str = "wavy") -> Path:
     return Path.home() / ".config" / app_name
 
 
+def get_machine_id() -> str:
+    """
+    Mirror app logic from src/main/lib/license.js:
+    sha256(hostname|platform|arch|cpuModel).slice(0,16).toUpperCase()
+    """
+    hostname = socket.gethostname()
+    plat = platform.system().lower()
+    arch = platform.machine().lower()
+    cpu_model = platform.processor() or ""
+    info = f"{hostname}|{plat}|{arch}|{cpu_model}"
+    return hashlib.sha256(info.encode("utf-8")).hexdigest()[:16].upper()
+
+
 class App:
     def __init__(self, root: tk.Tk):
         self.root = root
@@ -99,9 +113,8 @@ class App:
         self.backup_path = tk.StringVar()
         self.key_path = tk.StringVar()
         self.recovery_password = tk.StringVar(value=DEFAULT_RECOVERY_PASSWORD)
-        self.target_key_path = tk.StringVar(
-            value=str(default_user_data_dir("wavy") / ".backup-key")
-        )
+        self.local_machine_id = get_machine_id()
+        self.target_device_id = tk.StringVar(value=self.local_machine_id)
         self.status_text = tk.StringVar(value="Pilih file backup dan recovery key.")
         self.recovered_passphrase = ""
 
@@ -130,21 +143,23 @@ class App:
             row=5, column=0, sticky="w"
         )
 
-        tk.Label(container, text="Target .backup-key path:").grid(row=6, column=0, sticky="w", pady=(12, 0))
-        tk.Entry(container, textvariable=self.target_key_path, width=85).grid(
-            row=7, column=0, sticky="we", padx=(0, 8)
+        tk.Label(container, text=f"ID Perangkat Saat Ini: {self.local_machine_id}").grid(
+            row=6, column=0, sticky="w", pady=(12, 0)
         )
-        tk.Button(container, text="Pilih Lokasi", command=self.pick_target_key).grid(row=7, column=1)
+        tk.Label(container, text="ID Perangkat Target:").grid(row=7, column=0, sticky="w")
+        tk.Entry(container, textvariable=self.target_device_id, width=40).grid(
+            row=8, column=0, sticky="w"
+        )
 
         action_frame = tk.Frame(container, pady=12)
-        action_frame.grid(row=8, column=0, columnspan=2, sticky="w")
+        action_frame.grid(row=9, column=0, columnspan=2, sticky="w")
         tk.Button(action_frame, text="Check Cocok / Tidak", command=self.check_match).pack(side="left", padx=(0, 8))
         tk.Button(action_frame, text="Apply Key ke Device Ini", command=self.apply_key).pack(side="left", padx=(0, 8))
         tk.Button(action_frame, text="Cek + Apply", command=self.check_and_apply).pack(side="left")
 
         status_box = tk.LabelFrame(container, text="Status / Hasil", padx=8, pady=8)
-        status_box.grid(row=9, column=0, columnspan=2, sticky="nsew")
-        container.grid_rowconfigure(9, weight=1)
+        status_box.grid(row=10, column=0, columnspan=2, sticky="nsew")
+        container.grid_rowconfigure(10, weight=1)
         container.grid_columnconfigure(0, weight=1)
 
         self.status_widget = tk.Text(status_box, wrap="word", height=14)
@@ -170,17 +185,6 @@ class App:
         )
         if path:
             self.key_path.set(path)
-
-    def pick_target_key(self):
-        current = Path(self.target_key_path.get()).name or ".backup-key"
-        path = filedialog.asksaveasfilename(
-            title="Pilih lokasi file .backup-key",
-            initialfile=current,
-            defaultextension="",
-            filetypes=[("All files", "*.*")],
-        )
-        if path:
-            self.target_key_path.set(path)
 
     def _load_and_check(self):
         backup = Path(self.backup_path.get().strip())
@@ -228,14 +232,26 @@ class App:
         if not self.recovered_passphrase:
             messagebox.showwarning("Belum Dicek", "Jalankan 'Check Cocok / Tidak' dulu.")
             return
-        target = Path(self.target_key_path.get().strip())
-        if not target:
-            messagebox.showerror("Path Invalid", "Path target .backup-key belum diisi.")
+        target_device_id = self.target_device_id.get().strip().upper()
+        if not target_device_id:
+            messagebox.showerror("ID Target", "ID perangkat target wajib diisi.")
             return
+        if target_device_id != self.local_machine_id:
+            proceed = messagebox.askyesno(
+                "ID Berbeda",
+                "ID perangkat target berbeda dengan ID perangkat terdeteksi.\n"
+                "Lanjut apply ke perangkat ini tetap?"
+            )
+            if not proceed:
+                return
+        target = default_user_data_dir("wavy") / ".backup-key"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(self.recovered_passphrase, encoding="utf-8")
-        self._append_status(f"[OK] Passphrase ditulis ke: {target}")
-        messagebox.showinfo("Sukses", f"Passphrase berhasil di-apply ke:\n{target}")
+        self._append_status(f"[OK] Passphrase ditulis ke perangkat {target_device_id}: {target}")
+        messagebox.showinfo(
+            "Sukses",
+            f"Passphrase berhasil di-apply.\nPerangkat: {target_device_id}\nPath: {target}"
+        )
 
     def check_and_apply(self):
         try:
