@@ -202,6 +202,10 @@ function decryptBackupWithRecoveryKey({ fileData, keyBuffer, backupFilename }) {
   return decryptBuffer(fileData, recoveredPassphrase)
 }
 
+function parsePassphraseFromRecoveryKeyBuffer({ keyBuffer, backupFilename }) {
+  return parseRecoveryKeyBuffer({ buffer: keyBuffer, backupFilename })
+}
+
 function monthStampLocal(date = new Date()) {
   const y = date.getFullYear()
   const m = String(date.getMonth() + 1).padStart(2, '0')
@@ -441,6 +445,60 @@ export function registerBackupHandlers() {
     logActivity({
       action: 'backup.set-passphrase',
       detail: 'Passphrase backup diperbarui'
+    })
+    return { success: true }
+  })
+
+  ipcMain.handle('backup:adopt-local-passphrase', (_, { path: backupPath }) => {
+    if (!backupPath) throw new Error('Path backup tidak valid')
+    const backupFilename = String(backupPath).split(/[/\\]/).pop()
+    if (!backupFilename) throw new Error('Nama file backup tidak valid')
+    const recoveryKeyPath = getRecoveryKeyPathForLocalBackup(String(backupPath))
+    if (!existsSync(recoveryKeyPath)) {
+      throw new Error('Recovery key lokal tidak ditemukan untuk backup ini')
+    }
+    const keyBuffer = readFileSync(recoveryKeyPath)
+    const recoveredPassphrase = parsePassphraseFromRecoveryKeyBuffer({
+      keyBuffer,
+      backupFilename
+    })
+    if (!recoveredPassphrase || recoveredPassphrase.length < 6) {
+      throw new Error('Recovery key tidak valid')
+    }
+    setCustomPassphrase(recoveredPassphrase)
+    logActivity({
+      action: 'backup.adopt-local-passphrase',
+      detail: `Passphrase diambil dari recovery key lokal (${backupFilename})`
+    })
+    return { success: true }
+  })
+
+  ipcMain.handle('backup:gdrive-adopt-passphrase', async (_, { fileName }) => {
+    if (!fileName) throw new Error('Nama file backup tidak valid')
+    const auth = await getAuthenticatedClient()
+    if (!auth) throw new Error('Belum terhubung ke Google Drive')
+    const google = await getGoogle()
+    const drive = google.drive({ version: 'v3', auth })
+    const folderId = await getOrCreateFolder(drive)
+    const keyFilename = getRecoveryKeyFilename(String(fileName))
+    const keyFile = await findFileInFolderByName(drive, folderId, keyFilename)
+    if (!keyFile?.id) {
+      throw new Error('Recovery key tidak ditemukan di Google Drive untuk backup ini')
+    }
+
+    const keyRes = await drive.files.get({ fileId: keyFile.id, alt: 'media' }, { responseType: 'arraybuffer' })
+    const keyBuffer = Buffer.from(keyRes.data)
+    const recoveredPassphrase = parsePassphraseFromRecoveryKeyBuffer({
+      keyBuffer,
+      backupFilename: String(fileName)
+    })
+    if (!recoveredPassphrase || recoveredPassphrase.length < 6) {
+      throw new Error('Recovery key tidak valid')
+    }
+    setCustomPassphrase(recoveredPassphrase)
+    logActivity({
+      action: 'backup.gdrive-adopt-passphrase',
+      detail: `Passphrase diambil dari recovery key Google Drive (${fileName})`
     })
     return { success: true }
   })
