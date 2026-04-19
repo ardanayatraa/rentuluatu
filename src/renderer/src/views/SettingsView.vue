@@ -405,10 +405,6 @@
                 <p class="text-[10px] text-slate-400">{{ formatFileDate(b.modifiedTime) }} · {{ formatSize(b.size) }}</p>
               </div>
               <div class="flex gap-2">
-                <button @click="adoptLocalPassphrase(b)"
-                  class="text-xs text-amber-600 font-bold hover:text-amber-700 flex items-center gap-1">
-                  <span class="material-symbols-outlined text-sm">vpn_key</span> Pakai Key
-                </button>
                 <button @click="restoreLocal(b)"
                   class="text-xs text-primary font-bold hover:underline flex items-center gap-1">
                   <span class="material-symbols-outlined text-sm">restore</span> Restore
@@ -440,10 +436,6 @@
                 <p class="text-[10px] text-slate-400">{{ formatFileDate(b.modifiedTime) }} · {{ formatSize(b.size) }}</p>
               </div>
               <div class="flex gap-2">
-                <button @click="adoptDrivePassphrase(b)"
-                  class="text-xs text-amber-600 hover:text-amber-700 flex items-center gap-1" title="Pakai Key">
-                  <span class="material-symbols-outlined text-sm">vpn_key</span> Key
-                </button>
                 <button @click="restoreDrive(b)"
                   class="text-xs text-primary font-bold hover:underline flex items-center gap-1">
                   <span class="material-symbols-outlined text-sm">cloud_download</span> Restore
@@ -1106,38 +1098,12 @@ async function showLocalBackupInFolder(backup) {
   }
 }
 
-async function adoptLocalPassphrase(backup) {
-  if (!confirm(`Sinkronkan passphrase dari recovery key untuk "${backup.name}"?`)) return
-  backupLoading.value = true
-  try {
-    await window.api.backupAdoptLocalPassphrase({ path: backup.path })
-    setMsg('Passphrase berhasil disinkronkan dari recovery key lokal.')
-  } catch (e) {
-    setMsg('Gagal sinkron passphrase lokal: ' + e.message, false)
-  } finally {
-    backupLoading.value = false
-  }
-}
-
 async function restoreDrive(backup) {
   if (!confirm(`Restore dari Drive: "${backup.name}"?\n\nData saat ini akan diganti.`)) return
   backupLoading.value = true
   try { await window.api.backupGdriveRestore({ fileId: backup.id, fileName: backup.name }); setMsg('Restore berhasil! App akan reload...'); setTimeout(() => window.location.reload(), 1500) }
   catch (e) { setMsg('Restore gagal: ' + e.message, false) }
   finally { backupLoading.value = false }
-}
-
-async function adoptDrivePassphrase(backup) {
-  if (!confirm(`Sinkronkan passphrase dari recovery key Drive untuk "${backup.name}"?`)) return
-  backupLoading.value = true
-  try {
-    await window.api.backupGdriveAdoptPassphrase({ fileName: backup.name })
-    setMsg('Passphrase berhasil disinkronkan dari recovery key Google Drive.')
-  } catch (e) {
-    setMsg('Gagal sinkron passphrase Drive: ' + e.message, false)
-  } finally {
-    backupLoading.value = false
-  }
 }
 
 async function deleteDriveBackup(backup) {
