@@ -408,6 +408,10 @@
                 class="text-xs text-primary font-bold hover:underline flex items-center gap-1">
                 <span class="material-symbols-outlined text-sm">restore</span> Restore
               </button>
+              <button @click="showLocalBackupInFolder(b)"
+                class="text-xs text-slate-500 font-bold hover:text-slate-700 flex items-center gap-1">
+                <span class="material-symbols-outlined text-sm">folder_open</span> Show in Folder
+              </button>
             </div>
           </div>
 
@@ -1081,6 +1085,14 @@ async function restoreLocal(backup) {
   try { await window.api.backupRestoreLocal({ path: backup.path }); setMsg('Restore berhasil! App akan reload...'); setTimeout(() => window.location.reload(), 1500) }
   catch (e) { setMsg('Restore gagal: ' + e.message, false) }
   finally { backupLoading.value = false }
+}
+
+async function showLocalBackupInFolder(backup) {
+  try {
+    await window.api.backupShowLocalInFolder({ path: backup.path })
+  } catch (e) {
+    setMsg('Gagal membuka folder backup: ' + e.message, false)
+  }
 }
 
 async function restoreDrive(backup) {

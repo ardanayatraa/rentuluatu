@@ -87,6 +87,7 @@ contextBridge.exposeInMainWorld('api', {
   backupGdriveDisconnect: () => invoke('backup:gdrive-disconnect'),
   backupCreateLocal: () => invoke('backup:create-local'),
   backupListLocal: () => invoke('backup:list-local'),
+  backupShowLocalInFolder: (data) => invoke('backup:show-local-in-folder', data),
   backupRestoreLocal: (data) => invoke('backup:restore-local', data),
   backupGdriveUpload: () => invoke('backup:gdrive-upload'),
   backupGdriveList: () => invoke('backup:gdrive-list'),

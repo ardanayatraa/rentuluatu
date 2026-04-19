@@ -487,6 +487,18 @@ export function registerBackupHandlers() {
       .sort((a, b) => b.modifiedTime.localeCompare(a.modifiedTime))
   })
 
+  ipcMain.handle('backup:show-local-in-folder', (_, { path: backupPath }) => {
+    if (!backupPath) throw new Error('Path backup tidak valid')
+    const normalizedPath = String(backupPath)
+    const backupDir = getBackupDir()
+    if (!normalizedPath.startsWith(backupDir)) {
+      throw new Error('Lokasi file backup tidak valid')
+    }
+    if (!existsSync(normalizedPath)) throw new Error('File backup tidak ditemukan')
+    shell.showItemInFolder(normalizedPath)
+    return { success: true }
+  })
+
   // Restore dari backup lokal
   ipcMain.handle('backup:restore-local', (_, { path: backupPath }) => {
     if (!existsSync(backupPath)) throw new Error('File backup tidak ditemukan')
