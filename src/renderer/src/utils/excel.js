@@ -3,12 +3,15 @@
 const rp = (n) => Number(n || 0)
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('id-ID') : '-'
 const fmtDateTime = (d) => d ? new Date(d).toLocaleString('id-ID') : '-'
+const REKENING_METHODS = ['transfer', 'qris', 'debit_card']
 const paymentLabel = (method) => ({
   tunai: 'Tunai',
   transfer: 'Transfer',
   qris: 'QRIS',
   debit_card: 'Debit Card'
 }[method] || method || '-')
+const paymentGroupLabel = (method) => REKENING_METHODS.includes(String(method || '').trim().toLowerCase()) ? 'Saldo Rekening' : paymentLabel(method)
+const cashBucketLabel = (bucket) => String(bucket || 'pendapatan').trim().toLowerCase() === 'modal' ? 'Kas Modal' : 'Kas Pendapatan'
 
 export async function saveFinancialExcel({ rows, period, groupLabel, fileLabel }) {
   const columns = [
@@ -47,7 +50,8 @@ export async function saveMotorIncomeExcel({ rentals, period, motorName, fileLab
     { header: 'Hotel / Vendor Hotel', key: 'hotel', width: 20 },
     { header: 'Motor', key: 'motor', width: 22 },
     { header: 'Durasi (hari)', key: 'days', width: 14 },
-    { header: 'Pembayaran', key: 'payment', width: 14 },
+    { header: 'Sumber Kas', key: 'cash_bucket', width: 16 },
+    { header: 'Pembayaran', key: 'payment', width: 16 },
     { header: 'Total', key: 'total', width: 18 },
     { header: 'Fee Vendor', key: 'vendor_fee', width: 18 },
     { header: 'Wavy Gets', key: 'wavy', width: 18 },
@@ -56,13 +60,14 @@ export async function saveMotorIncomeExcel({ rentals, period, motorName, fileLab
   const dataRows = rentals.map(r => ({
     date: fmtDateTime(r.date_time), customer: r.customer_name, hotel: r.hotel || '-',
     motor: r.model + ' ' + r.plate_number, days: r.period_days,
-    payment: paymentLabel(r.payment_method), total: rp(r.total_price),
+    cash_bucket: cashBucketLabel(r.cash_bucket),
+    payment: paymentGroupLabel(r.payment_method), total: rp(r.total_price),
     vendor_fee: rp(r.vendor_fee),
     wavy: rp(r.wavy_gets), owner: rp(r.owner_gets)
   }))
   const totals = {
     date: 'TOTAL', customer: '', hotel: '', motor: '',
-    days: rentals.reduce((s,r)=>s+r.period_days,0), payment: '',
+    days: rentals.reduce((s,r)=>s+r.period_days,0), cash_bucket: '', payment: '',
     total: rp(rentals.reduce((s,r)=>s+r.total_price,0)),
     vendor_fee: rp(rentals.reduce((s,r)=>s+Number(r.vendor_fee||0),0)),
     wavy: rp(rentals.reduce((s,r)=>s+r.wavy_gets,0)),
@@ -82,15 +87,17 @@ export async function saveMotorExpensesExcel({ expenses, period, motorName, file
     { header: 'Tipe', key: 'type', width: 12 },
     { header: 'Kategori', key: 'category', width: 16 },
     { header: 'Keterangan', key: 'desc', width: 24 },
-    { header: 'Pembayaran', key: 'payment', width: 14 },
+    { header: 'Sumber Kas', key: 'cash_bucket', width: 16 },
+    { header: 'Pembayaran', key: 'payment', width: 16 },
     { header: 'Jumlah', key: 'amount', width: 18 }
   ]
   const dataRows = expenses.map(e => ({
     date: fmtDate(e.date), motor: e.model ? e.model+' '+e.plate_number : 'Umum',
     type: e.type, category: e.category, desc: e.description || '-',
-    payment: paymentLabel(e.payment_method), amount: rp(e.amount)
+    cash_bucket: cashBucketLabel(e.cash_bucket),
+    payment: paymentGroupLabel(e.payment_method), amount: rp(e.amount)
   }))
-  const totals = { date: 'TOTAL', motor:'', type:'', category:'', desc:'', payment:'',
+  const totals = { date: 'TOTAL', motor:'', type:'', category:'', desc:'', cash_bucket:'', payment:'',
     amount: rp(expenses.reduce((s,e)=>s+e.amount,0)) }
   return window.api.saveExcel({
     defaultName: `Pengeluaran_Motor_${(motorName||'Semua').replace(/\s/g,'_')}_${fileLabel || period.replace(/\//g,'-')}.xlsx`,
@@ -103,7 +110,8 @@ export async function saveTransactionsExcel({ rentals, operationalExpenses, moto
     { header: 'Tanggal', key: 'date', width: 20 },
     { header: 'Pelanggan', key: 'desc', width: 22 },
     { header: 'Motor', key: 'motor', width: 22 },
-    { header: 'Pembayaran', key: 'payment', width: 14 },
+    { header: 'Sumber Kas', key: 'cash_bucket', width: 16 },
+    { header: 'Pembayaran', key: 'payment', width: 16 },
     { header: 'Jumlah', key: 'amount', width: 18 },
     { header: 'Status', key: 'status', width: 12 }
   ]
@@ -111,23 +119,24 @@ export async function saveTransactionsExcel({ rentals, operationalExpenses, moto
     { header: 'Tanggal', key: 'date', width: 18 },
     { header: 'Kategori', key: 'desc', width: 22 },
     { header: 'Motor', key: 'motor', width: 22 },
-    { header: 'Pembayaran', key: 'payment', width: 14 },
+    { header: 'Sumber Kas', key: 'cash_bucket', width: 16 },
+    { header: 'Pembayaran', key: 'payment', width: 16 },
     { header: 'Jumlah', key: 'amount', width: 18 }
   ]
   return window.api.saveExcel({
       defaultName: `Transaksi_${fileLabel || period.replace(/\//g,'-')}.xlsx`,
       sheets: [
         { name: 'Pemasukan', columns: rentalCols, currencyKeys: ['amount'],
-          rows: rentals.map(r => ({ date: fmtDateTime(r.date), desc: r.description, motor: r.motor, payment: paymentLabel(r.payment_method), amount: rp(r.amount), status: r.status })),
-          totals: { date:'TOTAL', desc:'', motor:'', payment:'', amount: rp(rentals.filter(r=>r.status!=='refunded').reduce((s,r)=>s+r.amount,0)), status:'' }
+          rows: rentals.map(r => ({ date: fmtDateTime(r.date), desc: r.description, motor: r.motor, cash_bucket: cashBucketLabel(r.cash_bucket), payment: paymentGroupLabel(r.payment_method), amount: rp(r.amount), status: r.status })),
+          totals: { date:'TOTAL', desc:'', motor:'', cash_bucket:'', payment:'', amount: rp(rentals.filter(r=>r.status!=='refunded').reduce((s,r)=>s+r.amount,0)), status:'' }
         },
         { name: 'Pengeluaran Operasional', columns: expCols, currencyKeys: ['amount'],
-          rows: operationalExpenses.map(e => ({ date: fmtDate(e.date), desc: e.description, motor: e.motor, payment: paymentLabel(e.payment_method), amount: rp(e.amount) })),
-          totals: { date:'TOTAL', desc:'', motor:'', payment:'', amount: rp(operationalExpenses.reduce((s,e)=>s+e.amount,0)) }
+          rows: operationalExpenses.map(e => ({ date: fmtDate(e.date), desc: e.description, motor: e.motor, cash_bucket: cashBucketLabel(e.cash_bucket), payment: paymentGroupLabel(e.payment_method), amount: rp(e.amount) })),
+          totals: { date:'TOTAL', desc:'', motor:'', cash_bucket:'', payment:'', amount: rp(operationalExpenses.reduce((s,e)=>s+e.amount,0)) }
         },
         { name: 'Pengeluaran Motor', columns: expCols, currencyKeys: ['amount'],
-          rows: motorExpenses.map(e => ({ date: fmtDate(e.date), desc: e.description, motor: e.motor, payment: paymentLabel(e.payment_method), amount: rp(e.amount) })),
-          totals: { date:'TOTAL', desc:'', motor:'', payment:'', amount: rp(motorExpenses.reduce((s,e)=>s+e.amount,0)) }
+          rows: motorExpenses.map(e => ({ date: fmtDate(e.date), desc: e.description, motor: e.motor, cash_bucket: cashBucketLabel(e.cash_bucket), payment: paymentGroupLabel(e.payment_method), amount: rp(e.amount) })),
+          totals: { date:'TOTAL', desc:'', motor:'', cash_bucket:'', payment:'', amount: rp(motorExpenses.reduce((s,e)=>s+e.amount,0)) }
         }
       ]
   })

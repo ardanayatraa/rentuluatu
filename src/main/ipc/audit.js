@@ -36,8 +36,11 @@ function getSingleCashMutation(referenceType, referenceId) {
   )
 }
 
-function getCashAccountByType(type) {
-  return dbOps.get('SELECT * FROM cash_accounts WHERE type = ?', [type])
+function getCashAccountByType(type, bucket = 'pendapatan') {
+  return dbOps.get(
+    "SELECT * FROM cash_accounts WHERE type = ? AND COALESCE(bucket, 'pendapatan') = ? ORDER BY id ASC LIMIT 1",
+    [type, bucket]
+  )
 }
 
 function getCashAccountById(id) {
@@ -294,7 +297,7 @@ function repairRental(rental) {
   const relationType = String(rental.relation_type || 'rental').toLowerCase()
   const motorModel = rental.motor_model || `Motor #${rental.motor_id}`
   const customerName = rental.customer_name || '-'
-  const paymentAccount = getCashAccountByType(rental.payment_method)
+  const paymentAccount = getCashAccountByType(rental.payment_method, 'pendapatan')
 
   const commission = calcCommission(rental.motor_type, rentalTotal, vendorFee)
   if (!sameAmount(rental.sisa, commission.sisa) || !sameAmount(rental.wavy_gets, commission.wavy_gets) || !sameAmount(rental.owner_gets, commission.owner_gets)) {
@@ -320,7 +323,7 @@ function repairRental(rental) {
   }
 
   if (vendorFee > 0) {
-    const vendorAccount = getCashAccountByType('tunai') || paymentAccount
+    const vendorAccount = getCashAccountByType('tunai', 'pendapatan') || paymentAccount
     if (vendorAccount) {
       const vendorFeeLabel =
         relationType === 'swap_source' ? 'Fee Vendor (Sumber Ganti Unit)' :
@@ -347,7 +350,7 @@ function repairRental(rental) {
 }
 
 function repairExpense(expense) {
-  const account = getCashAccountByType(expense.payment_method)
+  const account = getCashAccountByType(expense.payment_method, String(expense.cash_bucket || 'pendapatan'))
   if (!account) return 0
   deleteCashMutation('expense', expense.id)
   insertCashMutation({
@@ -363,7 +366,7 @@ function repairExpense(expense) {
 }
 
 function repairRefund(refund) {
-  const account = getCashAccountByType(refund.payment_method)
+  const account = getCashAccountByType(refund.payment_method, 'pendapatan')
   if (!account) return 0
   deleteCashMutation('refund', refund.id)
   insertCashMutation({
@@ -403,7 +406,7 @@ function repairSwap(swap) {
   const settlementAmount = normalizeNumber(swap.settlement_amount)
   deleteCashMutation('rental_swap_settlement', swap.replacement_rental_id)
   if (!settlementAmount || settlementType === 'none') return 0
-  const account = getCashAccountByType(swap.settlement_payment_method)
+  const account = getCashAccountByType(swap.settlement_payment_method, 'pendapatan')
   if (!account) return 0
   const replacementRental = dbOps.get('SELECT invoice_number FROM rentals WHERE id = ?', [swap.replacement_rental_id])
   const sourceRental = dbOps.get('SELECT invoice_number FROM rentals WHERE id = ?', [swap.source_rental_id])

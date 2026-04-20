@@ -58,6 +58,7 @@ function assertCompanyFundsAvailableForOperationalExpense(amount) {
 
 export function registerExpenseHandlers() {
   const allowedPaymentMethods = ['tunai', 'transfer', 'qris', 'debit_card']
+  const allowedCashBuckets = ['pendapatan', 'modal']
   const normalizePaymentMethod = (method) => {
     const value = String(method || '').trim().toLowerCase()
     if (value === 'qriss') return 'qris'
@@ -65,6 +66,17 @@ export function registerExpenseHandlers() {
     if (value === 'debit' || value === 'debitcard') return 'debit_card'
     return value
   }
+  const normalizeCashBucket = (bucket) => {
+    const value = String(bucket || '').trim().toLowerCase()
+    return allowedCashBuckets.includes(value) ? value : 'pendapatan'
+  }
+  const getCashAccount = (paymentMethod, cashBucket) => {
+    return dbOps.get(
+      "SELECT * FROM cash_accounts WHERE type = ? AND COALESCE(bucket, 'pendapatan') = ? ORDER BY id ASC LIMIT 1",
+      [paymentMethod, normalizeCashBucket(cashBucket)]
+    )
+  }
+  const cashBucketLabel = (bucket) => normalizeCashBucket(bucket) === 'modal' ? 'Modal' : 'Pendapatan'
 
   ipcMain.handle('expense:get-all', (_, filters = {}) => {
     let query = `
@@ -91,13 +103,14 @@ export function registerExpenseHandlers() {
     }
 
     const paymentMethod = normalizePaymentMethod(data.payment_method)
+    const cashBucket = normalizeCashBucket(data.cash_bucket)
     if (!allowedPaymentMethods.includes(paymentMethod)) {
       throw new Error('Metode bayar tidak valid')
     }
 
-    const cashAccount = dbOps.get('SELECT * FROM cash_accounts WHERE type = ?', [paymentMethod])
+    const cashAccount = getCashAccount(paymentMethod, cashBucket)
     if (!cashAccount) {
-      throw new Error(`Akun kas untuk metode ${paymentMethod.toUpperCase()} tidak ditemukan`)
+      throw new Error(`Akun kas ${cashBucketLabel(cashBucket)} untuk metode ${paymentMethod.toUpperCase()} tidak ditemukan`)
     }
 
     const accountBalance = Number(cashAccount.balance || 0)
@@ -106,8 +119,8 @@ export function registerExpenseHandlers() {
     }
 
     dbOps.runRaw(
-      'INSERT INTO expenses (type, motor_id, category, amount, payment_method, description, date) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [data.type, data.motor_id || null, data.category, amount, paymentMethod, data.description, data.date]
+      'INSERT INTO expenses (type, motor_id, category, amount, payment_method, cash_bucket, description, date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [data.type, data.motor_id || null, data.category, amount, paymentMethod, cashBucket, data.description, data.date]
     )
     const { id: expenseId } = dbOps.get('SELECT last_insert_rowid() as id')
     saveDb()
@@ -129,12 +142,14 @@ export function registerExpenseHandlers() {
   ipcMain.handle('expense:delete', (_, id) => {
     const expense = dbOps.get('SELECT * FROM expenses WHERE id = ?', [id])
     if (expense) {
-      const paymentMethod = normalizePaymentMethod(expense.payment_method)
-      const cashAccount = dbOps.get('SELECT * FROM cash_accounts WHERE type = ?', [paymentMethod])
-      if (cashAccount) {
-        dbOps.run('UPDATE cash_accounts SET balance = balance + ? WHERE id = ?', [expense.amount, cashAccount.id])
-        dbOps.run("DELETE FROM cash_transactions WHERE reference_type = 'expense' AND reference_id = ?", [id])
+      const tx = dbOps.get(
+        "SELECT * FROM cash_transactions WHERE reference_type = 'expense' AND reference_id = ? ORDER BY id DESC LIMIT 1",
+        [id]
+      )
+      if (tx?.cash_account_id) {
+        dbOps.run('UPDATE cash_accounts SET balance = balance + ? WHERE id = ?', [expense.amount, tx.cash_account_id])
       }
+      dbOps.run("DELETE FROM cash_transactions WHERE reference_type = 'expense' AND reference_id = ?", [id])
     }
     dbOps.run('DELETE FROM expenses WHERE id = ?', [id])
     logActivity({

@@ -752,7 +752,7 @@ describe('IPC business logic', () => {
 
   it('cash get summary bisa menghitung saldo snapshot sampai tanggal filter', async () => {
     dbOps.all.mockImplementation((sql, params) => {
-      if (sql.includes('SELECT * FROM cash_accounts ORDER BY type ASC')) {
+      if (sql.includes('FROM cash_accounts') && sql.includes('type ASC')) {
         return [
           { id: 1, name: 'Kas Tunai', type: 'tunai', balance: 999_999 },
           { id: 2, name: 'Debit Card', type: 'debit_card', balance: 999_999 }
@@ -787,7 +787,7 @@ describe('IPC business logic', () => {
 
   it('system audit menandai saldo kas mismatch dan mutasi expense yang hilang', async () => {
     dbOps.all.mockImplementation((sql) => {
-      if (sql.includes('SELECT * FROM cash_accounts ORDER BY type ASC')) {
+      if (sql.includes('FROM cash_accounts') && sql.includes('type ASC')) {
         return [{ id: 1, name: 'Kas Tunai', type: 'tunai', balance: 1_000_000 }]
       }
       if (sql.includes('FROM cash_transactions') && sql.includes('GROUP BY cash_account_id')) {
@@ -833,7 +833,7 @@ describe('IPC business logic', () => {
       if (sql.includes('FROM refunds rf')) return []
       if (sql.includes('SELECT * FROM payouts ORDER BY id ASC')) return []
       if (sql.includes('SELECT * FROM rental_swaps ORDER BY id ASC')) return []
-      if (sql.includes('SELECT * FROM cash_accounts ORDER BY type ASC')) {
+      if (sql.includes('FROM cash_accounts') && sql.includes('type ASC')) {
         return [{ id: 1, name: 'Kas Tunai', type: 'tunai', balance: 1_000_000 }]
       }
       if (sql.includes('SELECT * FROM cash_accounts ORDER BY id ASC')) {

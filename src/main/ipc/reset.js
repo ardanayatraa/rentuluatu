@@ -243,7 +243,7 @@ function seedProductionSimulationData() {
     motorByPlate[normalizePlate(motor.plate)] = { id, ...motor }
   })
 
-  const cashAccounts = dbOps.all('SELECT id, type FROM cash_accounts ORDER BY id ASC')
+  const cashAccounts = dbOps.all("SELECT id, type FROM cash_accounts WHERE COALESCE(bucket, 'pendapatan') = 'pendapatan' ORDER BY id ASC")
   const cashByType = Object.fromEntries(cashAccounts.map((account) => [account.type, account]))
   const fallbackAccount = cashAccounts[0]
 
@@ -484,7 +484,7 @@ function seedSandboxData({ rentalCount = 500, daysBack = 365 }) {
 
   const motors = dbOps.all('SELECT id, model, plate_number, type, owner_id FROM motors ORDER BY id ASC')
   const hotels = dbOps.all('SELECT id, name FROM hotels ORDER BY id ASC')
-  const cashAccounts = dbOps.all('SELECT id, type, balance FROM cash_accounts ORDER BY id ASC')
+  const cashAccounts = dbOps.all("SELECT id, type, balance FROM cash_accounts WHERE COALESCE(bucket, 'pendapatan') = 'pendapatan' ORDER BY id ASC")
   const cashAccountByType = Object.fromEntries(cashAccounts.map((account) => [account.type, account]))
   const categoriesMotor = ['service', 'samsat', 'ganti oli', 'ban', 'lainnya']
   const categoriesGeneral = ['air', 'listrik', 'internet', 'bensin', 'lainnya']

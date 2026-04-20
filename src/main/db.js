@@ -13,7 +13,7 @@ const SAVE_DEBOUNCE_MS = 250
 // Versi schema — naikkan angka ini setiap kali ada perubahan struktur database.
 // Sistem akan otomatis jalankan migrasi yang belum pernah dijalankan.
 // ─────────────────────────────────────────────────────────────────────────────
-const SCHEMA_VERSION = 14
+const SCHEMA_VERSION = 16
 
 export async function initDb() {
   const wasmPath = join(
@@ -34,7 +34,9 @@ export async function initDb() {
   }
 
   createBaseSchema()
+  ensureRequiredColumns()
   runMigrations()
+  ensureRequiredColumns()
   createBaseIndexes()
   seedDefaults()
   forceSaveDb()
@@ -107,6 +109,31 @@ function all(sql, params = []) {
   return rows
 }
 
+function hasTableColumn(tableName, columnName) {
+  try {
+    const rows = all(`PRAGMA table_info(${tableName})`) || []
+    return rows.some((row) => String(row.name || '').toLowerCase() === String(columnName || '').toLowerCase())
+  } catch (_) {
+    return false
+  }
+}
+
+function ensureRequiredColumns() {
+  try {
+    if (!hasTableColumn('cash_accounts', 'bucket')) {
+      db.run("ALTER TABLE cash_accounts ADD COLUMN bucket TEXT DEFAULT 'pendapatan'")
+      db.run("UPDATE cash_accounts SET bucket = 'pendapatan' WHERE bucket IS NULL OR TRIM(bucket) = ''")
+    }
+  } catch (_) {}
+
+  try {
+    if (!hasTableColumn('expenses', 'cash_bucket')) {
+      db.run("ALTER TABLE expenses ADD COLUMN cash_bucket TEXT DEFAULT 'pendapatan'")
+      db.run("UPDATE expenses SET cash_bucket = 'pendapatan' WHERE cash_bucket IS NULL OR TRIM(cash_bucket) = ''")
+    }
+  } catch (_) {}
+}
+
 export const dbOps = { run, runRaw, get, all }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -157,6 +184,7 @@ function createBaseSchema() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       type TEXT NOT NULL,
+      bucket TEXT NOT NULL DEFAULT 'pendapatan',
       balance REAL DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now','localtime'))
     )
@@ -265,6 +293,7 @@ function createBaseSchema() {
       category TEXT NOT NULL,
       amount REAL NOT NULL,
       payment_method TEXT NOT NULL,
+      cash_bucket TEXT NOT NULL DEFAULT 'pendapatan',
       description TEXT,
       date TEXT NOT NULL,
       payout_id INTEGER REFERENCES payouts(id),
@@ -335,6 +364,7 @@ function createBaseIndexes() {
     'CREATE INDEX IF NOT EXISTS idx_expenses_payout ON expenses(payout_id)',
     'CREATE INDEX IF NOT EXISTS idx_cash_transactions_date_ref ON cash_transactions(date, reference_type)',
     'CREATE INDEX IF NOT EXISTS idx_cash_transactions_account_date ON cash_transactions(cash_account_id, date)',
+    'CREATE INDEX IF NOT EXISTS idx_cash_accounts_type_bucket ON cash_accounts(type, bucket)',
     'CREATE INDEX IF NOT EXISTS idx_payouts_owner_date ON payouts(owner_id, date)',
     'CREATE INDEX IF NOT EXISTS idx_hotel_payouts_hotel_date ON hotel_payouts(hotel_id, date)',
     'CREATE INDEX IF NOT EXISTS idx_downloads_created_at ON downloads(created_at)',
@@ -577,6 +607,115 @@ const migrations = [
       createBaseIndexes()
     }
   },
+  // v15 - pisah akun kas pendapatan vs modal (per metode bayar)
+  {
+    version: 15,
+    up() {
+      const methods = [
+        { type: 'tunai', pendapatanName: 'Kas Pendapatan Tunai', modalName: 'Kas Modal Tunai' },
+        { type: 'transfer', pendapatanName: 'Kas Pendapatan Transfer', modalName: 'Kas Modal Transfer' },
+        { type: 'qris', pendapatanName: 'Kas Pendapatan QRIS', modalName: 'Kas Modal QRIS' },
+        { type: 'debit_card', pendapatanName: 'Kas Pendapatan Debit Card', modalName: 'Kas Modal Debit Card' }
+      ]
+
+      try { db.run("ALTER TABLE cash_accounts ADD COLUMN bucket TEXT DEFAULT 'pendapatan'") } catch (_) {}
+      try { db.run("UPDATE cash_accounts SET bucket = 'pendapatan' WHERE bucket IS NULL OR TRIM(bucket) = ''") } catch (_) {}
+
+      for (const method of methods) {
+        const pendapatanAccount = get(
+          "SELECT id FROM cash_accounts WHERE type = ? AND COALESCE(bucket, 'pendapatan') = 'pendapatan'",
+          [method.type]
+        )
+        if (!pendapatanAccount) {
+          db.run(
+            "INSERT INTO cash_accounts (name, type, bucket, balance) VALUES (?, ?, 'pendapatan', 0)",
+            [method.pendapatanName, method.type]
+          )
+        } else {
+          db.run("UPDATE cash_accounts SET name = ? WHERE id = ?", [method.pendapatanName, pendapatanAccount.id])
+        }
+
+        const modalAccount = get(
+          "SELECT id FROM cash_accounts WHERE type = ? AND COALESCE(bucket, 'pendapatan') = 'modal'",
+          [method.type]
+        )
+        if (!modalAccount) {
+          db.run(
+            "INSERT INTO cash_accounts (name, type, bucket, balance) VALUES (?, ?, 'modal', 0)",
+            [method.modalName, method.type]
+          )
+        }
+      }
+
+      try { db.run("ALTER TABLE expenses ADD COLUMN cash_bucket TEXT DEFAULT 'pendapatan'") } catch (_) {}
+      try { db.run("UPDATE expenses SET cash_bucket = 'pendapatan' WHERE cash_bucket IS NULL OR TRIM(cash_bucket) = ''") } catch (_) {}
+
+      try {
+        const capitalRows = all(`
+          SELECT ct.id, ca.type
+          FROM cash_transactions ct
+          JOIN cash_accounts ca ON ca.id = ct.cash_account_id
+          WHERE ct.reference_type IN ('capital_injection', 'opening_balance')
+        `)
+        for (const row of capitalRows) {
+          const modalAccount = get(
+            "SELECT id FROM cash_accounts WHERE type = ? AND COALESCE(bucket, 'pendapatan') = 'modal' ORDER BY id ASC LIMIT 1",
+            [row.type]
+          )
+          if (modalAccount?.id) {
+            db.run('UPDATE cash_transactions SET cash_account_id = ? WHERE id = ?', [modalAccount.id, row.id])
+          }
+        }
+      } catch (_) {}
+
+      try {
+        const accounts = all('SELECT id FROM cash_accounts ORDER BY id ASC')
+        for (const account of accounts) {
+          const ledger = get(`
+            SELECT COALESCE(SUM(CASE WHEN type = 'out' THEN -amount ELSE amount END), 0) as total
+            FROM cash_transactions
+            WHERE cash_account_id = ?
+          `, [account.id])
+          db.run('UPDATE cash_accounts SET balance = ? WHERE id = ?', [Number(ledger?.total || 0), account.id])
+        }
+      } catch (_) {}
+
+      createBaseIndexes()
+    }
+  },
+  // v16 - bersihkan akun kas legacy modal_ditanam
+  {
+    version: 16,
+    up() {
+      try {
+        const legacyAccounts = all("SELECT id, type FROM cash_accounts WHERE LOWER(TRIM(type)) = 'modal_ditanam'") || []
+        if (!legacyAccounts.length) return
+
+        const fallbackModalTransfer = get(
+          "SELECT id FROM cash_accounts WHERE type = 'transfer' AND COALESCE(bucket, 'pendapatan') = 'modal' ORDER BY id ASC LIMIT 1"
+        )
+
+        for (const legacy of legacyAccounts) {
+          if (fallbackModalTransfer?.id) {
+            db.run('UPDATE cash_transactions SET cash_account_id = ? WHERE cash_account_id = ?', [fallbackModalTransfer.id, legacy.id])
+          } else {
+            db.run('DELETE FROM cash_transactions WHERE cash_account_id = ?', [legacy.id])
+          }
+          db.run('DELETE FROM cash_accounts WHERE id = ?', [legacy.id])
+        }
+
+        const accounts = all('SELECT id FROM cash_accounts ORDER BY id ASC')
+        for (const account of accounts) {
+          const ledger = get(`
+            SELECT COALESCE(SUM(CASE WHEN type = 'out' THEN -amount ELSE amount END), 0) as total
+            FROM cash_transactions
+            WHERE cash_account_id = ?
+          `, [account.id])
+          db.run('UPDATE cash_accounts SET balance = ? WHERE id = ?', [Number(ledger?.total || 0), account.id])
+        }
+      } catch (_) {}
+    }
+  },
   // Contoh untuk update fitur berikutnya:
   // {
   //   version: 7,
@@ -645,17 +784,44 @@ function seedDefaults() {
     db.run("INSERT INTO users (username, password_hash) VALUES ('admin', '$2b$10$placeholder')")
   }
 
+  try {
+    const legacyAccounts = all("SELECT id FROM cash_accounts WHERE LOWER(TRIM(type)) = 'modal_ditanam'") || []
+    const fallbackModalTransfer = get(
+      "SELECT id FROM cash_accounts WHERE type = 'transfer' AND COALESCE(bucket, 'pendapatan') = 'modal' ORDER BY id ASC LIMIT 1"
+    )
+    for (const legacy of legacyAccounts) {
+      if (fallbackModalTransfer?.id) {
+        db.run('UPDATE cash_transactions SET cash_account_id = ? WHERE cash_account_id = ?', [fallbackModalTransfer.id, legacy.id])
+      } else {
+        db.run('DELETE FROM cash_transactions WHERE cash_account_id = ?', [legacy.id])
+      }
+      db.run('DELETE FROM cash_accounts WHERE id = ?', [legacy.id])
+    }
+  } catch (_) {}
+
   // Kas default
-  const tunai = get("SELECT id FROM cash_accounts WHERE type = 'tunai'")
-  if (!tunai) {
-    db.run("INSERT INTO cash_accounts (name, type, balance) VALUES ('Kas Tunai', 'tunai', 0)")
-    db.run("INSERT INTO cash_accounts (name, type, balance) VALUES ('Rekening Transfer', 'transfer', 0)")
-    db.run("INSERT INTO cash_accounts (name, type, balance) VALUES ('QRIS', 'qris', 0)")
-    db.run("INSERT INTO cash_accounts (name, type, balance) VALUES ('Debit Card', 'debit_card', 0)")
-  } else {
-    const debitCard = get("SELECT id FROM cash_accounts WHERE type = 'debit_card'")
-    if (!debitCard) {
-      db.run("INSERT INTO cash_accounts (name, type, balance) VALUES ('Debit Card', 'debit_card', 0)")
+  const defaultAccounts = [
+    { name: 'Kas Pendapatan Tunai', type: 'tunai', bucket: 'pendapatan' },
+    { name: 'Kas Pendapatan Transfer', type: 'transfer', bucket: 'pendapatan' },
+    { name: 'Kas Pendapatan QRIS', type: 'qris', bucket: 'pendapatan' },
+    { name: 'Kas Pendapatan Debit Card', type: 'debit_card', bucket: 'pendapatan' },
+    { name: 'Kas Modal Tunai', type: 'tunai', bucket: 'modal' },
+    { name: 'Kas Modal Transfer', type: 'transfer', bucket: 'modal' },
+    { name: 'Kas Modal QRIS', type: 'qris', bucket: 'modal' },
+    { name: 'Kas Modal Debit Card', type: 'debit_card', bucket: 'modal' }
+  ]
+  for (const account of defaultAccounts) {
+    const existsAccount = get(
+      "SELECT id FROM cash_accounts WHERE type = ? AND COALESCE(bucket, 'pendapatan') = ?",
+      [account.type, account.bucket]
+    )
+    if (!existsAccount) {
+      db.run(
+        'INSERT INTO cash_accounts (name, type, bucket, balance) VALUES (?, ?, ?, 0)',
+        [account.name, account.type, account.bucket]
+      )
+    } else {
+      db.run('UPDATE cash_accounts SET name = ? WHERE id = ?', [account.name, existsAccount.id])
     }
   }
 }

@@ -114,17 +114,28 @@
       </div>
       <p class="mb-4 text-xs text-slate-400">Saldo kas ditampilkan sebagai posisi akun sampai tanggal akhir filter yang dipilih.</p>
       
-      <div class="grid grid-cols-2 xl:grid-cols-4 gap-5">
-        <div v-for="acc in cashAccounts" :key="acc.id"
-          :class="cashCardClass(acc.type)"
-          class="rounded-xl p-6 shadow-sm">
-          <div class="flex items-center gap-2 mb-2">
-            <span :class="cashIconClass(acc.type)" class="material-symbols-outlined">
-              {{ cashIcon(acc.type) }}
-            </span>
-            <span :class="cashLabelClass(acc.type)" class="text-xs font-bold uppercase tracking-wider">{{ acc.name }}</span>
+      <div class="space-y-5">
+        <div v-for="bucket in cashBuckets" :key="bucket.value">
+          <div class="flex items-center justify-between mb-3">
+            <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider">{{ bucket.label }}</h4>
+            <div class="text-right">
+              <p class="text-sm font-black text-slate-700 font-headline">{{ formatRp(totalCashByBucket(bucket.value)) }}</p>
+              <p class="text-[11px] font-semibold text-slate-500">Total Saldo Rekening: {{ formatRp(totalRekeningByBucket(bucket.value)) }}</p>
+            </div>
           </div>
-          <p :class="cashBalanceClass(acc.type)" class="text-3xl font-black font-headline">{{ formatRp(acc.balance) }}</p>
+          <div class="grid grid-cols-2 xl:grid-cols-4 gap-5">
+            <div v-for="acc in accountsByBucket(bucket.value)" :key="acc.id"
+              :class="cashCardClass(acc.type)"
+              class="rounded-xl p-6 shadow-sm">
+              <div class="flex items-center gap-2 mb-2">
+                <span :class="cashIconClass(acc.type)" class="material-symbols-outlined">
+                  {{ cashIcon(acc.type) }}
+                </span>
+                <span :class="cashLabelClass(acc.type)" class="text-xs font-bold uppercase tracking-wider">{{ paymentMethodLabel(acc.type) }}</span>
+              </div>
+              <p :class="cashBalanceClass(acc.type)" class="text-3xl font-black font-headline">{{ formatRp(acc.balance) }}</p>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -304,10 +315,30 @@ const summary = ref({
 const cashAccounts = ref([])
 const cashTotal = ref(0)
 const recentRentals = ref([])
+const allowedPaymentMethods = ['tunai', 'transfer', 'qris', 'debit_card']
+const cashBuckets = [
+  { value: 'pendapatan', label: 'Kas Pendapatan' },
+  { value: 'modal', label: 'Kas Modal' }
+]
+const filteredCashAccounts = computed(() => {
+  return cashAccounts.value.filter((acc) => allowedPaymentMethods.includes(String(acc.type || '')))
+})
+const accountsByBucket = (bucket) => {
+  return filteredCashAccounts.value.filter((acc) => String(acc.bucket || 'pendapatan') === bucket)
+}
+const totalCashByBucket = (bucket) => {
+  return accountsByBucket(bucket).reduce((sum, acc) => sum + Number(acc.balance || 0), 0)
+}
+const totalRekeningByBucket = (bucket) => {
+  const rekeningMethods = ['transfer', 'qris', 'debit_card']
+  return accountsByBucket(bucket)
+    .filter((acc) => rekeningMethods.includes(String(acc.type || '')))
+    .reduce((sum, acc) => sum + Number(acc.balance || 0), 0)
+}
 
 // Computed: Total Kas
 const totalCash = computed(() => {
-  return cashAccounts.value.reduce((sum, acc) => sum + (acc.balance || 0), 0)
+  return filteredCashAccounts.value.reduce((sum, acc) => sum + (acc.balance || 0), 0)
 })
 
 // Charts

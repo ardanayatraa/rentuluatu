@@ -375,14 +375,21 @@
         </div>
         <div class="card table-card">
           <div class="px-6 pt-5 pb-3 border-b border-slate-100 flex items-center justify-between">
-            <h3 class="text-sm font-extrabold text-primary">Detail Transaksi Rental</h3>
+            <div>
+              <h3 class="text-sm font-extrabold text-primary">Detail Transaksi Rental</h3>
+              <p class="text-xs text-slate-500 mt-1">
+                Kas Pendapatan: {{ formatRp(motorIncomeCashSummary.pendapatan) }} ·
+                Kas Modal: {{ formatRp(motorIncomeCashSummary.modal) }} ·
+                Total Saldo Rekening: {{ formatRp(motorIncomeCashSummary.rekening) }}
+              </p>
+            </div>
             <span class="badge-neutral text-xs">{{ motorIncomeData.length }} transaksi</span>
           </div>
           <div class="table-scroll">
           <table class="table-base text-left">
             <thead class="bg-slate-50/70"><tr class="text-slate-500 text-xs uppercase font-bold tracking-wide border-b border-slate-100">
               <th class="px-4 py-3">Tanggal</th><th class="px-4 py-3">Pelanggan</th><th class="px-4 py-3">Motor</th>
-              <th class="px-4 py-3 text-right">Durasi</th><th class="px-4 py-3">Bayar</th>
+              <th class="px-4 py-3 text-right">Durasi</th><th class="px-4 py-3">Sumber Kas · Bayar</th>
                 <th class="px-4 py-3 text-right">Total</th>
                 <th class="px-4 py-3 text-right">Fee Vendor</th>
                 <th class="px-4 py-3 text-right">Bagian Perusahaan</th>
@@ -400,7 +407,7 @@
                   <p class="text-xs text-slate-400 mt-1 leading-tight">{{ r.plate_number }}</p>
                 </td>
                 <td class="px-4 py-3 text-right whitespace-nowrap">{{ r.period_days }} hari</td>
-                <td class="px-4 py-3 whitespace-nowrap"><span class="badge-neutral text-xs">{{ paymentMethodLabel(r.payment_method) }}</span></td>
+                <td class="px-4 py-3 whitespace-nowrap"><span class="badge-neutral text-xs">{{ paymentSummaryLabel(r) }}</span></td>
                 <td class="px-4 py-3 text-right font-bold whitespace-nowrap">{{ formatRp(r.total_price) }}</td>
                 <td class="px-4 py-3 text-right text-orange-500 font-semibold whitespace-nowrap">{{ formatRp(r.vendor_fee || 0) }}</td>
                 <td class="px-4 py-3 text-right text-primary font-semibold whitespace-nowrap">{{ formatRp(r.wavy_gets) }}</td>
@@ -428,6 +435,13 @@
             <p class="text-2xl font-black text-slate-700 font-headline">{{ motorExpensesData.length }}x</p></div>
         </div>
         <div class="card table-card">
+          <div class="px-6 pt-5 pb-3 border-b border-slate-100">
+            <p class="text-xs text-slate-500">
+              Kas Pendapatan: {{ formatRp(motorExpenseCashSummary.pendapatan) }} ·
+              Kas Modal: {{ formatRp(motorExpenseCashSummary.modal) }} ·
+              Total Saldo Rekening: {{ formatRp(motorExpenseCashSummary.rekening) }}
+            </p>
+          </div>
           <div class="table-scroll">
           <table class="table-base text-left">
             <thead class="bg-slate-50/70"><tr class="text-slate-500 text-xs uppercase font-bold tracking-wide border-b border-slate-100">
@@ -436,7 +450,7 @@
               <th class="px-4 py-3">Tipe</th>
               <th class="px-4 py-3">Kategori</th>
               <th class="px-4 py-3">Keterangan</th>
-              <th class="px-4 py-3">Bayar</th>
+              <th class="px-4 py-3">Sumber Kas · Bayar</th>
               <th class="px-4 py-3 text-right">Jumlah</th>
             </tr></thead>
             <tbody class="divide-y divide-slate-100">
@@ -449,7 +463,7 @@
                 <td class="px-4 py-3"><span class="badge-warning text-xs">{{ e.type }}</span></td>
                 <td class="px-4 py-3">{{ e.category }}</td>
                 <td class="px-4 py-3 text-slate-500">{{ e.description || '-' }}</td>
-                <td class="px-4 py-3 whitespace-nowrap"><span class="badge-neutral text-xs">{{ paymentMethodLabel(e.payment_method) }}</span></td>
+                <td class="px-4 py-3 whitespace-nowrap"><span class="badge-neutral text-xs">{{ paymentSummaryLabel(e) }}</span></td>
                 <td class="px-4 py-3 text-right font-bold text-red-600 whitespace-nowrap">{{ formatRp(e.amount) }}</td>
               </tr>
               <tr v-if="!motorExpensesData.length"><td colspan="7" class="px-4 py-10 text-center text-slate-400">Belum ada data</td></tr>
@@ -500,6 +514,11 @@
             <div>
               <h3 class="text-sm font-extrabold text-primary">Pemasukan Rental</h3>
               <p class="text-xs text-slate-400 mt-1">Semua transaksi sewa pada periode terpilih</p>
+              <p class="text-xs text-slate-500 mt-1">
+                Kas Pendapatan: {{ formatRp(txRentalCashSummary.pendapatan) }} ·
+                Kas Modal: {{ formatRp(txRentalCashSummary.modal) }} ·
+                Total Saldo Rekening: {{ formatRp(txRentalCashSummary.rekening) }}
+              </p>
             </div>
             <span class="badge-neutral text-xs">{{ transactionsData.rentals?.length || 0 }} transaksi</span>
           </div>
@@ -507,14 +526,14 @@
           <table class="table-base text-left">
             <thead><tr class="text-slate-400 text-xs uppercase font-bold border-b border-slate-100">
               <th class="pb-3">Tanggal</th><th class="pb-3">Pelanggan</th><th class="pb-3">Motor</th>
-              <th class="pb-3">Bayar</th><th class="pb-3 text-right">Jumlah</th><th class="pb-3">Status</th>
+              <th class="pb-3">Sumber Kas · Bayar</th><th class="pb-3 text-right">Jumlah</th><th class="pb-3">Status</th>
             </tr></thead>
             <tbody class="divide-y divide-slate-50">
               <tr v-for="r in pagedTxRentals" :key="'r'+r.id" class="text-sm">
                 <td class="py-2">{{ formatDateTime(r.date) }}</td>
                 <td class="py-2">{{ r.description }}</td>
                 <td class="py-2 text-slate-500">{{ r.motor }}</td>
-                  <td class="py-2"><span class="badge-neutral text-xs">{{ paymentMethodLabel(r.payment_method) }}</span></td>
+                  <td class="py-2"><span class="badge-neutral text-xs">{{ paymentSummaryLabel(r) }}</span></td>
                 <td class="py-2 text-right font-bold text-emerald-600">+{{ formatRp(r.amount) }}</td>
                 <td class="py-2"><span :class="r.status==='refunded'?'badge-warning':'badge-neutral'" class="text-xs">{{ r.status }}</span></td>
               </tr>
@@ -534,6 +553,11 @@
             <div>
               <h3 class="text-sm font-extrabold text-red-600">Pengeluaran Operasional</h3>
               <p class="text-xs text-slate-400 mt-1">Beban usaha dan operasional umum perusahaan</p>
+              <p class="text-xs text-slate-500 mt-1">
+                Kas Pendapatan: {{ formatRp(txOperationalCashSummary.pendapatan) }} ·
+                Kas Modal: {{ formatRp(txOperationalCashSummary.modal) }} ·
+                Total Saldo Rekening: {{ formatRp(txOperationalCashSummary.rekening) }}
+              </p>
             </div>
             <span class="badge-neutral text-xs">{{ transactionsData.operationalExpenses?.length || 0 }} transaksi</span>
           </div>
@@ -541,7 +565,7 @@
           <table class="table-base text-left">
             <thead><tr class="text-slate-400 text-xs uppercase font-bold border-b border-slate-100">
               <th class="pb-3">Tanggal</th><th class="pb-3">Kategori</th><th class="pb-3">Sumber</th>
-              <th class="pb-3">Bayar</th><th class="pb-3 text-right">Jumlah</th>
+              <th class="pb-3">Sumber Kas · Bayar</th><th class="pb-3 text-right">Jumlah</th>
             </tr></thead>
             <tbody class="divide-y divide-slate-50">
               <tr v-for="e in pagedTxOperational" :key="'oe'+e.id" class="text-sm">
@@ -551,7 +575,7 @@
                   <span v-if="e.motor === 'Umum'" class="text-slate-400 text-xs">Operasional Umum</span>
                   <span v-else class="text-slate-600 text-xs">{{ e.motor }}</span>
                 </td>
-                  <td class="py-2"><span class="badge-neutral text-xs">{{ paymentMethodLabel(e.payment_method) }}</span></td>
+                  <td class="py-2"><span class="badge-neutral text-xs">{{ paymentSummaryLabel(e) }}</span></td>
                 <td class="py-2 text-right font-bold text-red-600">-{{ formatRp(e.amount) }}</td>
               </tr>
               <tr v-if="!transactionsData.operationalExpenses?.length"><td colspan="5" class="py-6 text-center text-slate-400">Tidak ada data</td></tr>
@@ -570,6 +594,11 @@
             <div>
               <h3 class="text-sm font-extrabold text-amber-600">Pengeluaran Motor</h3>
               <p class="text-xs text-slate-400 mt-1">Biaya terkait unit motor yang tercatat pada periode ini</p>
+              <p class="text-xs text-slate-500 mt-1">
+                Kas Pendapatan: {{ formatRp(txMotorCashSummary.pendapatan) }} ·
+                Kas Modal: {{ formatRp(txMotorCashSummary.modal) }} ·
+                Total Saldo Rekening: {{ formatRp(txMotorCashSummary.rekening) }}
+              </p>
             </div>
             <span class="badge-neutral text-xs">{{ transactionsData.motorExpenses?.length || 0 }} transaksi</span>
           </div>
@@ -577,14 +606,14 @@
           <table class="table-base text-left">
             <thead><tr class="text-slate-400 text-xs uppercase font-bold border-b border-slate-100">
               <th class="pb-3">Tanggal</th><th class="pb-3">Kategori</th><th class="pb-3">Motor</th>
-              <th class="pb-3">Bayar</th><th class="pb-3 text-right">Jumlah</th>
+              <th class="pb-3">Sumber Kas · Bayar</th><th class="pb-3 text-right">Jumlah</th>
             </tr></thead>
             <tbody class="divide-y divide-slate-50">
               <tr v-for="e in pagedTxMotorExpenses" :key="'me'+e.id" class="text-sm">
                 <td class="py-2">{{ formatDate(e.date) }}</td>
                 <td class="py-2">{{ e.description }}</td>
                 <td class="py-2 text-slate-600 text-xs">{{ e.motor }}</td>
-                <td class="py-2"><span class="badge-neutral text-xs">{{ paymentMethodLabel(e.payment_method) }}</span></td>
+                <td class="py-2"><span class="badge-neutral text-xs">{{ paymentSummaryLabel(e) }}</span></td>
                 <td class="py-2 text-right font-bold text-amber-600">-{{ formatRp(e.amount) }}</td>
               </tr>
               <tr v-if="!transactionsData.motorExpenses?.length"><td colspan="5" class="py-6 text-center text-slate-400">Tidak ada data</td></tr>
@@ -830,6 +859,53 @@ const netBalance = computed(() => {
   return inc - exp
 })
 
+const rekeningMethods = ['transfer', 'qris', 'debit_card']
+
+function normalizeCashBucket(bucket) {
+  return String(bucket || 'pendapatan').trim().toLowerCase() === 'modal' ? 'modal' : 'pendapatan'
+}
+
+function cashBucketLabel(bucket) {
+  return normalizeCashBucket(bucket) === 'modal' ? 'Kas Modal' : 'Kas Pendapatan'
+}
+
+function isRekeningMethod(method) {
+  return rekeningMethods.includes(String(method || '').trim().toLowerCase())
+}
+
+function paymentMethodLabel(method) {
+  return {
+    tunai: 'Tunai',
+    transfer: 'Transfer',
+    qris: 'QRIS',
+    debit_card: 'Debit Card'
+  }[method] || method || '-'
+}
+
+function paymentMethodGroupLabel(method) {
+  return isRekeningMethod(method) ? 'Saldo Rekening' : paymentMethodLabel(method)
+}
+
+function paymentSummaryLabel(row) {
+  return `${cashBucketLabel(row?.cash_bucket)} · ${paymentMethodGroupLabel(row?.payment_method)}`
+}
+
+function calculateCashSummary(rows, amountKey = 'amount') {
+  return (rows || []).reduce((summary, row) => {
+    const amount = Number(row?.[amountKey] || 0)
+    const bucket = normalizeCashBucket(row?.cash_bucket)
+    summary[bucket] += amount
+    if (isRekeningMethod(row?.payment_method)) summary.rekening += amount
+    return summary
+  }, { pendapatan: 0, modal: 0, rekening: 0 })
+}
+
+const motorIncomeCashSummary = computed(() => calculateCashSummary(motorIncomeData.value, 'total_price'))
+const motorExpenseCashSummary = computed(() => calculateCashSummary(motorExpensesData.value, 'amount'))
+const txRentalCashSummary = computed(() => calculateCashSummary(transactionsData.value.rentals || [], 'amount'))
+const txOperationalCashSummary = computed(() => calculateCashSummary(transactionsData.value.operationalExpenses || [], 'amount'))
+const txMotorCashSummary = computed(() => calculateCashSummary(transactionsData.value.motorExpenses || [], 'amount'))
+
 const rentalJourneys = computed(() => {
   const rentals = (transactionsData.value.rentals || []).map(item => ({ ...item }))
   if (!rentals.length) return []
@@ -920,15 +996,6 @@ const periodLabel = computed(() => {
   if (period.value === 'year') return 'Tahun Ini'
   return `${startDate.value} s/d ${endDate.value}`
 })
-
-function paymentMethodLabel(method) {
-  return {
-    tunai: 'Tunai',
-    transfer: 'Transfer',
-    qris: 'QRIS',
-    debit_card: 'Debit Card'
-  }[method] || method || '-'
-}
 
 function toFileNamePart(value) {
   return String(value || '')

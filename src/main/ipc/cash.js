@@ -2,6 +2,24 @@ import { ipcMain } from 'electron'
 import { dbOps } from '../db'
 import { logActivity } from '../lib/activity-log'
 
+const ALLOWED_CASH_BUCKETS = ['pendapatan', 'modal']
+
+function normalizeCashBucket(value, fallback = 'pendapatan') {
+  const bucket = String(value || '').trim().toLowerCase()
+  return ALLOWED_CASH_BUCKETS.includes(bucket) ? bucket : fallback
+}
+
+function getCashAccountByTypeAndBucket(type, bucket = 'pendapatan') {
+  return dbOps.get(
+    "SELECT * FROM cash_accounts WHERE type = ? AND COALESCE(bucket, 'pendapatan') = ? ORDER BY id ASC LIMIT 1",
+    [type, normalizeCashBucket(bucket)]
+  )
+}
+
+function cashBucketLabel(bucket) {
+  return normalizeCashBucket(bucket) === 'modal' ? 'Modal' : 'Pendapatan'
+}
+
 function getReservedOwnerFunds() {
   const ownerRentalRows = dbOps.all(`
     SELECT m.owner_id as owner_id, COALESCE(SUM(r.owner_gets), 0) as total
@@ -75,6 +93,9 @@ function assertValidManualCashInput(data = {}, mode = 'income') {
   const entryType = mode === 'income'
     ? String(data.entry_type || 'manual_income').trim().toLowerCase()
     : 'manual_expense'
+  const cashBucket = mode === 'income'
+    ? (entryType === 'capital_injection' ? 'modal' : 'pendapatan')
+    : normalizeCashBucket(data.cash_bucket, 'pendapatan')
 
   if (mode === 'income' && !['manual_income', 'capital_injection'].includes(entryType)) {
     throw new Error('Jenis pemasukan tidak valid')
@@ -86,35 +107,14 @@ function assertValidManualCashInput(data = {}, mode = 'income') {
     paymentMethod,
     date: data.date || new Date().toISOString().split('T')[0],
     entryType,
+    cashBucket,
     mode
   }
 }
 
 export function registerCashHandlers() {
   ipcMain.handle('cash:get-accounts', () => {
-    return dbOps.all('SELECT * FROM cash_accounts ORDER BY type ASC')
-  })
-
-  ipcMain.handle('cash:set-opening-balance', (_, { accountId, amount }) => {
-    const account = dbOps.get('SELECT * FROM cash_accounts WHERE id = ?', [accountId])
-    if (!account) throw new Error('Akun tidak ditemukan')
-    // FIX: Hapus transaksi opening_balance lama agar tidak double
-    dbOps.run(
-      "DELETE FROM cash_transactions WHERE cash_account_id = ? AND reference_type = 'opening_balance'",
-      [accountId]
-    )
-    dbOps.run('UPDATE cash_accounts SET balance = ? WHERE id = ?', [amount, accountId])
-    const today = new Date().toISOString().split('T')[0]
-    dbOps.run(`
-      INSERT INTO cash_transactions (cash_account_id, type, amount, reference_type, description, date)
-      VALUES (?, 'in', ?, 'opening_balance', 'Saldo Awal', ?)
-    `, [accountId, amount, today])
-    logActivity({
-      source: 'user',
-      action: 'cash.set-opening-balance',
-      detail: `Set saldo awal akun #${accountId} menjadi Rp ${Math.round(Number(amount || 0)).toLocaleString('id-ID')}`
-    })
-    return { success: true }
+    return dbOps.all("SELECT * FROM cash_accounts ORDER BY COALESCE(bucket, 'pendapatan') ASC, type ASC")
   })
 
   ipcMain.handle('cash:get-transactions', (_, filters = {}) => {
@@ -134,7 +134,7 @@ export function registerCashHandlers() {
 
   ipcMain.handle('cash:get-summary', (_, filters = {}) => {
     const snapshotDate = String(filters.endDate || '').trim()
-    const accounts = dbOps.all('SELECT * FROM cash_accounts ORDER BY type ASC')
+    const accounts = dbOps.all("SELECT * FROM cash_accounts ORDER BY COALESCE(bucket, 'pendapatan') ASC, type ASC")
     const accountsWithBalance = snapshotDate
       ? accounts.map((account) => {
         const mutationRows = dbOps.all(
@@ -158,8 +158,10 @@ export function registerCashHandlers() {
   // Tambah pemasukan operasional atau tambahan modal.
   ipcMain.handle('cash:add-income', (_, data) => {
     const payload = assertValidManualCashInput(data, 'income')
-    const account = dbOps.get('SELECT * FROM cash_accounts WHERE type = ?', [payload.paymentMethod])
-    if (!account) throw new Error('Akun kas tidak ditemukan')
+    const account = getCashAccountByTypeAndBucket(payload.paymentMethod, payload.cashBucket)
+    if (!account) {
+      throw new Error(`Akun kas ${cashBucketLabel(payload.cashBucket)} untuk metode ${payload.paymentMethod.toUpperCase()} tidak ditemukan`)
+    }
     dbOps.run(`
       INSERT INTO cash_transactions (cash_account_id, type, amount, reference_type, description, date)
       VALUES (?, 'in', ?, ?, ?, ?)
@@ -177,8 +179,10 @@ export function registerCashHandlers() {
   ipcMain.handle('cash:add-expense', (_, data) => {
     const payload = assertValidManualCashInput(data, 'expense')
     assertCompanyFundsAvailableForOperationalExpense(payload.amount)
-    const account = dbOps.get('SELECT * FROM cash_accounts WHERE type = ?', [payload.paymentMethod])
-    if (!account) throw new Error('Akun kas tidak ditemukan')
+    const account = getCashAccountByTypeAndBucket(payload.paymentMethod, payload.cashBucket)
+    if (!account) {
+      throw new Error(`Akun kas ${cashBucketLabel(payload.cashBucket)} untuk metode ${payload.paymentMethod.toUpperCase()} tidak ditemukan`)
+    }
     if (account.balance < payload.amount) {
       throw new Error(`Saldo Kas ${account.name} tidak cukup! (Sisa: Rp ${account.balance.toLocaleString('id-ID')})`)
     }

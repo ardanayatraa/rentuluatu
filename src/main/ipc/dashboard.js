@@ -217,6 +217,7 @@ export function registerDashboardHandlers() {
       JOIN cash_accounts ca ON ct.cash_account_id = ca.id
       WHERE ct.type = 'in'
         AND ct.date BETWEEN ? AND ?
+        AND COALESCE(ca.bucket, 'pendapatan') = 'pendapatan'
         AND ct.reference_type IN ('rental', 'manual_income', 'rental_swap_settlement')
       GROUP BY ca.type
     `, [start, end])

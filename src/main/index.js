@@ -90,7 +90,10 @@ async function runSeeder() {
 
     dbOps.run('INSERT INTO rentals (date_time, customer_name, hotel, motor_id, period_days, payment_method, price_per_day, vendor_fee, sisa, wavy_gets, owner_gets, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [dt, pick(customerNames), pick(hotels), motor.id, days, pay, price, fee, sisa, sisa * wavyPct, sisa * (1 - wavyPct), status])
     const rentalId = dbOps.get('SELECT last_insert_rowid() as id').id
-    const acc = dbOps.get('SELECT * FROM cash_accounts WHERE type = ?', [pay])
+      const acc = dbOps.get(
+        "SELECT * FROM cash_accounts WHERE type = ? AND COALESCE(bucket, 'pendapatan') = 'pendapatan' ORDER BY id ASC LIMIT 1",
+        [pay]
+      )
 
     if (status === 'completed' && acc) {
       dbOps.run("INSERT INTO cash_transactions (cash_account_id, type, amount, reference_type, reference_id, description, date) VALUES (?, 'in', ?, 'rental', ?, ?, ?)", [acc.id, gross, rentalId, 'Sewa - ' + pick(customerNames), dt.split('T')[0]])
@@ -118,7 +121,10 @@ async function runSeeder() {
     const date = rDate(365)
     dbOps.run('INSERT INTO expenses (type, motor_id, category, amount, payment_method, description, date) VALUES (?, ?, ?, ?, ?, ?, ?)', [type, motorId, cat, amount, pay, cat + ' - ' + date, date])
     const expId = dbOps.get('SELECT last_insert_rowid() as id').id
-    const acc = dbOps.get('SELECT * FROM cash_accounts WHERE type = ?', [pay])
+      const acc = dbOps.get(
+        "SELECT * FROM cash_accounts WHERE type = ? AND COALESCE(bucket, 'pendapatan') = 'pendapatan' ORDER BY id ASC LIMIT 1",
+        [pay]
+      )
     if (acc) {
       dbOps.run("INSERT INTO cash_transactions (cash_account_id, type, amount, reference_type, reference_id, description, date) VALUES (?, 'out', ?, 'expense', ?, ?, ?)", [acc.id, amount, expId, cat, date])
       if (pay === 'tunai') tunai -= amount; else transfer -= amount

@@ -197,7 +197,10 @@ export function registerRentalHandlers() {
     const feeAmount = Number(vendorFee || 0)
     if (incomeAmount <= 0) return
     const txDate = String(dateTime || '').split('T')[0]
-    const methodAccount = dbOps.get('SELECT * FROM cash_accounts WHERE type = ?', [paymentMethod])
+    const methodAccount = dbOps.get(
+      "SELECT * FROM cash_accounts WHERE type = ? AND COALESCE(bucket, 'pendapatan') = 'pendapatan' ORDER BY id ASC LIMIT 1",
+      [paymentMethod]
+    )
     if (!methodAccount) throw new Error('Akun kas metode pembayaran tidak ditemukan')
 
     dbOps.run(
@@ -208,7 +211,7 @@ export function registerRentalHandlers() {
     dbOps.run('UPDATE cash_accounts SET balance = balance + ? WHERE id = ?', [incomeAmount, methodAccount.id])
 
     if (feeAmount > 0) {
-      let cashTunai = dbOps.get("SELECT * FROM cash_accounts WHERE type = 'tunai'")
+      let cashTunai = dbOps.get("SELECT * FROM cash_accounts WHERE type = 'tunai' AND COALESCE(bucket, 'pendapatan') = 'pendapatan' ORDER BY id ASC LIMIT 1")
       if (!cashTunai) {
         // Fallback kompatibilitas data lama/testing: pakai akun metode pembayaran bila akun tunai belum tersedia.
         cashTunai = methodAccount
@@ -508,7 +511,10 @@ export function registerRentalHandlers() {
 
     let settlementAccount = null
     if (settlementType !== 'none') {
-      settlementAccount = dbOps.get('SELECT * FROM cash_accounts WHERE type = ?', [settlementPaymentMethod])
+      settlementAccount = dbOps.get(
+        "SELECT * FROM cash_accounts WHERE type = ? AND COALESCE(bucket, 'pendapatan') = 'pendapatan' ORDER BY id ASC LIMIT 1",
+        [settlementPaymentMethod]
+      )
       if (!settlementAccount) throw new Error('Akun kas metode bayar selisih tidak ditemukan')
       if (settlementType === 'refund' && Number(settlementAccount.balance || 0) < settlementAmount) {
         throw new Error(`Saldo Kas ${settlementAccount.name} tidak cukup untuk refund selisih (Sisa: Rp ${Number(settlementAccount.balance || 0).toLocaleString('id-ID')})`)

@@ -24,7 +24,10 @@ export function registerRefundHandlers() {
     if (Number(data.remaining_days || 0) < 0) throw new Error('Sisa hari refund tidak valid')
 
     // FIX: Cek saldo DULU sebelum ubah status apapun
-    const cashAccount = dbOps.get('SELECT * FROM cash_accounts WHERE type = ?', [rental.payment_method])
+    const cashAccount = dbOps.get(
+      "SELECT * FROM cash_accounts WHERE type = ? AND COALESCE(bucket, 'pendapatan') = 'pendapatan' ORDER BY id ASC LIMIT 1",
+      [rental.payment_method]
+    )
     if (cashAccount && cashAccount.balance < data.refund_amount) {
       throw new Error(`Saldo Kas ${cashAccount.name} tidak cukup untuk refund! (Sisa: Rp ${cashAccount.balance.toLocaleString('id-ID')})`)
     }

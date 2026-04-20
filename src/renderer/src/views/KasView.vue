@@ -10,25 +10,32 @@
           <span class="material-symbols-outlined">add</span>
           Tambah Pemasukan / Modal
         </button>
-        <button @click="showOpeningModal = true" class="btn-secondary">
-          <span class="material-symbols-outlined">tune</span>
-          Set Saldo Awal
-        </button>
       </div>
     </div>
 
     <!-- Kas Cards -->
-    <div class="grid grid-cols-3 gap-6 mb-8">
-      <div v-for="acc in accounts" :key="acc.id"
-        :class="kasCardClass(acc.type)"
-        class="rounded-xl p-8 shadow-sm">
-        <div class="flex items-center gap-2 mb-3">
-          <span :class="kasIconClass(acc.type)" class="material-symbols-outlined">
-            {{ kasIcon(acc.type) }}
-          </span>
-          <span :class="kasLabelClass(acc.type)" class="text-xs font-bold uppercase tracking-wider">{{ acc.name }}</span>
+    <div class="space-y-6 mb-8">
+      <div v-for="bucket in cashBuckets" :key="bucket.value">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-sm font-bold text-slate-500 uppercase tracking-wider">{{ bucket.label }}</h3>
+          <div class="text-right">
+            <p class="text-sm font-black text-slate-700 font-headline">{{ formatRp(totalByBucket(bucket.value)) }}</p>
+            <p class="text-[11px] font-semibold text-slate-500">Total Saldo Rekening: {{ formatRp(totalRekeningByBucket(bucket.value)) }}</p>
+          </div>
         </div>
-        <p :class="kasBalanceClass(acc.type)" class="text-3xl font-black font-headline">{{ formatRp(acc.balance) }}</p>
+        <div class="grid grid-cols-4 gap-4">
+          <div v-for="acc in accountsByBucket(bucket.value)" :key="acc.id"
+            :class="kasCardClass(acc.type)"
+            class="rounded-xl p-6 shadow-sm">
+            <div class="flex items-center gap-2 mb-2">
+              <span :class="kasIconClass(acc.type)" class="material-symbols-outlined">
+                {{ kasIcon(acc.type) }}
+              </span>
+              <span :class="kasLabelClass(acc.type)" class="text-xs font-bold uppercase tracking-wider">{{ paymentMethodLabel(acc.type) }}</span>
+            </div>
+            <p :class="kasBalanceClass(acc.type)" class="text-2xl font-black font-headline">{{ formatRp(acc.balance) }}</p>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -178,19 +185,7 @@
       </form>
     </n-modal>
 
-    <!-- Opening Balance Modal -->
-    <n-modal v-model:show="showOpeningModal" preset="card" title="Set Saldo Awal" class="max-w-sm" :auto-focus="false" :trap-focus="false">
-      <div class="space-y-4">
-        <div v-for="acc in accounts" :key="acc.id">
-          <label class="block text-xs font-bold text-slate-500 mb-1">{{ acc.name }}</label>
-          <input v-model.number="openingBalances[acc.id]" type="number" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" :placeholder="formatRp(acc.balance)" />
-        </div>
-        <div class="flex justify-end gap-3 pt-2">
-          <button @click="showOpeningModal = false" class="btn-secondary">Batal</button>
-          <button @click="saveOpeningBalance" class="btn-primary">Simpan</button>
-        </div>
-      </div>
-    </n-modal>
+
   </div>
 </template>
 
@@ -203,9 +198,7 @@ const accounts = ref([])
 const total = ref(0)
 const transactions = ref([])
 const loading = ref(false)
-const showOpeningModal = ref(false)
 const showIncomeModal = ref(false)
-const openingBalances = ref({})
 const filterAccount = ref('')
 const filterType = ref('')
 const filterDate = ref('')
@@ -214,6 +207,11 @@ const pageSize = ref(10)
 const exporting = ref(false)
 const incomeError = ref('')
 const incomeSubmitting = ref(false)
+const allowedPaymentMethods = ['tunai', 'transfer', 'qris', 'debit_card']
+const cashBuckets = [
+  { value: 'pendapatan', label: 'Kas Pendapatan' },
+  { value: 'modal', label: 'Kas Modal' }
+]
 
 const incomeForm = ref({
   entry_type: 'manual_income',
@@ -255,6 +253,24 @@ const selectedAccountName = computed(() => {
   if (!filterAccount.value) return 'Semua Akun'
   return accounts.value.find(a => Number(a.id) === Number(filterAccount.value))?.name || 'Semua Akun'
 })
+const accountsByBucket = (bucket) => accounts.value.filter((acc) =>
+  String(acc.bucket || 'pendapatan') === bucket && allowedPaymentMethods.includes(String(acc.type || ''))
+)
+const totalByBucket = (bucket) => {
+  return accountsByBucket(bucket).reduce((sum, acc) => sum + Number(acc.balance || 0), 0)
+}
+const totalRekeningByBucket = (bucket) => {
+  const rekeningMethods = ['transfer', 'qris', 'debit_card']
+  return accountsByBucket(bucket)
+    .filter((acc) => rekeningMethods.includes(String(acc.type || '')))
+    .reduce((sum, acc) => sum + Number(acc.balance || 0), 0)
+}
+const paymentMethodLabel = (method) => ({
+  tunai: 'Tunai',
+  transfer: 'Transfer',
+  qris: 'QRIS',
+  debit_card: 'Debit Card'
+}[method] || method || '-')
 const selectedTypeLabel = computed(() => {
   if (filterType.value === 'in') return 'Pemasukan'
   if (filterType.value === 'out') return 'Pengeluaran'
@@ -350,16 +366,6 @@ async function reloadCash() {
   const summary = await window.api.getCashSummary()
   accounts.value = summary.accounts
   total.value = summary.total
-}
-
-async function saveOpeningBalance() {
-  for (const [accountId, amount] of Object.entries(openingBalances.value)) {
-    if (amount != null && amount >= 0) {
-      await window.api.setCashOpeningBalance({ accountId: Number(accountId), amount })
-    }
-  }
-  showOpeningModal.value = false
-  await reloadCash()
 }
 
 function getExportFileLabel() {
@@ -458,7 +464,6 @@ async function exportExcel() {
 
 onMounted(async () => {
   await reloadCash()
-  accounts.value.forEach(a => { openingBalances.value[a.id] = a.balance })
   await loadTransactions()
 })
 </script>

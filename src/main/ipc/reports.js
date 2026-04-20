@@ -71,7 +71,17 @@ export function registerReportHandlers() {
 	  ipcMain.handle('report:motor-income', (_, { startDate, endDate, motorId }) => {
 	    let query = `
 	      SELECT r.id, r.date_time, r.customer_name, r.hotel, r.period_days,
-	             r.payment_method, r.total_price, r.vendor_fee, r.sisa,
+	             r.payment_method,
+               COALESCE((
+                 SELECT COALESCE(ca.bucket, 'pendapatan')
+                 FROM cash_transactions ct
+                 JOIN cash_accounts ca ON ca.id = ct.cash_account_id
+                 WHERE ct.reference_type = 'rental'
+                   AND ct.reference_id = r.id
+                 ORDER BY ct.id ASC
+                 LIMIT 1
+               ), 'pendapatan') as cash_bucket,
+               r.total_price, r.vendor_fee, r.sisa,
 	             r.wavy_gets, r.owner_gets, r.status,
 	             m.model, m.plate_number, m.type as motor_type,
 	             CASE
@@ -94,7 +104,9 @@ export function registerReportHandlers() {
     const sd = startDate.split('T')[0]
     const ed = endDate.split('T')[0]
     let query = `
-      SELECT e.id, e.date, e.type, e.category, e.amount, e.payment_method, e.description,
+      SELECT e.id, e.date, e.type, e.category, e.amount, e.payment_method,
+             COALESCE(e.cash_bucket, 'pendapatan') as cash_bucket,
+             e.description,
              m.model, m.plate_number
       FROM expenses e
       LEFT JOIN motors m ON e.motor_id = m.id
@@ -114,6 +126,15 @@ export function registerReportHandlers() {
              r.customer_name as description,
              m.model || ' (' || m.plate_number || ')' as motor,
              r.payment_method,
+             COALESCE((
+               SELECT COALESCE(ca.bucket, 'pendapatan')
+               FROM cash_transactions ct
+               JOIN cash_accounts ca ON ca.id = ct.cash_account_id
+               WHERE ct.reference_type = 'rental'
+                 AND ct.reference_id = r.id
+               ORDER BY ct.id ASC
+               LIMIT 1
+             ), 'pendapatan') as cash_bucket,
              CASE
                WHEN COALESCE(r.sisa, 0) > 0 THEN COALESCE(r.sisa, 0)
                WHEN (COALESCE(r.wavy_gets, 0) + COALESCE(r.owner_gets, 0)) > 0 THEN (COALESCE(r.wavy_gets, 0) + COALESCE(r.owner_gets, 0))
@@ -135,7 +156,9 @@ export function registerReportHandlers() {
       SELECT e.id, e.date, 'expense' as type,
              e.category as description,
              COALESCE(m.model || ' (' || m.plate_number || ')', 'Umum') as motor,
-             e.payment_method, e.amount, 'completed' as status
+             e.payment_method,
+             COALESCE(e.cash_bucket, 'pendapatan') as cash_bucket,
+             e.amount, 'completed' as status
       FROM expenses e LEFT JOIN motors m ON e.motor_id = m.id
       WHERE e.date BETWEEN ? AND ?
         AND e.type != 'motor'
@@ -146,7 +169,9 @@ export function registerReportHandlers() {
       SELECT e.id, e.date, 'expense' as type,
              e.category as description,
              COALESCE(m.model || ' (' || m.plate_number || ')', 'Motor') as motor,
-             e.payment_method, e.amount, 'completed' as status
+             e.payment_method,
+             COALESCE(e.cash_bucket, 'pendapatan') as cash_bucket,
+             e.amount, 'completed' as status
       FROM expenses e LEFT JOIN motors m ON e.motor_id = m.id
       WHERE e.date BETWEEN ? AND ?
         AND e.type = 'motor'

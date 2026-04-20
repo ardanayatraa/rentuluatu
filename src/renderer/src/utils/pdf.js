@@ -18,12 +18,23 @@ let _logoBase64 = ''
 getLogoBase64().then(b64 => { _logoBase64 = b64 })
 
 const rp = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID', { minimumFractionDigits: 0 })
+const REKENING_METHODS = ['transfer', 'qris', 'debit_card']
 const paymentLabel = (method) => ({
   tunai: 'Tunai',
   transfer: 'Transfer',
   qris: 'QRIS',
   debit_card: 'Debit Card'
 }[method] || method || '-')
+const cashBucketLabel = (bucket) => String(bucket || 'pendapatan').trim().toLowerCase() === 'modal' ? 'Kas Modal' : 'Kas Pendapatan'
+const isRekeningMethod = (method) => REKENING_METHODS.includes(String(method || '').trim().toLowerCase())
+const paymentGroupLabel = (method) => isRekeningMethod(method) ? 'Saldo Rekening' : paymentLabel(method)
+const calculateCashSummary = (rows = [], amountKey = 'amount') => rows.reduce((summary, row) => {
+  const amount = Number(row?.[amountKey] || 0)
+  const bucket = String(row?.cash_bucket || 'pendapatan').trim().toLowerCase() === 'modal' ? 'modal' : 'pendapatan'
+  summary[bucket] += amount
+  if (isRekeningMethod(row?.payment_method)) summary.rekening += amount
+  return summary
+}, { pendapatan: 0, modal: 0, rekening: 0 })
 
 const fmtDate = (d) => {
   if (!d) return '-'
@@ -323,30 +334,35 @@ export function buildMotorIncomeHtml({ rentals, period, motorName }) {
   const totalVendor = rentals.reduce((s, r) => s + (r.vendor_fee || 0), 0)
   const totalWavy = rentals.reduce((s, r) => s + (r.wavy_gets || 0), 0)
   const totalOwner = rentals.reduce((s, r) => s + (r.owner_gets || 0), 0)
+  const cashSummary = calculateCashSummary(rentals, 'total_price')
   const rowsHtml = rentals.map(r => `<tr>
     <td>${fmtDateTime(r.date_time)}</td>
     <td>${r.customer_name}${r.hotel ? '<br><span style="color:#94a3b8;font-size:10px">' + r.hotel + '</span>' : ''}</td>
     <td>${r.model} <span style="color:#94a3b8">${r.plate_number}</span></td>
     <td class="right">${r.period_days} hari</td>
-    <td><span class="badge badge-blue">${paymentLabel(r.payment_method)}</span></td>
+    <td>${cashBucketLabel(r.cash_bucket)}</td>
+    <td><span class="badge badge-blue">${paymentGroupLabel(r.payment_method)}</span></td>
     <td class="right" style="font-weight:700">${rp(r.total_price)}</td>
     <td class="right">${rp(r.vendor_fee || 0)}</td>
     <td class="right">${rp(r.wavy_gets)}</td>
     <td class="right">${rp(r.owner_gets)}</td>
   </tr>`).join('')
   return `${headerHtml('Laporan Pendapatan per Motor', period, motorName || 'Semua Motor')}
-  <div class="summary-grid" style="grid-template-columns:repeat(5,1fr)">
+  <div class="summary-grid" style="grid-template-columns:repeat(8,1fr)">
     <div class="summary-card"><div class="label">Total Transaksi</div><div class="value">${rentals.length}x</div></div>
     <div class="summary-card"><div class="label">Total Pendapatan</div><div class="value">${rp(total)}</div></div>
     <div class="summary-card"><div class="label">Fee Vendor</div><div class="value">${rp(totalVendor)}</div></div>
     <div class="summary-card"><div class="label">Wavy Gets</div><div class="value">${rp(totalWavy)}</div></div>
-<div class="summary-card"><div class="label">Bagian Mitra</div><div class="value">${rp(totalOwner)}</div></div>
+    <div class="summary-card"><div class="label">Bagian Mitra</div><div class="value">${rp(totalOwner)}</div></div>
+    <div class="summary-card"><div class="label">Kas Pendapatan</div><div class="value">${rp(cashSummary.pendapatan)}</div></div>
+    <div class="summary-card"><div class="label">Kas Modal</div><div class="value">${rp(cashSummary.modal)}</div></div>
+    <div class="summary-card"><div class="label">Total Saldo Rekening</div><div class="value">${rp(cashSummary.rekening)}</div></div>
   </div>
   <div class="section-title">Detail Transaksi Rental</div>
   <table><thead><tr>
     <th>Tanggal</th><th>Pelanggan</th><th>Motor</th><th class="right">Durasi</th>
-    <th>Pembayaran</th><th class="right">Total</th><th class="right">Fee Vendor</th><th class="right">Wavy Gets</th><th class="right">Bagian Mitra</th>
-  </tr></thead><tbody>${rowsHtml || '<tr><td colspan="9" style="text-align:center;padding:20px;color:#888">Tidak ada data</td></tr>'}</tbody></table>
+    <th>Sumber Kas</th><th>Pembayaran</th><th class="right">Total</th><th class="right">Fee Vendor</th><th class="right">Wavy Gets</th><th class="right">Bagian Mitra</th>
+  </tr></thead><tbody>${rowsHtml || '<tr><td colspan="10" style="text-align:center;padding:20px;color:#888">Tidak ada data</td></tr>'}</tbody></table>
   ${footerHtml()}`
 }
 export function printMotorIncomeReport(args) { printWindow(buildMotorIncomeHtml(args)) }
@@ -354,24 +370,29 @@ export function printMotorIncomeReport(args) { printWindow(buildMotorIncomeHtml(
 // ─── 3. Laporan Pengeluaran per Motor ──────────────────────────────────────
 export function buildMotorExpensesHtml({ expenses, period, motorName }) {
   const total = expenses.reduce((s, e) => s + (e.amount || 0), 0)
+  const cashSummary = calculateCashSummary(expenses, 'amount')
   const rowsHtml = expenses.map(e => `<tr>
     <td>${fmtDate(e.date)}</td>
     <td>${e.model ? e.model + ' <span style="color:#94a3b8">' + e.plate_number + '</span>' : '<span style="color:#94a3b8">Umum</span>'}</td>
     <td><span class="badge badge-orange">${e.type}</span></td>
     <td>${e.category}</td>
     <td>${e.description || '-'}</td>
-    <td><span class="badge badge-blue">${paymentLabel(e.payment_method)}</span></td>
+    <td>${cashBucketLabel(e.cash_bucket)}</td>
+    <td><span class="badge badge-blue">${paymentGroupLabel(e.payment_method)}</span></td>
     <td class="right" style="color:#dc2626;font-weight:700">${rp(e.amount)}</td>
   </tr>`).join('')
   return `${headerHtml('Laporan Pengeluaran per Motor', period, motorName || 'Semua Motor')}
-  <div class="summary-grid" style="grid-template-columns:repeat(2,1fr)">
+  <div class="summary-grid" style="grid-template-columns:repeat(5,1fr)">
     <div class="summary-card"><div class="label">Total Pengeluaran</div><div class="value">${rp(total)}</div></div>
     <div class="summary-card"><div class="label">Jumlah Transaksi</div><div class="value">${expenses.length}x</div></div>
+    <div class="summary-card"><div class="label">Kas Pendapatan</div><div class="value">${rp(cashSummary.pendapatan)}</div></div>
+    <div class="summary-card"><div class="label">Kas Modal</div><div class="value">${rp(cashSummary.modal)}</div></div>
+    <div class="summary-card"><div class="label">Total Saldo Rekening</div><div class="value">${rp(cashSummary.rekening)}</div></div>
   </div>
   <div class="section-title">Detail Pengeluaran</div>
   <table><thead><tr>
-    <th>Tanggal</th><th>Motor</th><th>Tipe</th><th>Kategori</th><th>Keterangan</th><th>Pembayaran</th><th class="right">Jumlah</th>
-  </tr></thead><tbody>${rowsHtml || '<tr><td colspan="7" style="text-align:center;padding:20px;color:#888">Tidak ada data</td></tr>'}</tbody></table>
+    <th>Tanggal</th><th>Motor</th><th>Tipe</th><th>Kategori</th><th>Keterangan</th><th>Sumber Kas</th><th>Pembayaran</th><th class="right">Jumlah</th>
+  </tr></thead><tbody>${rowsHtml || '<tr><td colspan="8" style="text-align:center;padding:20px;color:#888">Tidak ada data</td></tr>'}</tbody></table>
   ${footerHtml()}`
 }
 export function printMotorExpensesReport(args) { printWindow(buildMotorExpensesHtml(args)) }
@@ -382,24 +403,30 @@ export function buildTransactionsHtml({ rentals, operationalExpenses, motorExpen
   const totalOperational = operationalExpenses.reduce((s, e) => s + (e.amount || 0), 0)
   const totalMotor = motorExpenses.reduce((s, e) => s + (e.amount || 0), 0)
   const totalOut = totalOperational + totalMotor
+  const rentalCash = calculateCashSummary(rentals, 'amount')
+  const operationalCash = calculateCashSummary(operationalExpenses, 'amount')
+  const motorCash = calculateCashSummary(motorExpenses, 'amount')
   const rentalRows = rentals.map(r => `<tr>
     <td>${fmtDateTime(r.date)}</td><td>Pemasukan</td>
     <td>${r.description}</td><td>${r.motor}</td>
-    <td>${paymentLabel(r.payment_method)}</td>
+    <td>${cashBucketLabel(r.cash_bucket)}</td>
+    <td>${paymentGroupLabel(r.payment_method)}</td>
     <td class="right">${rp(r.amount)}</td>
     <td>${r.status}</td>
   </tr>`).join('')
   const operationalRows = operationalExpenses.map(e => `<tr>
     <td>${fmtDate(e.date)}</td><td>Pengeluaran</td>
     <td>${e.description}</td><td>${e.motor}</td>
-    <td>${paymentLabel(e.payment_method)}</td>
+    <td>${cashBucketLabel(e.cash_bucket)}</td>
+    <td>${paymentGroupLabel(e.payment_method)}</td>
     <td class="right">${rp(e.amount)}</td>
     <td>-</td>
   </tr>`).join('')
   const motorRows = motorExpenses.map(e => `<tr>
     <td>${fmtDate(e.date)}</td><td>Pengeluaran Motor</td>
     <td>${e.description}</td><td>${e.motor}</td>
-    <td>${paymentLabel(e.payment_method)}</td>
+    <td>${cashBucketLabel(e.cash_bucket)}</td>
+    <td>${paymentGroupLabel(e.payment_method)}</td>
     <td class="right">${rp(e.amount)}</td>
     <td>-</td>
   </tr>`).join('')
@@ -415,17 +442,20 @@ export function buildTransactionsHtml({ rentals, operationalExpenses, motorExpen
     <div class="summary-card"><div class="label">Selisih</div><div class="value">${rp(totalIn - totalOut)}</div></div>
   </div>
   <div class="section-title">Pemasukan (Rental)</div>
-  <table><thead><tr><th>Tanggal</th><th>Tipe</th><th>Pelanggan</th><th>Motor</th><th>Pembayaran</th><th class="right">Jumlah</th><th>Status</th></tr></thead>
-  <tbody>${rentalRows || '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:16px">Tidak ada data</td></tr>'}</tbody></table>
+  <div style="font-size:10px;color:#555;margin-bottom:6px">Kas Pendapatan: ${rp(rentalCash.pendapatan)} · Kas Modal: ${rp(rentalCash.modal)} · Total Saldo Rekening: ${rp(rentalCash.rekening)}</div>
+  <table><thead><tr><th>Tanggal</th><th>Tipe</th><th>Pelanggan</th><th>Motor</th><th>Sumber Kas</th><th>Pembayaran</th><th class="right">Jumlah</th><th>Status</th></tr></thead>
+  <tbody>${rentalRows || '<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:16px">Tidak ada data</td></tr>'}</tbody></table>
   <div class="section-title">Jejak Extend & Ganti Unit</div>
   <table><thead><tr><th>Transaksi Awal</th><th>Riwayat</th></tr></thead>
   <tbody>${journeyRows || '<tr><td colspan="2" style="text-align:center;color:#94a3b8;padding:16px">Tidak ada data extend / ganti unit</td></tr>'}</tbody></table>
   <div class="section-title">Pengeluaran Operasional</div>
-  <table><thead><tr><th>Tanggal</th><th>Tipe</th><th>Kategori</th><th>Motor</th><th>Pembayaran</th><th class="right">Jumlah</th><th>Status</th></tr></thead>
-  <tbody>${operationalRows || '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:16px">Tidak ada data</td></tr>'}</tbody></table>
+  <div style="font-size:10px;color:#555;margin-bottom:6px">Kas Pendapatan: ${rp(operationalCash.pendapatan)} · Kas Modal: ${rp(operationalCash.modal)} · Total Saldo Rekening: ${rp(operationalCash.rekening)}</div>
+  <table><thead><tr><th>Tanggal</th><th>Tipe</th><th>Kategori</th><th>Motor</th><th>Sumber Kas</th><th>Pembayaran</th><th class="right">Jumlah</th><th>Status</th></tr></thead>
+  <tbody>${operationalRows || '<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:16px">Tidak ada data</td></tr>'}</tbody></table>
   <div class="section-title">Pengeluaran Motor</div>
-  <table><thead><tr><th>Tanggal</th><th>Tipe</th><th>Kategori</th><th>Motor</th><th>Pembayaran</th><th class="right">Jumlah</th><th>Status</th></tr></thead>
-  <tbody>${motorRows || '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:16px">Tidak ada data</td></tr>'}</tbody></table>
+  <div style="font-size:10px;color:#555;margin-bottom:6px">Kas Pendapatan: ${rp(motorCash.pendapatan)} · Kas Modal: ${rp(motorCash.modal)} · Total Saldo Rekening: ${rp(motorCash.rekening)}</div>
+  <table><thead><tr><th>Tanggal</th><th>Tipe</th><th>Kategori</th><th>Motor</th><th>Sumber Kas</th><th>Pembayaran</th><th class="right">Jumlah</th><th>Status</th></tr></thead>
+  <tbody>${motorRows || '<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:16px">Tidak ada data</td></tr>'}</tbody></table>
   ${footerHtml()}`
 }
 export function printTransactionsReport(args) { printWindow(buildTransactionsHtml(args)) }
