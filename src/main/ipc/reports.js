@@ -149,6 +149,7 @@ export function registerReportHandlers() {
       LEFT JOIN rentals pr ON pr.id = r.parent_rental_id
       LEFT JOIN motors pm ON pm.id = pr.motor_id
       WHERE r.date_time BETWEEN ? AND ?
+        AND r.status != 'refunded'
       ORDER BY r.date_time DESC
     `, [startDate, endDate])
 
@@ -161,7 +162,7 @@ export function registerReportHandlers() {
              e.amount, 'completed' as status
       FROM expenses e LEFT JOIN motors m ON e.motor_id = m.id
       WHERE e.date BETWEEN ? AND ?
-        AND e.type != 'motor'
+        AND (e.type IS NULL OR e.type != 'motor')
       ORDER BY e.date DESC
     `, [startDate.split('T')[0], endDate.split('T')[0]])
 
@@ -449,11 +450,9 @@ export function registerReportHandlers() {
           FROM expenses e
           LEFT JOIN motors m ON e.motor_id = m.id
           WHERE e.date <= ?
-            AND (
-              e.type != 'motor'
+            AND ((e.type IS NULL OR e.type != 'motor')
               OR e.motor_id IS NULL
-              OR m.owner_id IS NULL
-            )
+              OR m.owner_id IS NULL)
         ), 0) as total`,
       [cutoffDateTime, cutoffDateTime, cutoffDate]
     )

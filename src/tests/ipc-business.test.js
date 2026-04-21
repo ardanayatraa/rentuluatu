@@ -147,6 +147,58 @@ describe('IPC business logic', () => {
     ])
   })
 
+  it('report:transactions tidak menghitung rental dengan status refunded sebagai pemasukan', async () => {
+    dbOps.all.mockImplementation((sql) => {
+      if (sql.includes('FROM rentals r JOIN motors m ON r.motor_id = m.id')) {
+        if (sql.includes("AND r.status != 'refunded'")) {
+          return [{ id: 1, status: 'completed', amount: 500_000, cash_bucket: 'pendapatan', payment_method: 'tunai', date: '2026-04-07T10:00:00', description: 'Sewa A' }]
+        }
+        return [
+          { id: 1, status: 'completed', amount: 500_000, cash_bucket: 'pendapatan', payment_method: 'tunai', date: '2026-04-07T10:00:00', description: 'Sewa A' },
+          { id: 2, status: 'refunded', amount: 300_000, cash_bucket: 'pendapatan', payment_method: 'tunai', date: '2026-04-07T11:00:00', description: 'Sewa B' }
+        ]
+      }
+      if (sql.includes('FROM expenses e') && sql.includes("e.type = 'motor'")) return []
+      if (sql.includes('FROM expenses e') && sql.includes('LEFT JOIN motors m ON e.motor_id = m.id')) return []
+      return []
+    })
+
+    registerReportHandlers()
+    const report = await handlers.get('report:transactions')(null, {
+      startDate: '2026-04-01T00:00:00',
+      endDate: '2026-04-30T23:59:59'
+    })
+
+    expect(dbOps.all).toHaveBeenCalledWith(
+      expect.stringContaining("AND r.status != 'refunded'"),
+      ['2026-04-01T00:00:00', '2026-04-30T23:59:59']
+    )
+    expect(report.rentals).toHaveLength(1)
+    expect(report.rentals[0]).toEqual(expect.objectContaining({ id: 1, status: 'completed' }))
+  })
+
+  it('operational expense filter menggunakan kondisi NULL-safe agar type legacy tidak hilang', async () => {
+    dbOps.all.mockImplementation((sql) => {
+      if (sql.includes('FROM expenses e') && sql.includes("e.type = 'motor'")) return []
+      if (sql.includes('FROM rentals r JOIN motors m ON r.motor_id = m.id')) return []
+      if (sql.includes('FROM expenses e') && sql.includes('LEFT JOIN motors m ON e.motor_id = m.id')) return []
+      return []
+    })
+
+    registerReportHandlers()
+    await handlers.get('report:transactions')(null, {
+      startDate: '2026-04-01T00:00:00',
+      endDate: '2026-04-30T23:59:59'
+    })
+
+    const hasSafeOperationalFilter = dbOps.all.mock.calls.some(([callSql]) =>
+      callSql.includes('FROM expenses e') &&
+      callSql.includes('LEFT JOIN motors m ON e.motor_id = m.id') &&
+      callSql.includes("(e.type IS NULL OR e.type != 'motor')")
+    )
+    expect(hasSafeOperationalFilter).toBe(true)
+  })
+
   it('dashboard payment breakdown memakai mutasi kas masuk per metode bayar', async () => {
     dbOps.all.mockImplementation((sql) => {
       if (sql.includes('FROM cash_transactions ct') && sql.includes("ct.reference_type IN ('rental', 'manual_income', 'rental_swap_settlement')")) {
@@ -820,6 +872,56 @@ describe('IPC business logic', () => {
       expect.objectContaining({
         severity: 'error',
         category: 'expense'
+      })
+    ]))
+  })
+
+  it('system audit mendeteksi duplikasi mutasi kas untuk reference yang sama', async () => {
+    dbOps.all.mockImplementation((sql, params) => {
+      if (sql.includes('FROM cash_accounts') && sql.includes('ORDER BY type ASC')) {
+        return [{ id: 1, name: 'Kas Tunai', type: 'tunai', balance: 300_000, bucket: 'pendapatan' }]
+      }
+      if (sql.includes('FROM cash_transactions') && sql.includes('GROUP BY cash_account_id')) {
+        return [{ cash_account_id: 1, ledger_balance: 300_000 }]
+      }
+      if (sql.includes('SELECT r.*, m.type as motor_type, m.model as motor_model')) {
+        return [
+          {
+            id: 1,
+            total_price: 300_000,
+            vendor_fee: 0,
+            sisa: 300_000,
+            wavy_gets: 90_000,
+            owner_gets: 210_000,
+            payment_method: 'tunai',
+            status: 'completed',
+            relation_type: 'rental',
+            motor_type: 'titipan'
+          }
+        ]
+      }
+      if (sql.includes('FROM expenses e ORDER BY id ASC')) return []
+      if (sql.includes('FROM refunds rf')) return []
+      if (sql.includes('SELECT * FROM payouts ORDER BY id ASC')) return []
+      if (sql.includes('SELECT * FROM rental_swaps ORDER BY id ASC')) return []
+      if (sql.includes('FROM cash_transactions ct') && params?.[0] === 'rental' && params?.[1] === 1) {
+        return [
+          { id: 10, type: 'in', cash_account_id: 1, amount: 300_000, account_type: 'tunai', account_name: 'Kas Tunai' },
+          { id: 11, type: 'in', cash_account_id: 1, amount: 300_000, account_type: 'tunai', account_name: 'Kas Tunai' }
+        ]
+      }
+      return []
+    })
+
+    registerAuditHandlers()
+    const result = handlers.get('audit:run-system-check')(null)
+
+    expect(result.summary.errors).toBe(1)
+    expect(result.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        severity: 'error',
+        category: 'cash',
+        message: expect.stringContaining('Mutasi kas ganda')
       })
     ]))
   })

@@ -24,16 +24,33 @@ function pushFinding(findings, severity, category, message, meta = {}) {
   findings.push({ severity, category, message, ...meta })
 }
 
-function getSingleCashMutation(referenceType, referenceId) {
-  return dbOps.get(
+function getCashMutations(referenceType, referenceId) {
+  return dbOps.all(
     `SELECT ct.*, ca.type as account_type, ca.name as account_name
      FROM cash_transactions ct
      LEFT JOIN cash_accounts ca ON ca.id = ct.cash_account_id
      WHERE ct.reference_type = ? AND ct.reference_id = ?
-     ORDER BY ct.id DESC
-     LIMIT 1`,
+     ORDER BY ct.id DESC`,
     [referenceType, referenceId]
-  )
+  ) || []
+}
+
+function getSingleCashMutation(referenceType, referenceId) {
+  return getCashMutations(referenceType, referenceId)[0] || null
+}
+
+function getCashMutationsWithDuplicateCheck(referenceType, referenceId, findings, category, meta = {}) {
+  const mutations = getCashMutations(referenceType, referenceId)
+  if (mutations.length > 1) {
+    pushFinding(
+      findings,
+      'error',
+      category,
+      `Mutasi kas ganda untuk ${category} dengan reference ${JSON.stringify([referenceType, referenceId])}. Terdeteksi ${mutations.length} transaksi.`,
+      meta
+    )
+  }
+  return mutations
 }
 
 function getCashAccountByType(type, bucket = 'pendapatan') {
@@ -133,7 +150,8 @@ function buildAuditReport() {
     }
 
     if ((relationType === 'rental' || relationType === 'extend') && String(rental.status || '').toLowerCase() !== 'refunded') {
-      const rentalTx = getSingleCashMutation('rental', rental.id)
+      const rentalTxRows = getCashMutationsWithDuplicateCheck('rental', rental.id, findings, 'cash', { rentalId: Number(rental.id) })
+      const rentalTx = rentalTxRows[0] || null
       const expectedDate = String(rental.date_time || '').split('T')[0]
       if (!rentalTx) {
         pushFinding(findings, 'error', 'cash', `Mutasi kas masuk untuk rental #${rental.id} tidak ditemukan.`, { rentalId: Number(rental.id) })
@@ -154,7 +172,8 @@ function buildAuditReport() {
     }
 
     if (vendorFee > 0) {
-      const vendorTx = getSingleCashMutation('rental_vendor_fee', rental.id)
+      const vendorTxRows = getCashMutationsWithDuplicateCheck('rental_vendor_fee', rental.id, findings, 'cash', { rentalId: Number(rental.id) })
+      const vendorTx = vendorTxRows[0] || null
       const expectedDate = String(rental.date_time || '').split('T')[0]
       if (!vendorTx) {
         pushFinding(findings, 'error', 'cash', `Mutasi fee vendor untuk rental #${rental.id} tidak ditemukan.`, { rentalId: Number(rental.id) })
@@ -174,7 +193,8 @@ function buildAuditReport() {
 
   const expenses = dbOps.all('SELECT * FROM expenses ORDER BY id ASC') || []
   expenses.forEach((expense) => {
-    const expenseTx = getSingleCashMutation('expense', expense.id)
+    const expenseTxRows = getCashMutationsWithDuplicateCheck('expense', expense.id, findings, 'expense', { expenseId: Number(expense.id) })
+    const expenseTx = expenseTxRows[0] || null
     if (!expenseTx) {
       pushFinding(findings, 'error', 'expense', `Mutasi kas pengeluaran #${expense.id} tidak ditemukan.`, { expenseId: Number(expense.id) })
       return
@@ -200,7 +220,8 @@ function buildAuditReport() {
     ORDER BY rf.id ASC
   `) || []
   refunds.forEach((refund) => {
-    const refundTx = getSingleCashMutation('refund', refund.id)
+    const refundTxRows = getCashMutationsWithDuplicateCheck('refund', refund.id, findings, 'refund', { refundId: Number(refund.id) })
+    const refundTx = refundTxRows[0] || null
     if (!refundTx) {
       pushFinding(findings, 'error', 'refund', `Mutasi refund #${refund.id} tidak ditemukan.`, { refundId: Number(refund.id) })
       return
@@ -219,7 +240,8 @@ function buildAuditReport() {
   const payouts = dbOps.all('SELECT * FROM payouts ORDER BY id ASC') || []
   payouts.forEach((payout) => {
     if (normalizeNumber(payout.amount) <= 0) return
-    const payoutTx = getSingleCashMutation('owner_payout', payout.id)
+    const payoutTxRows = getCashMutationsWithDuplicateCheck('owner_payout', payout.id, findings, 'payout', { payoutId: Number(payout.id) })
+    const payoutTx = payoutTxRows[0] || null
     if (!payoutTx) {
       pushFinding(findings, 'error', 'payout', `Mutasi pencairan mitra #${payout.id} tidak ditemukan.`, { payoutId: Number(payout.id) })
       return
@@ -243,7 +265,14 @@ function buildAuditReport() {
     const settlementType = String(swap.settlement_type || '').toLowerCase()
     const settlementAmount = normalizeNumber(swap.settlement_amount)
     if (!settlementAmount || settlementType === 'none') return
-    const settlementTx = getSingleCashMutation('rental_swap_settlement', swap.replacement_rental_id)
+    const settlementTxRows = getCashMutationsWithDuplicateCheck(
+      'rental_swap_settlement',
+      swap.replacement_rental_id,
+      findings,
+      'swap',
+      { swapId: Number(swap.id) }
+    )
+    const settlementTx = settlementTxRows[0] || null
     const expectedDate = String(swap.switch_date_time || '').split('T')[0]
     if (!settlementTx) {
       pushFinding(findings, 'error', 'swap', `Mutasi settlement ganti unit #${swap.id} tidak ditemukan.`, { swapId: Number(swap.id) })

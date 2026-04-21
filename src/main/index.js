@@ -131,8 +131,18 @@ async function runSeeder() {
     }
   }
 
-  dbOps.run("UPDATE cash_accounts SET balance = ? WHERE type = 'tunai'", [Math.max(tunai, 0)])
-  dbOps.run("UPDATE cash_accounts SET balance = ? WHERE type = 'transfer'", [Math.max(transfer, 0)])
+  const updateCashBalance = (type, bucket, balance) => {
+    const account = dbOps.get(
+      "SELECT id FROM cash_accounts WHERE type = ? AND COALESCE(bucket, 'pendapatan') = ?",
+      [type, bucket]
+    ) || dbOps.get('SELECT id FROM cash_accounts WHERE type = ?', [type])
+    if (account?.id) {
+      dbOps.run('UPDATE cash_accounts SET balance = ? WHERE id = ?', [Math.max(balance, 0), account.id])
+    }
+  }
+
+  updateCashBalance('tunai', 'pendapatan', tunai)
+  updateCashBalance('transfer', 'pendapatan', transfer)
   forceSaveDb()
   console.log('[Seeder] done.')
 }
