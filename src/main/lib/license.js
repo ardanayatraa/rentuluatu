@@ -4,11 +4,17 @@
  */
 import { createHmac, createHash } from 'crypto'
 
-// Secret key — embed saat build, JANGAN expose ke user
-// Ganti dengan string random yang panjang sebelum production
-const SECRET_KEY = process.env.WAVY_LICENSE_SECRET || 'wavy-rental-secret-2024-artha-bali-wisata'
+const SECRET_KEY = (process.env.WAVY_LICENSE_SECRET || '').trim()
+const MIN_SECRET_LENGTH = 32
 
 const TRIAL_DAYS = 7
+
+function getLicenseSecretOrThrow() {
+  if (SECRET_KEY.length < MIN_SECRET_LENGTH) {
+    throw new Error('WAVY_LICENSE_SECRET belum dikonfigurasi atau terlalu pendek (min 32 karakter).')
+  }
+  return SECRET_KEY
+}
 
 /**
  * Generate machine ID dari info sistem (deterministik per mesin)
@@ -36,7 +42,7 @@ export function getMachineIdSync() {
  */
 export function generateSerial(machineId, expiryDate) {
   const payload = `${machineId}:${expiryDate}`
-  const hmac = createHmac('sha256', SECRET_KEY).update(payload).digest('hex')
+  const hmac = createHmac('sha256', getLicenseSecretOrThrow()).update(payload).digest('hex')
   // Ambil 16 karakter pertama, format jadi XXXX-XXXX-XXXX-XXXX
   const raw = hmac.slice(0, 16).toUpperCase()
   return `WAVY-${raw.slice(0,4)}-${raw.slice(4,8)}-${raw.slice(8,12)}-${raw.slice(12,16)}`

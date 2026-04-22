@@ -10,8 +10,13 @@
 
 import { createHmac } from 'crypto'
 
-// HARUS SAMA dengan SECRET_KEY di src/main/lib/license.js
-const SECRET_KEY = process.env.WAVY_LICENSE_SECRET || 'wavy-rental-secret-2024-artha-bali-wisata'
+const SECRET_KEY = (process.env.WAVY_LICENSE_SECRET || '').trim()
+const MIN_SECRET_LENGTH = 32
+
+if (SECRET_KEY.length < MIN_SECRET_LENGTH) {
+  console.error('ERROR: set WAVY_LICENSE_SECRET dulu (minimal 32 karakter).')
+  process.exit(1)
+}
 
 function generateSerial(machineId, expiryDate) {
   const payload = `${machineId}:${expiryDate}`

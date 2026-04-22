@@ -19,7 +19,17 @@ export function registerAuthHandlers() {
 
       let valid = false
       if (user.password_hash === '$2b$10$placeholder') {
-        valid = true
+        valid = String(password || '').trim().length === 0
+        if (!valid) {
+          clearCurrentActor()
+          logActivity({
+            action: 'auth.login.failed',
+            detail: `Login gagal untuk "${username}" (setup awal wajib kode akses kosong)`,
+            actor: { id: null, username: 'guest' },
+            source: 'user'
+          })
+          return { success: false, message: 'Login pertama: kosongkan kode akses, lalu buat password baru.' }
+        }
       } else if (user.password_hash.startsWith('$2')) {
         try {
           const bcrypt = await import('bcryptjs')

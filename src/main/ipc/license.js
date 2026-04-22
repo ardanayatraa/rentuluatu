@@ -57,7 +57,12 @@ export function registerLicenseHandlers() {
     }
 
     const machineId = getMachineIdSync()
-    const { valid } = verifySerial(serial, machineId, expiryDate)
+    let valid = false
+    try {
+      valid = verifySerial(serial, machineId, expiryDate).valid
+    } catch (error) {
+      return { success: false, message: error.message || 'Konfigurasi lisensi belum siap.' }
+    }
 
     if (!valid) {
       logActivity({

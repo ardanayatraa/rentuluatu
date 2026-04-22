@@ -1,4 +1,4 @@
-# Wavy — CashFlow Monitoring
+﻿# Wavy â€” CashFlow Monitoring
 
 Aplikasi desktop manajemen rental motor berbasis Electron + Vue. Mengelola data sewa, komisi owner, komisi vendor/hotel, arus kas, laporan keuangan, dan backup data.
 
@@ -70,12 +70,17 @@ Buat file `.env` di root folder `wavy/` (sudah ada contohnya). Isi yang dibutuhk
 ```env
 GOOGLE_CLIENT_ID=your_google_client_id
 GOOGLE_CLIENT_SECRET=your_google_client_secret
+BACKUP_RECOVERY_PASSWORD=strong_random_password_min_16_chars
+WAVY_LICENSE_SECRET=long_random_secret_min_32_chars
 ```
 
-Kedua variabel ini hanya diperlukan jika fitur **backup Google Drive** digunakan. Jika tidak, biarkan kosong — aplikasi tetap berjalan normal.
+Keterangan:
+
+- `GOOGLE_CLIENT_ID` dan `GOOGLE_CLIENT_SECRET` diperlukan jika fitur **backup Google Drive** digunakan.
+- `BACKUP_RECOVERY_PASSWORD` dipakai untuk enkripsi file recovery key backup. Wajib diisi untuk build production.
+- `WAVY_LICENSE_SECRET` dipakai untuk signing/verifikasi lisensi. Wajib diisi untuk build production.
 
 > **Penting:** File `.env` tidak ikut ter-bundle ke dalam `.exe`. Nilai env dibaca saat build dan di-embed ke binary. Jadi pastikan `.env` sudah benar sebelum menjalankan `npm run build:win`.
-
 ---
 
 ## Build ke Executable
@@ -109,9 +114,9 @@ Saat install baru, gunakan kredensial default:
 | Field    | Value   |
 |----------|---------|
 | Username | `admin` |
-| Password | (kosongkan / isi apa saja) |
+| Password | (kosongkan saat login pertama) |
 
-Setelah masuk, **segera ganti password** melalui menu **Settings → Ganti Password**. Password baru minimal 4 karakter.
+Setelah masuk, **segera ganti password** melalui menu **Settings â†’ Ganti Password**. Password baru minimal 4 karakter.
 
 ---
 
@@ -121,24 +126,24 @@ Setelah masuk, **segera ganti password** melalui menu **Settings → Ganti Passw
 
 Setelah install, lakukan setup awal sebelum mulai mencatat transaksi:
 
-1. **Set Saldo Awal Kas** — buka menu **Kas**, klik "Set Saldo Awal", isi saldo tunai/transfer/QRIS sesuai kondisi nyata.
-2. **Tambah Owner/Mitra** — buka menu **Owners**, tambahkan pemilik motor beserta info rekening bank.
-3. **Tambah Motor** — buka menu **Motors**, tambahkan motor dengan tipe (pribadi/titipan) dan hubungkan ke owner.
-4. **Tambah Vendor/Hotel** — buka menu **Hotels**, tambahkan hotel/vendor rekanan beserta info rekening.
+1. **Set Saldo Awal Kas** â€” buka menu **Kas**, klik "Set Saldo Awal", isi saldo tunai/transfer/QRIS sesuai kondisi nyata.
+2. **Tambah Owner/Mitra** â€” buka menu **Owners**, tambahkan pemilik motor beserta info rekening bank.
+3. **Tambah Motor** â€” buka menu **Motors**, tambahkan motor dengan tipe (pribadi/titipan) dan hubungkan ke owner.
+4. **Tambah Vendor/Hotel** â€” buka menu **Hotels**, tambahkan hotel/vendor rekanan beserta info rekening.
 
 ### 2. Mencatat Transaksi Sewa
 
-Buka menu **Daily Record** → klik **Tambah Rental**.
+Buka menu **Daily Record** â†’ klik **Tambah Rental**.
 
 | Field | Keterangan |
 |-------|-----------|
 | Tanggal & Waktu | Waktu transaksi |
 | Nama Pelanggan | Nama penyewa |
 | Motor | Cari by model atau plat nomor |
-| Hotel / Vendor | Opsional — pilih dari daftar vendor terdaftar agar komisi tercatat |
+| Hotel / Vendor | Opsional â€” pilih dari daftar vendor terdaftar agar komisi tercatat |
 | Periode (hari) | Durasi sewa |
 | Price (Harga Kotor) | Total yang dibayar pelanggan |
-| Vendor Fee | Komisi untuk hotel/vendor (harus ≤ harga kotor) |
+| Vendor Fee | Komisi untuk hotel/vendor (harus â‰¤ harga kotor) |
 | Metode Bayar | Tunai / Transfer / QRIS |
 
 Komisi otomatis dihitung:
@@ -151,19 +156,19 @@ Di tabel Daily Record, klik ikon **undo** pada baris rental yang ingin direfund.
 
 - Pilih jumlah sisa hari
 - Pilih skema: 100%, 50%, atau custom
-- Sistem akan cek saldo kas sebelum memproses — jika tidak cukup, refund ditolak
+- Sistem akan cek saldo kas sebelum memproses â€” jika tidak cukup, refund ditolak
 
 ### 4. Bayar Komisi Owner
 
-Buka menu **Owners** → klik nama owner → klik **Bayar Sekarang**.
+Buka menu **Owners** â†’ klik nama owner â†’ klik **Bayar Sekarang**.
 
 - Preview menampilkan komisi kotor, potongan biaya motor, dan jumlah bersih
 - Pilih sumber kas
-- Klik **Bayar** — saldo kas berkurang, rental ditandai lunas
+- Klik **Bayar** â€” saldo kas berkurang, rental ditandai lunas
 
 ### 5. Bayar Komisi Vendor/Hotel
 
-Buka menu **Hotels** → klik nama hotel → klik **Bayar Komisi Vendor**.
+Buka menu **Hotels** â†’ klik nama hotel â†’ klik **Bayar Komisi Vendor**.
 
 - Preview menampilkan semua rental yang belum dibayarkan
 - Pilih sumber kas
@@ -173,9 +178,9 @@ Buka menu **Hotels** → klik nama hotel → klik **Bayar Komisi Vendor**.
 
 Buka menu **Kas**:
 
-- **Tambah Pemasukan** — untuk pemasukan non-rental (jual helm, SIM card, dll)
-- **Set Saldo Awal** — atur ulang saldo awal (menggantikan saldo lama, tidak menambah)
-- **Riwayat Mutasi** — semua transaksi masuk/keluar per akun kas
+- **Tambah Pemasukan** â€” untuk pemasukan non-rental (jual helm, SIM card, dll)
+- **Set Saldo Awal** â€” atur ulang saldo awal (menggantikan saldo lama, tidak menambah)
+- **Riwayat Mutasi** â€” semua transaksi masuk/keluar per akun kas
 
 ### 7. Laporan
 
@@ -229,16 +234,16 @@ Install baru langsung mendapat schema versi terbaru tanpa menjalankan migrasi sa
 
 ### Backup Lokal
 
-Buka **Settings → Backup** → klik **Backup Lokal**.
+Buka **Settings â†’ Backup** â†’ klik **Backup Lokal**.
 
 - File disimpan di `userData/backups/` dengan format `wavy_backup_YYYY-MM-DD.wavy`
 - File terenkripsi otomatis (AES-256-GCM)
-- Untuk restore: pilih file dari daftar → klik **Restore**
+- Untuk restore: pilih file dari daftar â†’ klik **Restore**
 
 ### Backup Google Drive
 
-1. Buka **Settings → Backup**
-2. Klik **Hubungkan Google Drive** — browser akan terbuka untuk login Google
+1. Buka **Settings â†’ Backup**
+2. Klik **Hubungkan Google Drive** â€” browser akan terbuka untuk login Google
 3. Setelah terhubung, klik **Upload ke Drive**
 4. File tersimpan di folder `Wavy Rental Backups` di Google Drive, terenkripsi
 
@@ -246,7 +251,7 @@ Buka **Settings → Backup** → klik **Backup Lokal**.
 
 ### Set Passphrase Enkripsi
 
-Secara default, enkripsi menggunakan key yang di-generate otomatis dan disimpan di `userData/.backup-key`. Untuk set passphrase sendiri: **Settings → Backup → Set Passphrase**.
+Secara default, enkripsi menggunakan key yang di-generate otomatis dan disimpan di `userData/.backup-key`. Untuk set passphrase sendiri: **Settings â†’ Backup â†’ Set Passphrase**.
 
 > Simpan passphrase di tempat aman. Jika hilang, file backup tidak bisa di-decrypt.
 
@@ -294,7 +299,7 @@ Test files ada di `src/tests/`:
 
 1. Tambahkan `CREATE TABLE IF NOT EXISTS` di `createBaseSchema()`
 2. Naikkan `SCHEMA_VERSION`
-3. Tidak perlu migrasi untuk tabel baru — `CREATE TABLE IF NOT EXISTS` sudah idempotent
+3. Tidak perlu migrasi untuk tabel baru â€” `CREATE TABLE IF NOT EXISTS` sudah idempotent
 
 ### Aturan migrasi
 
@@ -307,32 +312,33 @@ Test files ada di `src/tests/`:
 
 ```
 src/
-├── main/
-│   ├── db.js              # Database, schema, migrasi
-│   ├── index.js           # Entry point Electron main process
-│   ├── ipc/               # Handler IPC per domain
-│   │   ├── auth.js
-│   │   ├── rentals.js
-│   │   ├── hotels.js
-│   │   ├── owners.js
-│   │   ├── motors.js
-│   │   ├── expenses.js
-│   │   ├── refunds.js
-│   │   ├── cash.js
-│   │   ├── dashboard.js
-│   │   ├── reports.js
-│   │   ├── backup.js
-│   │   └── reset.js
-│   └── lib/
-│       └── finance.js     # Pure business logic (kalkulasi komisi, refund)
-├── preload/
-│   └── index.js           # Bridge renderer ↔ main (window.api)
-├── renderer/
-│   └── src/
-│       ├── views/         # Halaman Vue
-│       ├── components/    # Komponen reusable
-│       ├── stores/        # Pinia stores
-│       ├── utils/         # Helper (format, pdf, excel)
-│       └── router/        # Vue Router
-└── tests/                 # Unit tests (Vitest)
+â”œâ”€â”€ main/
+â”‚   â”œâ”€â”€ db.js              # Database, schema, migrasi
+â”‚   â”œâ”€â”€ index.js           # Entry point Electron main process
+â”‚   â”œâ”€â”€ ipc/               # Handler IPC per domain
+â”‚   â”‚   â”œâ”€â”€ auth.js
+â”‚   â”‚   â”œâ”€â”€ rentals.js
+â”‚   â”‚   â”œâ”€â”€ hotels.js
+â”‚   â”‚   â”œâ”€â”€ owners.js
+â”‚   â”‚   â”œâ”€â”€ motors.js
+â”‚   â”‚   â”œâ”€â”€ expenses.js
+â”‚   â”‚   â”œâ”€â”€ refunds.js
+â”‚   â”‚   â”œâ”€â”€ cash.js
+â”‚   â”‚   â”œâ”€â”€ dashboard.js
+â”‚   â”‚   â”œâ”€â”€ reports.js
+â”‚   â”‚   â”œâ”€â”€ backup.js
+â”‚   â”‚   â””â”€â”€ reset.js
+â”‚   â””â”€â”€ lib/
+â”‚       â””â”€â”€ finance.js     # Pure business logic (kalkulasi komisi, refund)
+â”œâ”€â”€ preload/
+â”‚   â””â”€â”€ index.js           # Bridge renderer â†” main (window.api)
+â”œâ”€â”€ renderer/
+â”‚   â””â”€â”€ src/
+â”‚       â”œâ”€â”€ views/         # Halaman Vue
+â”‚       â”œâ”€â”€ components/    # Komponen reusable
+â”‚       â”œâ”€â”€ stores/        # Pinia stores
+â”‚       â”œâ”€â”€ utils/         # Helper (format, pdf, excel)
+â”‚       â””â”€â”€ router/        # Vue Router
+â””â”€â”€ tests/                 # Unit tests (Vitest)
 ```
+

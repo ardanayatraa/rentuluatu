@@ -1,117 +1,80 @@
-# Wavy Tools
+﻿# Wavy Tools
 
 Tools untuk debugging dan maintenance aplikasi Wavy.
-
-## Debug Dashboard
-
-Tool untuk investigasi data dashboard dan verifikasi perhitungan.
-
-### Cara Pakai:
-
-1. **Buka terminal di folder `wavy/`**
-
-2. **Jalankan script:**
-   ```bash
-   node tools/debug-dashboard.cjs
-   ```
-
-3. **Output akan menampilkan:**
-   - ✅ Semua rental dalam periode
-   - ✅ Semua pengeluaran (motor & operasional)
-   - ✅ Saldo kas per akun
-   - ✅ Semua transaksi kas
-   - ✅ Verifikasi perhitungan
-   - ✅ Expected vs Actual cash
-   - ✅ Breakdown komisi per rental
-
-### Troubleshooting:
-
-**Error: Cannot find database**
-- Pastikan aplikasi Wavy sudah pernah dijalankan minimal 1x
-- Database otomatis dibuat di:
-  - Windows: `C:\Users\<user>\AppData\Roaming\wavy\wavy.db`
-  - macOS: `~/Library/Application Support/wavy/wavy.db`
-  - Linux: `~/.config/wavy/wavy.db`
-
-**Error: Cannot find module 'better-sqlite3'**
-- Jalankan: `npm install` di folder `wavy/`
-
-### Edit Filter Tanggal:
-
-Buka file `tools/debug-dashboard.cjs` dan ubah:
-```javascript
-const startDate = '2026-04-01'  // Ubah sesuai kebutuhan
-const endDate = '2026-04-30'    // Ubah sesuai kebutuhan
-```
-
----
 
 ## Generate Serial (License)
 
 Tool untuk generate serial number license.
 
 ```bash
-node tools/generate-serial.js
+node tools/generate-serial.js <machineId> <expiryDate>
+```
+
+Contoh:
+
+```bash
+node tools/generate-serial.js A1B2C3D4E5F6G7H8 2027-01-01
+node tools/generate-serial.js A1B2C3D4E5F6G7H8 LIFETIME
 ```
 
 ---
 
-## Recovery Passphrase Tool (Python)
+## Recovery Admin Tool (Node.js, No Python)
 
-Tool developer untuk kondisi laptop client hilang: ambil passphrase dari file
-recovery key (`*.key.wavy`) lalu apply ke `.backup-key` di laptop baru.
-
-### Install dependency
-
-```bash
-pip install cryptography
-```
-
-### 1) Cek recovery key valid + lihat metadata
-
-```bash
-python tools/recovery-passphrase-tool.py --key-file "D:\restore\wavy_backup_monthly_2026-04.wavy.key.wavy"
-```
-
-### 2) Apply passphrase ke mesin sekarang (default userData app `wavy`)
-
-```bash
-python tools/recovery-passphrase-tool.py --key-file "D:\restore\wavy_backup_monthly_2026-04.wavy.key.wavy" --apply
-```
-
-### 3) Apply dengan path custom
-
-```bash
-python tools/recovery-passphrase-tool.py --key-file "D:\restore\xxx.key.wavy" --apply --key-path "C:\Users\Admin\AppData\Roaming\wavy\.backup-key"
-```
-
-### Optional flags
-
-- `--backup-name "wavy_backup_monthly_2026-04.wavy"` untuk validasi nama backup.
-- `--show-passphrase` untuk tampilkan passphrase asli di console.
-- `--recovery-password` kalau password recovery bukan default `wavy2026`.
-
----
-
-## Recovery Passphrase GUI (Python)
-
-Versi GUI untuk developer (lebih mudah daripada CLI).
+Tool internal khusus admin/dev untuk skenario pindah laptop atau recovery backup.
 
 ### Jalankan
 
 ```bash
-pip install cryptography
-python tools/recovery-passphrase-gui.py
+npm run recovery:tool -- help
 ```
 
-### Fitur GUI
+### 1) Cek recovery key valid + metadata
 
-- Pilih file backup `.wavy`
-- Pilih file recovery key `.key.wavy`
-- Tombol **Check Cocok / Tidak** (cek pasangan valid + tes decrypt backup)
-- Input **ID Perangkat Target**
-- Tombol **Apply Key ke Device Ini** (tulis passphrase ke `.backup-key` perangkat)
-- Tombol **Cek + Apply** sekali klik
+```bash
+npm run recovery:tool -- inspect-key --key-file "D:\\restore\\wavy_backup_monthly_2026-04.wavy.key.wavy"
+```
 
-Tujuannya: kalau sudah ada pasangan backup + key yang valid, file backup `.wavy`
-itu bisa direstore di perangkat mana pun setelah passphrase di-apply.
+### 2) Validasi pasangan backup + key
+
+```bash
+npm run recovery:tool -- check-pair --backup-file "D:\\restore\\wavy_backup_monthly_2026-04.wavy" --key-file "D:\\restore\\wavy_backup_monthly_2026-04.wavy.key.wavy"
+```
+
+### 3) Decrypt backup jadi file `.db`
+
+```bash
+npm run recovery:tool -- decrypt-backup --backup-file "D:\\restore\\wavy_backup_monthly_2026-04.wavy" --key-file "D:\\restore\\wavy_backup_monthly_2026-04.wavy.key.wavy" --out "D:\\restore\\wavy_restored.db"
+```
+
+### 4) Apply passphrase ke laptop ini (`.backup-key`)
+
+```bash
+npm run recovery:tool -- apply-key --key-file "D:\\restore\\wavy_backup_monthly_2026-04.wavy.key.wavy"
+```
+
+Secara default tool akan menulis ke path:
+- Windows: `C:\\Users\\<user>\\AppData\\Roaming\\Wavy Rental\\.backup-key`
+- macOS: `~/Library/Application Support/Wavy Rental/.backup-key`
+- Linux: `~/.config/Wavy Rental/.backup-key`
+
+### Opsi penting
+
+- `--recovery-password "..."` jika tidak pakai env var.
+- `--backup-name "wavy_backup_monthly_2026-04.wavy"` untuk validasi nama backup saat inspect/apply.
+- `--show-passphrase` untuk tampilkan passphrase asli saat `inspect-key`.
+
+### Environment variable
+
+Set `BACKUP_RECOVERY_PASSWORD` yang sama dengan build app production:
+
+```bash
+# PowerShell
+$env:BACKUP_RECOVERY_PASSWORD="ISI_SECRET_RECOVERY_KAMU"
+```
+
+atau langsung saat command:
+
+```bash
+npm run recovery:tool -- inspect-key --key-file "..." --recovery-password "ISI_SECRET_RECOVERY_KAMU"
+```

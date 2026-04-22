@@ -46,7 +46,8 @@ const DRIVE_FOLDER_NAME = 'Wavy Rental Backups'
 const DB_FILENAME = 'wavy.db'
 const BACKUP_SETTINGS_FILENAME = 'backup-settings.json'
 const RECOVERY_KEY_SUFFIX = '.key.wavy'
-const DEFAULT_RECOVERY_PASSWORD = process.env.BACKUP_RECOVERY_PASSWORD || 'wavy2026'
+const DEFAULT_RECOVERY_PASSWORD = (process.env.BACKUP_RECOVERY_PASSWORD || '').trim()
+const LEGACY_RECOVERY_PASSWORD = 'wavy2026'
 
 // Port untuk localhost callback — Google Cloud Console harus punya:
 // http://127.0.0.1:42813/callback di Authorized Redirect URIs
@@ -56,6 +57,19 @@ const REDIRECT_URI = `http://127.0.0.1:${CALLBACK_PORT}/callback`
 // ── Encryption ───────────────────────────────────────────────────────────────
 // Format file terenkripsi: [salt 32B][iv 12B][authTag 16B][ciphertext]
 const ENC_MAGIC = Buffer.from('WAVY01') // 6 byte header penanda file terenkripsi
+
+function getRecoveryPasswordOrThrow() {
+  if (DEFAULT_RECOVERY_PASSWORD.length < 16) {
+    return LEGACY_RECOVERY_PASSWORD
+  }
+  return DEFAULT_RECOVERY_PASSWORD
+}
+
+function getRecoveryPasswordsForDecrypt() {
+  const configured = DEFAULT_RECOVERY_PASSWORD.length >= 16 ? [DEFAULT_RECOVERY_PASSWORD] : []
+  // Tetap dukung backup lama agar restore lintas versi tidak putus.
+  return [...configured, LEGACY_RECOVERY_PASSWORD]
+}
 
 function deriveKey(passphrase, salt) {
   // scrypt: N=2^14, r=8, p=1 → 32 byte key
@@ -163,7 +177,7 @@ async function getOrCreateFolder(drive) {
 
 async function listBackupFiles(drive, folderId) {
   const res = await drive.files.list({
-    q: `'${folderId}' in parents and name contains 'wavy_backup' and name does not contain '${RECOVERY_KEY_SUFFIX}' and trashed=false`,
+    q: `'${folderId}' in parents and name contains 'wavy_backup' and not name contains '${RECOVERY_KEY_SUFFIX}' and trashed=false`,
     fields: 'files(id, name, size, modifiedTime)',
     orderBy: 'modifiedTime desc'
   })
@@ -242,11 +256,21 @@ function buildRecoveryKeyBuffer({ backupFilename, passphrase }) {
     passphrase: String(passphrase || ''),
     createdAt: new Date().toISOString()
   }
-  return encryptBuffer(Buffer.from(JSON.stringify(payload), 'utf-8'), DEFAULT_RECOVERY_PASSWORD)
+  return encryptBuffer(Buffer.from(JSON.stringify(payload), 'utf-8'), getRecoveryPasswordOrThrow())
 }
 
 function parseRecoveryKeyBuffer({ buffer, backupFilename }) {
-  const decrypted = decryptBuffer(buffer, DEFAULT_RECOVERY_PASSWORD)
+  let decrypted = null
+  let lastError = null
+  for (const password of getRecoveryPasswordsForDecrypt()) {
+    try {
+      decrypted = decryptBuffer(buffer, password)
+      break
+    } catch (error) {
+      lastError = error
+    }
+  }
+  if (!decrypted) throw lastError || new Error('Recovery key tidak bisa didecrypt')
   const parsed = JSON.parse(decrypted.toString('utf-8'))
   if (!parsed || typeof parsed !== 'object' || !parsed.passphrase) {
     throw new Error('Recovery key tidak valid')
