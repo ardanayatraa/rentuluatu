@@ -55,8 +55,12 @@
               </div>
             </td>
             <td class="px-6 py-4 text-right">
-              <span v-if="h.unpaid_commission > 0" class="font-bold text-red-500 bg-red-50 px-3 py-1 rounded-full text-sm">
-                {{ formatRp(h.unpaid_commission) }}
+              <span
+                v-if="Number(h.total_commission || 0) > 0"
+                class="font-bold px-3 py-1 rounded-full text-sm"
+                :class="Number(h.unpaid_commission || 0) > 0 ? 'text-red-500 bg-red-50' : 'text-orange-500 bg-orange-50'"
+              >
+                {{ formatRp(h.total_commission) }}
               </span>
               <span v-else class="text-slate-400">-</span>
             </td>

@@ -29,6 +29,14 @@ export function registerHotelHandlers() {
             AND r.status != 'refunded'
             AND r.vendor_fee > 0
             AND COALESCE(r.relation_type, 'rental') IN ('rental', 'swap_source')
+        ) as total_commission,
+        (
+          SELECT COALESCE(SUM(r.vendor_fee), 0)
+          FROM rentals r
+          WHERE r.hotel_id = h.id
+            AND r.status != 'refunded'
+            AND r.vendor_fee > 0
+            AND COALESCE(r.relation_type, 'rental') IN ('rental', 'swap_source')
             AND NOT EXISTS (
               SELECT 1
               FROM cash_transactions ct

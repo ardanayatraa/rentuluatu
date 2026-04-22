@@ -7,24 +7,45 @@
       </div>
     </div>
 
-    <!-- Period Filter -->
-    <div class="card mb-6 flex gap-4 items-center flex-wrap">
-      <select v-model="period" @change="onPeriodChange" class="border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium">
-        <option value="month">Per Bulan</option>
-        <option value="year">Per Tahun</option>
-        <option value="all">Semua Data</option>
-      </select>
-      <template v-if="period === 'month'">
-        <input v-model="selectedMonth" type="month" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-      </template>
-      <template v-if="period === 'year'">
-        <select v-model="selectedYear" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
-          <option v-for="year in availableYears" :key="year" :value="year">{{ year }}</option>
+    <!-- Period + Range Filter -->
+    <div class="card mb-6 flex gap-4 items-end flex-wrap">
+      <div>
+        <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Periode</label>
+        <select v-model="period" @change="onPeriodChange" class="border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium">
+          <option value="month">Per Bulan</option>
+          <option value="year">Per Tahun</option>
+          <option value="custom">Range Tanggal</option>
         </select>
+      </div>
+      <template v-if="period === 'month'">
+        <div>
+          <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Bulan</label>
+          <input v-model="selectedMonth" @change="onMonthChange" type="month" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+        </div>
       </template>
+      <template v-else-if="period === 'year'">
+        <div>
+          <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Tahun</label>
+          <select v-model="selectedYear" @change="onYearChange" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+            <option v-for="year in availableYears" :key="year" :value="year">{{ year }}</option>
+          </select>
+        </div>
+      </template>
+      <div>
+        <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Tanggal Awal</label>
+        <input v-model="filterStartDate" @change="onCustomRangeChange" type="date" :disabled="period !== 'custom'" class="border border-slate-200 rounded-lg px-3 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-400" />
+      </div>
+      <div>
+        <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Tanggal Akhir</label>
+        <input v-model="filterEndDate" @change="onCustomRangeChange" type="date" :disabled="period !== 'custom'" class="border border-slate-200 rounded-lg px-3 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-400" />
+      </div>
       <button @click="loadAll" class="btn-primary">
         <span class="material-symbols-outlined">refresh</span>
         Tampilkan
+      </button>
+      <button @click="resetDateRange" class="btn-secondary">
+        <span class="material-symbols-outlined">restart_alt</span>
+        Reset
       </button>
       <span class="ml-auto text-xs text-slate-400">{{ periodLabel }}</span>
     </div>
@@ -112,30 +133,29 @@
           <p class="text-2xl font-black text-slate-700 font-headline">{{ formatRp(totalCash) }}</p>
         </div>
       </div>
-      <p class="mb-4 text-xs text-slate-400">Saldo kas ditampilkan sebagai posisi akun sampai tanggal akhir filter yang dipilih.</p>
-      
-      <div class="space-y-5">
-        <div v-for="bucket in cashBuckets" :key="bucket.value">
-          <div class="flex items-center justify-between mb-3">
-            <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider">{{ bucket.label }}</h4>
-            <div class="text-right">
-              <p class="text-sm font-black text-slate-700 font-headline">{{ formatRp(totalCashByBucket(bucket.value)) }}</p>
-              <p class="text-[11px] font-semibold text-slate-500">Total Saldo Rekening: {{ formatRp(totalRekeningByBucket(bucket.value)) }}</p>
-            </div>
+      <p class="mb-4 text-xs text-slate-400">Saldo kas ditampilkan sebagai posisi akun operasional sampai tanggal akhir filter yang dipilih.</p>
+
+      <div class="grid grid-cols-2 xl:grid-cols-4 gap-5">
+        <div v-for="acc in groupedCashAccounts" :key="acc.type"
+          :class="cashCardClass(acc.type)"
+          class="rounded-xl p-6 shadow-sm">
+          <div class="flex items-center gap-2 mb-2">
+            <span :class="cashIconClass(acc.type)" class="material-symbols-outlined">
+              {{ cashIcon(acc.type) }}
+            </span>
+            <span :class="cashLabelClass(acc.type)" class="text-xs font-bold uppercase tracking-wider">{{ paymentMethodLabel(acc.type) }}</span>
           </div>
-          <div class="grid grid-cols-2 xl:grid-cols-4 gap-5">
-            <div v-for="acc in accountsByBucket(bucket.value)" :key="acc.id"
-              :class="cashCardClass(acc.type)"
-              class="rounded-xl p-6 shadow-sm">
-              <div class="flex items-center gap-2 mb-2">
-                <span :class="cashIconClass(acc.type)" class="material-symbols-outlined">
-                  {{ cashIcon(acc.type) }}
-                </span>
-                <span :class="cashLabelClass(acc.type)" class="text-xs font-bold uppercase tracking-wider">{{ paymentMethodLabel(acc.type) }}</span>
-              </div>
-              <p :class="cashBalanceClass(acc.type)" class="text-3xl font-black font-headline">{{ formatRp(acc.balance) }}</p>
-            </div>
+          <p :class="cashBalanceClass(acc.type)" class="text-3xl font-black font-headline">{{ formatRp(acc.balance) }}</p>
+        </div>
+      </div>
+      <div class="mt-5 grid grid-cols-1 xl:grid-cols-4 gap-5">
+        <div class="rounded-xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="material-symbols-outlined text-amber-600">savings</span>
+            <span class="text-xs font-bold uppercase tracking-wider text-amber-700">Modal</span>
           </div>
+          <p class="text-3xl font-black font-headline text-amber-700">{{ formatRp(modalTanamBalance) }}</p>
+          <p class="mt-1 text-[11px] font-semibold text-amber-600">Terpisah dari saldo kas operasional</p>
         </div>
       </div>
     </div>
@@ -294,8 +314,8 @@ ChartJS.register(
 const period = ref('month')
 const selectedMonth = ref('')
 const selectedYear = ref('')
-const startDate = ref('')
-const endDate = ref('')
+const filterStartDate = ref('')
+const filterEndDate = ref('')
 
 const summary = ref({
   income: 0,
@@ -315,26 +335,27 @@ const summary = ref({
 const cashAccounts = ref([])
 const cashTotal = ref(0)
 const recentRentals = ref([])
-const allowedPaymentMethods = ['tunai', 'transfer', 'qris', 'debit_card']
-const cashBuckets = [
-  { value: 'pendapatan', label: 'Kas Pendapatan' },
-  { value: 'modal', label: 'Kas Modal' }
-]
 const filteredCashAccounts = computed(() => {
-  return cashAccounts.value.filter((acc) => allowedPaymentMethods.includes(String(acc.type || '')))
+  return cashAccounts.value.filter((acc) =>
+    ['tunai', 'transfer', 'qris', 'debit_card'].includes(String(acc.type || '')) &&
+    String(acc.bucket || 'pendapatan') === 'pendapatan'
+  )
 })
-const accountsByBucket = (bucket) => {
-  return filteredCashAccounts.value.filter((acc) => String(acc.bucket || 'pendapatan') === bucket)
-}
-const totalCashByBucket = (bucket) => {
-  return accountsByBucket(bucket).reduce((sum, acc) => sum + Number(acc.balance || 0), 0)
-}
-const totalRekeningByBucket = (bucket) => {
-  const rekeningMethods = ['transfer', 'qris', 'debit_card']
-  return accountsByBucket(bucket)
-    .filter((acc) => rekeningMethods.includes(String(acc.type || '')))
+const groupedCashAccounts = computed(() => {
+  const order = ['tunai', 'transfer', 'qris', 'debit_card']
+  const map = new Map(order.map((type) => [type, { type, balance: 0 }]))
+  filteredCashAccounts.value.forEach((account) => {
+    const type = String(account.type || '')
+    if (!map.has(type)) return
+    map.get(type).balance += Number(account.balance || 0)
+  })
+  return order.map((type) => map.get(type))
+})
+const modalTanamBalance = computed(() => {
+  return cashAccounts.value
+    .filter((acc) => String(acc.bucket || 'pendapatan') === 'modal' && String(acc.type || '') === 'tunai')
     .reduce((sum, acc) => sum + Number(acc.balance || 0), 0)
-}
+})
 
 // Computed: Total Kas
 const totalCash = computed(() => {
@@ -439,12 +460,23 @@ const dynamicMotorOptions = computed(() => ({
   }
 }))
 
-function today() { return new Date().toISOString().split('T')[0] }
+function toLocalYmd(date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function today() { return toLocalYmd(new Date()) }
+
+function monthStart(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`
+}
 
 function getLastDayOfMonth(monthValue) {
   const [year, month] = String(monthValue || '').split('-')
   if (!year || !month) return today()
-  return new Date(Number(year), Number(month), 0).toISOString().split('T')[0]
+  return toLocalYmd(new Date(Number(year), Number(month), 0))
 }
 
 const availableYears = computed(() => {
@@ -456,6 +488,33 @@ const availableYears = computed(() => {
   return years
 })
 
+function applyPeriodPreset() {
+  if (period.value === 'month') {
+    const fallbackMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
+    selectedMonth.value = selectedMonth.value || fallbackMonth
+    filterStartDate.value = `${selectedMonth.value}-01`
+    filterEndDate.value = getLastDayOfMonth(selectedMonth.value)
+    return
+  }
+  if (period.value === 'year') {
+    selectedYear.value = selectedYear.value || String(new Date().getFullYear())
+    filterStartDate.value = `${selectedYear.value}-01-01`
+    filterEndDate.value = `${selectedYear.value}-12-31`
+    return
+  }
+  normalizeRange()
+}
+
+function normalizeRange() {
+  if (!filterStartDate.value) filterStartDate.value = monthStart(new Date())
+  if (!filterEndDate.value) filterEndDate.value = today()
+  if (filterStartDate.value > filterEndDate.value) {
+    const tmp = filterStartDate.value
+    filterStartDate.value = filterEndDate.value
+    filterEndDate.value = tmp
+  }
+}
+
 const periodLabel = computed(() => {
   if (period.value === 'month' && selectedMonth.value) {
     const [year, month] = selectedMonth.value.split('-')
@@ -464,25 +523,40 @@ const periodLabel = computed(() => {
   if (period.value === 'year' && selectedYear.value) {
     return `Tahun ${selectedYear.value}`
   }
-  return 'Semua Data'
+  if (!filterStartDate.value || !filterEndDate.value) return 'Periode belum dipilih'
+  const startLabel = new Date(filterStartDate.value).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
+  const endLabel = new Date(filterEndDate.value).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
+  return `${startLabel} - ${endLabel}`
 })
 
 function onPeriodChange() {
-  const now = new Date()
-  if (period.value === 'month') {
-    const monthValue = selectedMonth.value || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-    selectedMonth.value = monthValue
-    startDate.value = `${monthValue}-01`
-    endDate.value = getLastDayOfMonth(monthValue)
-  } else if (period.value === 'year') {
-    const yearValue = selectedYear.value || String(now.getFullYear())
-    selectedYear.value = yearValue
-    startDate.value = `${yearValue}-01-01`
-    endDate.value = `${yearValue}-12-31`
-  } else if (period.value === 'all') {
-    startDate.value = '2000-01-01'
-    endDate.value = today()
-  }
+  applyPeriodPreset()
+  loadAll()
+}
+
+function onMonthChange() {
+  if (period.value !== 'month') return
+  applyPeriodPreset()
+  loadAll()
+}
+
+function onYearChange() {
+  if (period.value !== 'year') return
+  applyPeriodPreset()
+  loadAll()
+}
+
+function onCustomRangeChange() {
+  if (period.value !== 'custom') return
+  loadAll()
+}
+
+function resetDateRange() {
+  period.value = 'month'
+  selectedMonth.value = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
+  selectedYear.value = String(new Date().getFullYear())
+  applyPeriodPreset()
+  loadAll()
 }
 
 function statusBadge(status) {
@@ -564,16 +638,17 @@ function updateMotorChart() {
 }
 
 async function loadAll() {
-  const s = startDate.value + 'T00:00:00'
-  const e = endDate.value + 'T23:59:59'
+  normalizeRange()
+  const s = filterStartDate.value + 'T00:00:00'
+  const e = filterEndDate.value + 'T23:59:59'
   const dateRange = { startDate: s, endDate: e }
-  const dateRangeShort = { startDate: startDate.value, endDate: endDate.value }
+  const dateRangeShort = { startDate: filterStartDate.value, endDate: filterEndDate.value }
 
   // Summary
   summary.value = await window.api.getDashboardSummary(dateRange)
 
   // Cash
-  const cash = await window.api.getCashSummary({ endDate: endDate.value })
+  const cash = await window.api.getCashSummary({ endDate: filterEndDate.value })
   cashAccounts.value = cash.accounts
   cashTotal.value = cash.total
 
@@ -647,10 +722,10 @@ async function loadAll() {
 }
 
 onMounted(() => {
-  const now = new Date()
-  selectedMonth.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-  selectedYear.value = String(now.getFullYear())
-  onPeriodChange()
+  selectedMonth.value = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
+  selectedYear.value = String(new Date().getFullYear())
+  applyPeriodPreset()
   loadAll()
 })
 </script>
+

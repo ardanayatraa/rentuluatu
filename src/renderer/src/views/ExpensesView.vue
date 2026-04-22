@@ -124,8 +124,8 @@
             <td class="px-6 py-4 font-medium capitalize">{{ e.category }}</td>
             <td class="px-6 py-4 text-slate-500">{{ e.description || '-' }}</td>
             <td class="px-6 py-4">
-              <span :class="paymentMethodBadge(e.payment_method)">
-                {{ cashBucketLabel(e.cash_bucket) }} · {{ paymentMethodLabel(e.payment_method) }}
+              <span :class="paymentMethodBadge(e.payment_method, e.cash_bucket)">
+                {{ paymentMethodDisplay(e.payment_method, e.cash_bucket) }}
               </span>
             </td>
             <td class="px-6 py-4 text-right font-bold text-red-600">{{ formatRp(e.amount) }}</td>
@@ -242,30 +242,24 @@
 
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="block text-xs font-bold text-slate-500 mb-1">Sumber Kas</label>
-            <select v-model="form.cash_bucket" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
-              <option value="pendapatan">Kas Pendapatan</option>
-              <option value="modal">Kas Modal</option>
-            </select>
-          </div>
-          <div>
             <label class="block text-xs font-bold text-slate-500 mb-1">Jumlah (Rp)</label>
             <input v-model.number="form.amount" type="number" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-500 mb-1">Tanggal</label>
+            <input v-model="form.date" type="date" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required />
           </div>
           <div class="col-span-2">
             <label class="block text-xs font-bold text-slate-500 mb-1">Metode Bayar</label>
             <select v-model="form.payment_method" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
-              <option value="" disabled v-if="!availablePaymentMethods.length">Saldo tidak cukup</option>
-              <option value="tunai" :disabled="isPaymentMethodDisabled('tunai')">{{ paymentMethodOptionLabel('tunai') }}</option>
-              <option value="transfer" :disabled="isPaymentMethodDisabled('transfer')">{{ paymentMethodOptionLabel('transfer') }}</option>
-              <option value="qris" :disabled="isPaymentMethodDisabled('qris')">{{ paymentMethodOptionLabel('qris') }}</option>
-              <option value="debit_card" :disabled="isPaymentMethodDisabled('debit_card')">{{ paymentMethodOptionLabel('debit_card') }}</option>
+              <option value="" disabled v-if="!availableFundingMethods.length">Saldo tidak cukup</option>
+              <option value="tunai" :disabled="isFundingMethodDisabled('tunai')">{{ paymentMethodOptionLabel('tunai') }}</option>
+              <option value="transfer" :disabled="isFundingMethodDisabled('transfer')">{{ paymentMethodOptionLabel('transfer') }}</option>
+              <option value="qris" :disabled="isFundingMethodDisabled('qris')">{{ paymentMethodOptionLabel('qris') }}</option>
+              <option value="debit_card" :disabled="isFundingMethodDisabled('debit_card')">{{ paymentMethodOptionLabel('debit_card') }}</option>
+              <option value="modal_tanam" :disabled="isFundingMethodDisabled('modal_tanam')">{{ paymentMethodOptionLabel('modal_tanam') }}</option>
             </select>
           </div>
-        </div>
-        <div>
-          <label class="block text-xs font-bold text-slate-500 mb-1">Tanggal</label>
-          <input v-model="form.date" type="date" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required />
         </div>
         <div>
           <label class="block text-xs font-bold text-slate-500 mb-1">Deskripsi</label>
@@ -300,7 +294,7 @@ const allMotors = ref([])
 const showModal = ref(false)
 const activeExpenseTab = ref('umum')
 const filters = ref({ startDate: '', endDate: '', type: 'umum', motorId: '' })
-const form = ref({ type: 'umum', motor_id: '', category: 'air', amount: 0, payment_method: 'tunai', cash_bucket: 'pendapatan', date: today(), description: '' })
+const form = ref({ type: 'umum', motor_id: '', category: 'air', amount: 0, payment_method: 'tunai', date: today(), description: '' })
 const customCategory = ref('')
 const formError = ref('')
 const currentPage = ref(1)
@@ -316,6 +310,14 @@ const selectedMotor = ref(null)
 const filterMotorSearch = ref('')
 const showFilterMotorDropdown = ref(false)
 const selectedFilterMotor = ref(null)
+const FUNDING_METHODS = {
+  tunai: { label: 'Tunai', paymentMethod: 'tunai', cashBucket: 'pendapatan' },
+  transfer: { label: 'Transfer', paymentMethod: 'transfer', cashBucket: 'pendapatan' },
+  qris: { label: 'QRIS', paymentMethod: 'qris', cashBucket: 'pendapatan' },
+  debit_card: { label: 'Debit Card', paymentMethod: 'debit_card', cashBucket: 'pendapatan' },
+  modal_tanam: { label: 'Modal', paymentMethod: 'tunai', cashBucket: 'modal' }
+}
+const FUNDING_METHOD_KEYS = Object.keys(FUNDING_METHODS)
 
 const filteredMotors = computed(() => {
   if (!motorSearch.value) return allMotors.value.slice(0, 20)
@@ -399,14 +401,15 @@ const cashBalanceByType = computed(() => {
   }
   return map
 })
-const currentCashBucket = computed(() => String(form.value.cash_bucket || 'pendapatan'))
-const cashBucketLabel = (bucket) => String(bucket || 'pendapatan') === 'modal' ? 'Modal' : 'Pendapatan'
 const balanceByBucketAndMethod = (bucket, method) => Number(cashBalanceByType.value[`${bucket}:${method}`] || 0)
-const availablePaymentMethods = computed(() => {
+const balanceByFundingMethod = (fundingMethod) => {
+  const methodConfig = FUNDING_METHODS[fundingMethod] || FUNDING_METHODS.tunai
+  return balanceByBucketAndMethod(methodConfig.cashBucket, methodConfig.paymentMethod)
+}
+const availableFundingMethods = computed(() => {
   const amount = Number(form.value.amount || 0)
-  const methods = ['tunai', 'transfer', 'qris', 'debit_card']
-  if (!(amount > 0)) return methods
-  return methods.filter(method => balanceByBucketAndMethod(currentCashBucket.value, method) >= amount)
+  if (!(amount > 0)) return FUNDING_METHOD_KEYS
+  return FUNDING_METHOD_KEYS.filter((method) => balanceByFundingMethod(method) >= amount)
 })
 
 function paymentMethodLabel(method) {
@@ -418,20 +421,27 @@ function paymentMethodLabel(method) {
   }[method] || method || '-'
 }
 
-function paymentMethodBadge(method) {
+function paymentMethodBadge(method, cashBucket = 'pendapatan') {
+  if (String(cashBucket) === 'modal' && String(method) === 'tunai') return 'badge-warning'
   return method === 'tunai' ? 'badge-neutral' : 'badge-success'
 }
 
+function paymentMethodDisplay(method, cashBucket = 'pendapatan') {
+  if (String(cashBucket) === 'modal' && String(method) === 'tunai') return 'Modal'
+  return paymentMethodLabel(method)
+}
+
 function paymentMethodOptionLabel(method) {
-  const label = paymentMethodLabel(method)
-  const balance = balanceByBucketAndMethod(currentCashBucket.value, method)
+  const methodConfig = FUNDING_METHODS[method] || FUNDING_METHODS.tunai
+  const label = methodConfig.label
+  const balance = balanceByBucketAndMethod(methodConfig.cashBucket, methodConfig.paymentMethod)
   return `${label} (Saldo ${formatRp(balance)})`
 }
 
-function isPaymentMethodDisabled(method) {
+function isFundingMethodDisabled(method) {
   const amount = Number(form.value.amount || 0)
   if (!(amount > 0)) return false
-  return balanceByBucketAndMethod(currentCashBucket.value, method) < amount
+  return balanceByFundingMethod(method) < amount
 }
 
 function openAdd() {
@@ -442,7 +452,6 @@ function openAdd() {
     category: nextType === 'motor' ? 'gps' : 'air',
     amount: 0,
     payment_method: 'tunai',
-    cash_bucket: 'pendapatan',
     date: today(),
     description: ''
   }
@@ -477,6 +486,13 @@ async function submitExpense() {
     formError.value = 'Saldo kas tidak cukup. Pilih metode bayar lain.'
     return
   }
+  const fundingMethod = FUNDING_METHODS[data.payment_method]
+  if (!fundingMethod) {
+    formError.value = 'Metode bayar tidak valid'
+    return
+  }
+  data.payment_method = fundingMethod.paymentMethod
+  data.cash_bucket = fundingMethod.cashBucket
   // Kirim motor_id null jika tipe umum
   if (data.type === 'umum') data.motor_id = null
   formError.value = ''
@@ -515,10 +531,10 @@ async function loadCashAccounts() {
 }
 
 watch(
-  () => [form.value.amount, form.value.cash_bucket, cashAccounts.value.length, ...Object.values(cashBalanceByType.value)],
+  () => [form.value.amount, cashAccounts.value.length, ...Object.values(cashBalanceByType.value)],
   () => {
-    if (!isPaymentMethodDisabled(form.value.payment_method)) return
-    const fallback = availablePaymentMethods.value[0]
+    if (!isFundingMethodDisabled(form.value.payment_method)) return
+    const fallback = availableFundingMethods.value[0]
     if (fallback) {
       form.value.payment_method = fallback
       return
@@ -533,3 +549,6 @@ onMounted(async () => {
   allMotors.value = await window.api.getMotors()
 })
 </script>
+
+
+

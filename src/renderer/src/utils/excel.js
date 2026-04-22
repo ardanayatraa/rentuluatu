@@ -10,8 +10,13 @@ const paymentLabel = (method) => ({
   qris: 'QRIS',
   debit_card: 'Debit Card'
 }[method] || method || '-')
-const paymentGroupLabel = (method) => REKENING_METHODS.includes(String(method || '').trim().toLowerCase()) ? 'Saldo Rekening' : paymentLabel(method)
 const cashBucketLabel = (bucket) => String(bucket || 'pendapatan').trim().toLowerCase() === 'modal' ? 'Kas Modal' : 'Kas Pendapatan'
+const paymentGroupLabel = (method, bucket) => {
+  const normalizedBucket = String(bucket || 'pendapatan').trim().toLowerCase()
+  const normalizedMethod = String(method || '').trim().toLowerCase()
+  if (normalizedBucket === 'modal' && normalizedMethod === 'tunai') return 'Modal'
+  return REKENING_METHODS.includes(normalizedMethod) ? 'Saldo Rekening' : paymentLabel(method)
+}
 
 export async function saveFinancialExcel({ rows, period, groupLabel, fileLabel }) {
   const columns = [
@@ -61,7 +66,7 @@ export async function saveMotorIncomeExcel({ rentals, period, motorName, fileLab
     date: fmtDateTime(r.date_time), customer: r.customer_name, hotel: r.hotel || '-',
     motor: r.model + ' ' + r.plate_number, days: r.period_days,
     cash_bucket: cashBucketLabel(r.cash_bucket),
-    payment: paymentGroupLabel(r.payment_method), total: rp(r.total_price),
+    payment: paymentGroupLabel(r.payment_method, r.cash_bucket), total: rp(r.total_price),
     vendor_fee: rp(r.vendor_fee),
     wavy: rp(r.wavy_gets), owner: rp(r.owner_gets)
   }))
@@ -95,7 +100,7 @@ export async function saveMotorExpensesExcel({ expenses, period, motorName, file
     date: fmtDate(e.date), motor: e.model ? e.model+' '+e.plate_number : 'Umum',
     type: e.type, category: e.category, desc: e.description || '-',
     cash_bucket: cashBucketLabel(e.cash_bucket),
-    payment: paymentGroupLabel(e.payment_method), amount: rp(e.amount)
+    payment: paymentGroupLabel(e.payment_method, e.cash_bucket), amount: rp(e.amount)
   }))
   const totals = { date: 'TOTAL', motor:'', type:'', category:'', desc:'', cash_bucket:'', payment:'',
     amount: rp(expenses.reduce((s,e)=>s+e.amount,0)) }
@@ -127,15 +132,15 @@ export async function saveTransactionsExcel({ rentals, operationalExpenses, moto
       defaultName: `Transaksi_${fileLabel || period.replace(/\//g,'-')}.xlsx`,
       sheets: [
         { name: 'Pemasukan', columns: rentalCols, currencyKeys: ['amount'],
-          rows: rentals.map(r => ({ date: fmtDateTime(r.date), desc: r.description, motor: r.motor, cash_bucket: cashBucketLabel(r.cash_bucket), payment: paymentGroupLabel(r.payment_method), amount: rp(r.amount), status: r.status })),
+          rows: rentals.map(r => ({ date: fmtDateTime(r.date), desc: r.description, motor: r.motor, cash_bucket: cashBucketLabel(r.cash_bucket), payment: paymentGroupLabel(r.payment_method, r.cash_bucket), amount: rp(r.amount), status: r.status })),
           totals: { date:'TOTAL', desc:'', motor:'', cash_bucket:'', payment:'', amount: rp(rentals.filter(r=>r.status!=='refunded').reduce((s,r)=>s+r.amount,0)), status:'' }
         },
         { name: 'Pengeluaran Operasional', columns: expCols, currencyKeys: ['amount'],
-          rows: operationalExpenses.map(e => ({ date: fmtDate(e.date), desc: e.description, motor: e.motor, cash_bucket: cashBucketLabel(e.cash_bucket), payment: paymentGroupLabel(e.payment_method), amount: rp(e.amount) })),
+          rows: operationalExpenses.map(e => ({ date: fmtDate(e.date), desc: e.description, motor: e.motor, cash_bucket: cashBucketLabel(e.cash_bucket), payment: paymentGroupLabel(e.payment_method, e.cash_bucket), amount: rp(e.amount) })),
           totals: { date:'TOTAL', desc:'', motor:'', cash_bucket:'', payment:'', amount: rp(operationalExpenses.reduce((s,e)=>s+e.amount,0)) }
         },
         { name: 'Pengeluaran Motor', columns: expCols, currencyKeys: ['amount'],
-          rows: motorExpenses.map(e => ({ date: fmtDate(e.date), desc: e.description, motor: e.motor, cash_bucket: cashBucketLabel(e.cash_bucket), payment: paymentGroupLabel(e.payment_method), amount: rp(e.amount) })),
+          rows: motorExpenses.map(e => ({ date: fmtDate(e.date), desc: e.description, motor: e.motor, cash_bucket: cashBucketLabel(e.cash_bucket), payment: paymentGroupLabel(e.payment_method, e.cash_bucket), amount: rp(e.amount) })),
           totals: { date:'TOTAL', desc:'', motor:'', cash_bucket:'', payment:'', amount: rp(motorExpenses.reduce((s,e)=>s+e.amount,0)) }
         }
       ]
@@ -348,3 +353,4 @@ export async function saveRankingExcel({ rows, period, fileLabel }) {
       currencyKeys: ['total_wavy', 'total_owner'] }]
   })
 }
+

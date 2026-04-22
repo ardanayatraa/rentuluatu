@@ -25,15 +25,17 @@
         </div>
         <div class="grid grid-cols-4 gap-4">
           <div v-for="acc in accountsByBucket(bucket.value)" :key="acc.id"
-            :class="kasCardClass(acc.type)"
+            :class="kasCardClass(acc.type, bucket.value)"
             class="rounded-xl p-6 shadow-sm">
             <div class="flex items-center gap-2 mb-2">
-              <span :class="kasIconClass(acc.type)" class="material-symbols-outlined">
-                {{ kasIcon(acc.type) }}
+              <span :class="kasIconClass(acc.type, bucket.value)" class="material-symbols-outlined">
+                {{ kasIcon(acc.type, bucket.value) }}
               </span>
-              <span :class="kasLabelClass(acc.type)" class="text-xs font-bold uppercase tracking-wider">{{ paymentMethodLabel(acc.type) }}</span>
+              <span :class="kasLabelClass(acc.type, bucket.value)" class="text-xs font-bold uppercase tracking-wider">
+                {{ paymentMethodLabel(acc.type, bucket.value) }}
+              </span>
             </div>
-            <p :class="kasBalanceClass(acc.type)" class="text-2xl font-black font-headline">{{ formatRp(acc.balance) }}</p>
+            <p :class="kasBalanceClass(acc.type, bucket.value)" class="text-2xl font-black font-headline">{{ formatRp(acc.balance) }}</p>
           </div>
         </div>
       </div>
@@ -150,7 +152,11 @@
         </div>
         <div>
           <label class="block text-xs font-bold text-slate-500 mb-1">Metode Bayar</label>
-          <div class="flex gap-3">
+          <div v-if="incomeForm.entry_type === 'capital_injection'" class="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2">
+            <p class="text-sm font-semibold text-emerald-700">Modal (otomatis)</p>
+            <p class="text-[11px] text-emerald-600 mt-0.5">Tambah modal selalu masuk ke saldo modal.</p>
+          </div>
+          <div v-else class="flex gap-3">
             <label class="flex items-center gap-2 cursor-pointer">
               <input type="radio" v-model="incomeForm.payment_method" value="tunai" class="accent-primary" />
               <span class="text-sm font-medium">Tunai</span>
@@ -190,7 +196,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { formatRp, formatDate } from '../utils/format'
 import { buildSimpleTableHtml, previewReport } from '../utils/pdf'
 
@@ -207,10 +213,13 @@ const pageSize = ref(10)
 const exporting = ref(false)
 const incomeError = ref('')
 const incomeSubmitting = ref(false)
-const allowedPaymentMethods = ['tunai', 'transfer', 'qris', 'debit_card']
+const bucketPaymentMethods = {
+  pendapatan: ['tunai', 'transfer', 'qris', 'debit_card'],
+  modal: ['tunai']
+}
 const cashBuckets = [
   { value: 'pendapatan', label: 'Kas Pendapatan' },
-  { value: 'modal', label: 'Kas Modal' }
+  { value: 'modal', label: 'Modal' }
 ]
 
 const incomeForm = ref({
@@ -254,23 +263,29 @@ const selectedAccountName = computed(() => {
   return accounts.value.find(a => Number(a.id) === Number(filterAccount.value))?.name || 'Semua Akun'
 })
 const accountsByBucket = (bucket) => accounts.value.filter((acc) =>
-  String(acc.bucket || 'pendapatan') === bucket && allowedPaymentMethods.includes(String(acc.type || ''))
+  String(acc.bucket || 'pendapatan') === bucket &&
+  (bucketPaymentMethods[bucket] || []).includes(String(acc.type || ''))
 )
 const totalByBucket = (bucket) => {
   return accountsByBucket(bucket).reduce((sum, acc) => sum + Number(acc.balance || 0), 0)
 }
 const totalRekeningByBucket = (bucket) => {
-  const rekeningMethods = ['transfer', 'qris', 'debit_card']
+  const rekeningMethods = ['transfer', 'qris', 'debit_card'].filter((method) =>
+    (bucketPaymentMethods[bucket] || []).includes(method)
+  )
   return accountsByBucket(bucket)
     .filter((acc) => rekeningMethods.includes(String(acc.type || '')))
     .reduce((sum, acc) => sum + Number(acc.balance || 0), 0)
 }
-const paymentMethodLabel = (method) => ({
+const paymentMethodLabel = (method, bucket = 'pendapatan') => {
+  if (bucket === 'modal' && String(method) === 'tunai') return 'Modal'
+  return ({
   tunai: 'Tunai',
   transfer: 'Transfer',
   qris: 'QRIS',
   debit_card: 'Debit Card'
 }[method] || method || '-')
+}
 const selectedTypeLabel = computed(() => {
   if (filterType.value === 'in') return 'Pemasukan'
   if (filterType.value === 'out') return 'Pengeluaran'
@@ -278,29 +293,34 @@ const selectedTypeLabel = computed(() => {
 })
 const periodLabel = computed(() => filterDate.value ? formatDate(filterDate.value) : 'Semua Tanggal')
 
-function kasCardClass(type) {
+function kasCardClass(type, bucket = 'pendapatan') {
+  if (bucket === 'modal') return 'bg-amber-50 border border-amber-200'
   if (type === 'transfer') return 'bg-primary text-white'
   if (type === 'qris') return 'bg-gradient-to-br from-blue-500 to-purple-600 text-white'
   if (type === 'debit_card') return 'bg-gradient-to-br from-slate-700 to-slate-900 text-white'
   return 'bg-white border border-slate-100'
 }
-function kasIconClass(type) {
+function kasIconClass(type, bucket = 'pendapatan') {
+  if (bucket === 'modal') return 'text-amber-600'
   if (type === 'transfer') return 'text-blue-200'
   if (type === 'qris') return 'text-purple-200'
   if (type === 'debit_card') return 'text-slate-300'
   return 'text-slate-400'
 }
-function kasLabelClass(type) {
+function kasLabelClass(type, bucket = 'pendapatan') {
+  if (bucket === 'modal') return 'text-amber-700'
   if (type === 'transfer') return 'text-blue-200'
   if (type === 'qris') return 'text-purple-200'
   if (type === 'debit_card') return 'text-slate-300'
   return 'text-slate-500'
 }
-function kasBalanceClass(type) {
+function kasBalanceClass(type, bucket = 'pendapatan') {
+  if (bucket === 'modal') return 'text-amber-700'
   if (type === 'transfer' || type === 'qris' || type === 'debit_card') return 'text-white'
   return 'text-primary'
 }
-function kasIcon(type) {
+function kasIcon(type, bucket = 'pendapatan') {
+  if (bucket === 'modal') return 'savings'
   if (type === 'tunai') return 'payments'
   if (type === 'transfer') return 'account_balance'
   if (type === 'debit_card') return 'credit_card'
@@ -320,9 +340,16 @@ function openIncome() {
   showIncomeModal.value = true
 }
 
+watch(() => incomeForm.value.entry_type, (entryType) => {
+  if (entryType === 'capital_injection') {
+    incomeForm.value.payment_method = 'tunai'
+  }
+})
+
 async function submitIncome() {
   incomeError.value = ''
   const description = String(incomeForm.value.description || '').trim()
+  const isCapitalInjection = incomeForm.value.entry_type === 'capital_injection'
   if (!description) {
     incomeError.value = 'Catatan transaksi wajib diisi'
     return
@@ -331,13 +358,17 @@ async function submitIncome() {
     incomeError.value = 'Jumlah harus lebih dari 0'
     return
   }
-  if (!incomeForm.value.payment_method) {
+  if (!isCapitalInjection && !incomeForm.value.payment_method) {
     incomeError.value = 'Metode bayar wajib dipilih'
     return
   }
   incomeSubmitting.value = true
   try {
-    await window.api.addCashIncome({ ...incomeForm.value, description })
+    await window.api.addCashIncome({
+      ...incomeForm.value,
+      description,
+      payment_method: isCapitalInjection ? 'tunai' : incomeForm.value.payment_method
+    })
     showIncomeModal.value = false
     await reloadCash()
     await loadTransactions()
@@ -467,3 +498,4 @@ onMounted(async () => {
   await loadTransactions()
 })
 </script>
+

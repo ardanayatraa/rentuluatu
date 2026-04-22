@@ -882,12 +882,15 @@ function paymentMethodLabel(method) {
   }[method] || method || '-'
 }
 
-function paymentMethodGroupLabel(method) {
+function paymentMethodGroupLabel(method, bucket) {
+  if (normalizeCashBucket(bucket) === 'modal' && String(method || '').trim().toLowerCase() === 'tunai') {
+    return 'Modal'
+  }
   return isRekeningMethod(method) ? 'Saldo Rekening' : paymentMethodLabel(method)
 }
 
 function paymentSummaryLabel(row) {
-  return `${cashBucketLabel(row?.cash_bucket)} · ${paymentMethodGroupLabel(row?.payment_method)}`
+  return `${cashBucketLabel(row?.cash_bucket)} · ${paymentMethodGroupLabel(row?.payment_method, row?.cash_bucket)}`
 }
 
 function calculateCashSummary(rows, amountKey = 'amount') {
@@ -1185,3 +1188,7 @@ onMounted(async () => {
   }
 })
 </script>
+
+
+
+

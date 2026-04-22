@@ -13,7 +13,7 @@ const SAVE_DEBOUNCE_MS = 250
 // Versi schema — naikkan angka ini setiap kali ada perubahan struktur database.
 // Sistem akan otomatis jalankan migrasi yang belum pernah dijalankan.
 // ─────────────────────────────────────────────────────────────────────────────
-const SCHEMA_VERSION = 16
+const SCHEMA_VERSION = 17
 
 export async function initDb() {
   const wasmPath = join(
@@ -691,17 +691,65 @@ const migrations = [
         const legacyAccounts = all("SELECT id, type FROM cash_accounts WHERE LOWER(TRIM(type)) = 'modal_ditanam'") || []
         if (!legacyAccounts.length) return
 
-        const fallbackModalTransfer = get(
-          "SELECT id FROM cash_accounts WHERE type = 'transfer' AND COALESCE(bucket, 'pendapatan') = 'modal' ORDER BY id ASC LIMIT 1"
+        const fallbackModalTunai = get(
+          "SELECT id FROM cash_accounts WHERE type = 'tunai' AND COALESCE(bucket, 'pendapatan') = 'modal' ORDER BY id ASC LIMIT 1"
         )
 
         for (const legacy of legacyAccounts) {
-          if (fallbackModalTransfer?.id) {
-            db.run('UPDATE cash_transactions SET cash_account_id = ? WHERE cash_account_id = ?', [fallbackModalTransfer.id, legacy.id])
+          if (fallbackModalTunai?.id) {
+            db.run('UPDATE cash_transactions SET cash_account_id = ? WHERE cash_account_id = ?', [fallbackModalTunai.id, legacy.id])
           } else {
             db.run('DELETE FROM cash_transactions WHERE cash_account_id = ?', [legacy.id])
           }
           db.run('DELETE FROM cash_accounts WHERE id = ?', [legacy.id])
+        }
+
+        const accounts = all('SELECT id FROM cash_accounts ORDER BY id ASC')
+        for (const account of accounts) {
+          const ledger = get(`
+            SELECT COALESCE(SUM(CASE WHEN type = 'out' THEN -amount ELSE amount END), 0) as total
+            FROM cash_transactions
+            WHERE cash_account_id = ?
+          `, [account.id])
+          db.run('UPDATE cash_accounts SET balance = ? WHERE id = ?', [Number(ledger?.total || 0), account.id])
+        }
+      } catch (_) {}
+    }
+  },
+  // v17 - modal tanam wajib masuk kas modal tunai
+  {
+    version: 17,
+    up() {
+      try {
+        let modalTunaiAccount = get(
+          "SELECT id FROM cash_accounts WHERE type = 'tunai' AND COALESCE(bucket, 'pendapatan') = 'modal' ORDER BY id ASC LIMIT 1"
+        )
+        if (!modalTunaiAccount?.id) {
+          db.run(
+            "INSERT INTO cash_accounts (name, type, bucket, balance) VALUES ('Kas Modal Tunai', 'tunai', 'modal', 0)"
+          )
+          modalTunaiAccount = get(
+            "SELECT id FROM cash_accounts WHERE type = 'tunai' AND COALESCE(bucket, 'pendapatan') = 'modal' ORDER BY id ASC LIMIT 1"
+          )
+        }
+        if (!modalTunaiAccount?.id) return
+
+        db.run(`
+          UPDATE cash_transactions
+          SET cash_account_id = ?
+          WHERE reference_type IN ('capital_injection', 'opening_balance')
+        `, [modalTunaiAccount.id])
+
+        const deprecatedModalAccounts = all(`
+          SELECT id
+          FROM cash_accounts
+          WHERE COALESCE(bucket, 'pendapatan') = 'modal'
+            AND type IN ('transfer', 'qris', 'debit_card')
+        `) || []
+
+        for (const account of deprecatedModalAccounts) {
+          db.run('UPDATE cash_transactions SET cash_account_id = ? WHERE cash_account_id = ?', [modalTunaiAccount.id, account.id])
+          db.run('DELETE FROM cash_accounts WHERE id = ?', [account.id])
         }
 
         const accounts = all('SELECT id FROM cash_accounts ORDER BY id ASC')
@@ -786,16 +834,33 @@ function seedDefaults() {
 
   try {
     const legacyAccounts = all("SELECT id FROM cash_accounts WHERE LOWER(TRIM(type)) = 'modal_ditanam'") || []
-    const fallbackModalTransfer = get(
-      "SELECT id FROM cash_accounts WHERE type = 'transfer' AND COALESCE(bucket, 'pendapatan') = 'modal' ORDER BY id ASC LIMIT 1"
+    const fallbackModalTunai = get(
+      "SELECT id FROM cash_accounts WHERE type = 'tunai' AND COALESCE(bucket, 'pendapatan') = 'modal' ORDER BY id ASC LIMIT 1"
     )
     for (const legacy of legacyAccounts) {
-      if (fallbackModalTransfer?.id) {
-        db.run('UPDATE cash_transactions SET cash_account_id = ? WHERE cash_account_id = ?', [fallbackModalTransfer.id, legacy.id])
+      if (fallbackModalTunai?.id) {
+        db.run('UPDATE cash_transactions SET cash_account_id = ? WHERE cash_account_id = ?', [fallbackModalTunai.id, legacy.id])
       } else {
         db.run('DELETE FROM cash_transactions WHERE cash_account_id = ?', [legacy.id])
       }
       db.run('DELETE FROM cash_accounts WHERE id = ?', [legacy.id])
+    }
+  } catch (_) {}
+  try {
+    const modalTunai = get(
+      "SELECT id FROM cash_accounts WHERE type = 'tunai' AND COALESCE(bucket, 'pendapatan') = 'modal' ORDER BY id ASC LIMIT 1"
+    )
+    if (modalTunai?.id) {
+      const deprecatedModalAccounts = all(`
+        SELECT id
+        FROM cash_accounts
+        WHERE COALESCE(bucket, 'pendapatan') = 'modal'
+          AND type IN ('transfer', 'qris', 'debit_card')
+      `) || []
+      for (const account of deprecatedModalAccounts) {
+        db.run('UPDATE cash_transactions SET cash_account_id = ? WHERE cash_account_id = ?', [modalTunai.id, account.id])
+        db.run('DELETE FROM cash_accounts WHERE id = ?', [account.id])
+      }
     }
   } catch (_) {}
 
@@ -805,10 +870,7 @@ function seedDefaults() {
     { name: 'Kas Pendapatan Transfer', type: 'transfer', bucket: 'pendapatan' },
     { name: 'Kas Pendapatan QRIS', type: 'qris', bucket: 'pendapatan' },
     { name: 'Kas Pendapatan Debit Card', type: 'debit_card', bucket: 'pendapatan' },
-    { name: 'Kas Modal Tunai', type: 'tunai', bucket: 'modal' },
-    { name: 'Kas Modal Transfer', type: 'transfer', bucket: 'modal' },
-    { name: 'Kas Modal QRIS', type: 'qris', bucket: 'modal' },
-    { name: 'Kas Modal Debit Card', type: 'debit_card', bucket: 'modal' }
+    { name: 'Kas Modal Tunai', type: 'tunai', bucket: 'modal' }
   ]
   for (const account of defaultAccounts) {
     const existsAccount = get(
@@ -824,4 +886,16 @@ function seedDefaults() {
       db.run('UPDATE cash_accounts SET name = ? WHERE id = ?', [account.name, existsAccount.id])
     }
   }
+
+  try {
+    const accounts = all('SELECT id FROM cash_accounts ORDER BY id ASC')
+    for (const account of accounts) {
+      const ledger = get(`
+        SELECT COALESCE(SUM(CASE WHEN type = 'out' THEN -amount ELSE amount END), 0) as total
+        FROM cash_transactions
+        WHERE cash_account_id = ?
+      `, [account.id])
+      db.run('UPDATE cash_accounts SET balance = ? WHERE id = ?', [Number(ledger?.total || 0), account.id])
+    }
+  } catch (_) {}
 }

@@ -557,14 +557,19 @@
 
         <div>
           <label class="block text-xs font-bold text-slate-500 mb-1">Sumber Dana (Kas)</label>
-          <select v-model="payoutForm.cash_account_id"
+          <select
+            v-model="payoutForm.cash_account_id"
             class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
-            :required="payoutPreview.netAmount > 0">
+            :required="payoutPreview.netAmount > 0"
+          >
             <option value="">— Pilih Kas —</option>
-            <option v-for="c in cashAccounts" :key="c.id" :value="c.id">
-              {{ c.name }} (Saldo: {{ formatRp(c.balance) }})
+            <option v-for="c in payoutCashAccounts" :key="c.id" :value="c.id">
+              {{ payoutMethodLabel(c.type, c.bucket) }} • {{ c.name }} (Saldo: {{ formatRp(c.balance) }})
             </option>
           </select>
+          <p v-if="!payoutCashAccounts.length" class="mt-1 text-[11px] text-red-500">
+            Tidak ada akun kas pendapatan/modal yang valid untuk payout hak mitra.
+          </p>
         </div>
 
         <p v-if="payoutError" class="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{{ payoutError }}</p>
@@ -751,10 +756,39 @@ const motorDetailSummary = computed(() => {
     net: income - expense
   }
 })
+const payoutMethodOrder = ['tunai', 'transfer', 'qris', 'debit_card']
+const payoutCashAccounts = computed(() =>
+  cashAccounts.value
+    .filter((account) => {
+      const bucket = String(account.bucket || 'pendapatan')
+      const type = String(account.type || '')
+      if (bucket === 'pendapatan' && payoutMethodOrder.includes(type)) return true
+      if (bucket === 'modal' && type === 'tunai') return true
+      return false
+    })
+    .sort((a, b) => {
+      const bucketA = String(a.bucket || 'pendapatan')
+      const bucketB = String(b.bucket || 'pendapatan')
+      const typeA = String(a.type || '')
+      const typeB = String(b.type || '')
+      const rankA = bucketA === 'modal' ? 99 : payoutMethodOrder.indexOf(typeA)
+      const rankB = bucketB === 'modal' ? 99 : payoutMethodOrder.indexOf(typeB)
+      return rankA - rankB
+    })
+)
 
 const totalUnpaid = computed(() =>
   motors.value.reduce((s, m) => s + (m.net_commission || 0), 0)
 )
+
+function payoutMethodLabel(method, bucket = 'pendapatan') {
+  if (String(bucket || 'pendapatan') === 'modal') return 'Modal'
+  if (method === 'tunai') return 'Tunai'
+  if (method === 'transfer') return 'Transfer'
+  if (method === 'qris') return 'QRIS'
+  if (method === 'debit_card') return 'Debit Card'
+  return method || '-'
+}
 
 function addDays(dateStr, days) {
   if (!dateStr) return null
@@ -1077,7 +1111,12 @@ async function submitPayout() {
     const motorIds = Array.isArray(selectedPayoutMotorIds.value)
       ? selectedPayoutMotorIds.value.map(id => Number(id))
       : null
-    const cashAccountId = payoutForm.value.cash_account_id ? Number(payoutForm.value.cash_account_id) : null
+    const cashAccountId = preview?.netAmount > 0
+      ? (payoutForm.value.cash_account_id ? Number(payoutForm.value.cash_account_id) : null)
+      : null
+    if (preview?.netAmount > 0 && !cashAccountId) {
+      throw new Error('Pilih sumber dana kas untuk pembayaran hak mitra')
+    }
 
     await window.api.payoutOwner({
       owner_id: ownerId,

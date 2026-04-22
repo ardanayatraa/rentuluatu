@@ -310,6 +310,14 @@ export function registerOwnerHandlers() {
       ? dbOps.get('SELECT * FROM cash_accounts WHERE id = ?', [data.cash_account_id])
       : null
     if (serverNetAmount > 0 && !cashAccount) throw new Error('Akun kas tidak ditemukan')
+    const cashBucket = String(cashAccount?.bucket || 'pendapatan')
+    const cashType = String(cashAccount?.type || '')
+    if (serverNetAmount > 0 && !['pendapatan', 'modal'].includes(cashBucket)) {
+      throw new Error('Pembayaran hak mitra harus menggunakan kas pendapatan atau modal')
+    }
+    if (serverNetAmount > 0 && cashBucket === 'modal' && cashType !== 'tunai') {
+      throw new Error('Kas modal untuk pembayaran hak mitra harus bertipe tunai')
+    }
 
     if (serverNetAmount > 0 && cashAccount.balance < serverNetAmount) {
       throw new Error(`Saldo Kas ${cashAccount.name} tidak cukup! (Sisa: Rp ${cashAccount.balance.toLocaleString('id-ID')})`)

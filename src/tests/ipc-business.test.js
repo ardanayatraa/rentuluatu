@@ -618,10 +618,11 @@ describe('IPC business logic', () => {
     expect(saveDb).toHaveBeenCalled()
   })
 
-  it('cash add-income bisa menyimpan tambah modal tanpa dihitung sebagai manual income', async () => {
+  it('cash add-income modal tanam selalu diproses ke kas modal tunai', async () => {
     dbOps.get.mockImplementation((sql, params) => {
       if (sql.includes('SELECT * FROM cash_accounts WHERE type = ?')) {
-        return { id: 4, type: params[0], name: 'Transfer' }
+        expect(params[0]).toBe('tunai')
+        return { id: 2, type: params[0], name: 'Kas Modal Tunai' }
       }
       return null
     })
@@ -638,11 +639,11 @@ describe('IPC business logic', () => {
     expect(result).toEqual({ success: true })
     expect(dbOps.run).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO cash_transactions'),
-      [4, 250_000, 'capital_injection', 'Tambahan modal owner', '2026-04-18']
+      [2, 250_000, 'capital_injection', 'Tambahan modal owner', '2026-04-18']
     )
     expect(dbOps.run).toHaveBeenCalledWith(
       'UPDATE cash_accounts SET balance = balance + ? WHERE id = ?',
-      [250_000, 4]
+      [250_000, 2]
     )
   })
 

@@ -3,6 +3,8 @@ import { dbOps } from '../db'
 import { logActivity } from '../lib/activity-log'
 
 const ALLOWED_CASH_BUCKETS = ['pendapatan', 'modal']
+const CAPITAL_ENTRY_TYPE = 'capital_injection'
+const CASH_ONLY_METHOD = 'tunai'
 
 function normalizeCashBucket(value, fallback = 'pendapatan') {
   const bucket = String(value || '').trim().toLowerCase()
@@ -85,19 +87,20 @@ function assertValidManualCashInput(data = {}, mode = 'income') {
     throw new Error('Catatan transaksi wajib diisi')
   }
 
-  const paymentMethod = String(data.payment_method || '').trim()
-  if (!paymentMethod) {
-    throw new Error('Metode bayar wajib dipilih')
-  }
-
   const entryType = mode === 'income'
     ? String(data.entry_type || 'manual_income').trim().toLowerCase()
     : 'manual_expense'
+  const paymentMethod = mode === 'income' && entryType === CAPITAL_ENTRY_TYPE
+    ? CASH_ONLY_METHOD
+    : String(data.payment_method || '').trim().toLowerCase()
+  if (!paymentMethod) {
+    throw new Error('Metode bayar wajib dipilih')
+  }
   const cashBucket = mode === 'income'
-    ? (entryType === 'capital_injection' ? 'modal' : 'pendapatan')
+    ? (entryType === CAPITAL_ENTRY_TYPE ? 'modal' : 'pendapatan')
     : normalizeCashBucket(data.cash_bucket, 'pendapatan')
 
-  if (mode === 'income' && !['manual_income', 'capital_injection'].includes(entryType)) {
+  if (mode === 'income' && !['manual_income', CAPITAL_ENTRY_TYPE].includes(entryType)) {
     throw new Error('Jenis pemasukan tidak valid')
   }
 

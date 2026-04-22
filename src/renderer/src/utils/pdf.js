@@ -27,7 +27,12 @@ const paymentLabel = (method) => ({
 }[method] || method || '-')
 const cashBucketLabel = (bucket) => String(bucket || 'pendapatan').trim().toLowerCase() === 'modal' ? 'Kas Modal' : 'Kas Pendapatan'
 const isRekeningMethod = (method) => REKENING_METHODS.includes(String(method || '').trim().toLowerCase())
-const paymentGroupLabel = (method) => isRekeningMethod(method) ? 'Saldo Rekening' : paymentLabel(method)
+const paymentGroupLabel = (method, bucket) => {
+  const normalizedBucket = String(bucket || 'pendapatan').trim().toLowerCase()
+  const normalizedMethod = String(method || '').trim().toLowerCase()
+  if (normalizedBucket === 'modal' && normalizedMethod === 'tunai') return 'Modal'
+  return isRekeningMethod(method) ? 'Saldo Rekening' : paymentLabel(method)
+}
 const calculateCashSummary = (rows = [], amountKey = 'amount') => rows.reduce((summary, row) => {
   const amount = Number(row?.[amountKey] || 0)
   const bucket = String(row?.cash_bucket || 'pendapatan').trim().toLowerCase() === 'modal' ? 'modal' : 'pendapatan'
@@ -341,7 +346,7 @@ export function buildMotorIncomeHtml({ rentals, period, motorName }) {
     <td>${r.model} <span style="color:#94a3b8">${r.plate_number}</span></td>
     <td class="right">${r.period_days} hari</td>
     <td>${cashBucketLabel(r.cash_bucket)}</td>
-    <td><span class="badge badge-blue">${paymentGroupLabel(r.payment_method)}</span></td>
+    <td><span class="badge badge-blue">${paymentGroupLabel(r.payment_method, r.cash_bucket)}</span></td>
     <td class="right" style="font-weight:700">${rp(r.total_price)}</td>
     <td class="right">${rp(r.vendor_fee || 0)}</td>
     <td class="right">${rp(r.wavy_gets)}</td>
@@ -378,7 +383,7 @@ export function buildMotorExpensesHtml({ expenses, period, motorName }) {
     <td>${e.category}</td>
     <td>${e.description || '-'}</td>
     <td>${cashBucketLabel(e.cash_bucket)}</td>
-    <td><span class="badge badge-blue">${paymentGroupLabel(e.payment_method)}</span></td>
+    <td><span class="badge badge-blue">${paymentGroupLabel(e.payment_method, e.cash_bucket)}</span></td>
     <td class="right" style="color:#dc2626;font-weight:700">${rp(e.amount)}</td>
   </tr>`).join('')
   return `${headerHtml('Laporan Pengeluaran per Motor', period, motorName || 'Semua Motor')}
@@ -410,7 +415,7 @@ export function buildTransactionsHtml({ rentals, operationalExpenses, motorExpen
     <td>${fmtDateTime(r.date)}</td><td>Pemasukan</td>
     <td>${r.description}</td><td>${r.motor}</td>
     <td>${cashBucketLabel(r.cash_bucket)}</td>
-    <td>${paymentGroupLabel(r.payment_method)}</td>
+    <td>${paymentGroupLabel(r.payment_method, r.cash_bucket)}</td>
     <td class="right">${rp(r.amount)}</td>
     <td>${r.status}</td>
   </tr>`).join('')
@@ -418,7 +423,7 @@ export function buildTransactionsHtml({ rentals, operationalExpenses, motorExpen
     <td>${fmtDate(e.date)}</td><td>Pengeluaran</td>
     <td>${e.description}</td><td>${e.motor}</td>
     <td>${cashBucketLabel(e.cash_bucket)}</td>
-    <td>${paymentGroupLabel(e.payment_method)}</td>
+    <td>${paymentGroupLabel(e.payment_method, e.cash_bucket)}</td>
     <td class="right">${rp(e.amount)}</td>
     <td>-</td>
   </tr>`).join('')
@@ -426,7 +431,7 @@ export function buildTransactionsHtml({ rentals, operationalExpenses, motorExpen
     <td>${fmtDate(e.date)}</td><td>Pengeluaran Motor</td>
     <td>${e.description}</td><td>${e.motor}</td>
     <td>${cashBucketLabel(e.cash_bucket)}</td>
-    <td>${paymentGroupLabel(e.payment_method)}</td>
+    <td>${paymentGroupLabel(e.payment_method, e.cash_bucket)}</td>
     <td class="right">${rp(e.amount)}</td>
     <td>-</td>
   </tr>`).join('')
@@ -545,7 +550,7 @@ export function buildHotelCommissionHtml({ hotel, rentals = [], period }) {
       <div class="info-name">${esc(hotel?.name || '-')}</div>
       <div class="info-detail">
         Telepon: ${esc(hotel?.phone || '-')}<br>
-        Status Dokumen: Fee vendor yang belum dibayarkan pada periode terpilih
+        Status Dokumen: Fee vendor dibayar otomatis saat transaksi pada periode terpilih
       </div>
     </div>
 	    <div style="flex:1">
@@ -714,4 +719,5 @@ export function buildRankingHtml({ rows, period }) {
   </tbody></table>
   ${footerHtml()}`
 }
+
 
