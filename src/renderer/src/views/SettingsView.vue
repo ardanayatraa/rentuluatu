@@ -449,6 +449,10 @@
                   class="text-xs text-primary font-bold hover:underline flex items-center gap-1">
                   <span class="material-symbols-outlined text-sm">cloud_download</span> Restore
                 </button>
+                <button @click="inspectDriveBackup(b)"
+                  class="text-xs text-indigo-600 font-bold hover:underline flex items-center gap-1">
+                  <span class="material-symbols-outlined text-sm">visibility</span> Lihat Isi
+                </button>
                 <button @click="deleteDriveBackup(b)" class="text-xs text-red-400 hover:text-red-600">
                   <span class="material-symbols-outlined text-sm">delete</span>
                 </button>
@@ -941,6 +945,30 @@ function formatSize(bytes) {
   return kb > 1024 ? (kb / 1024).toFixed(1) + ' MB' : kb.toFixed(0) + ' KB'
 }
 
+function formatBackupCurrency(value) {
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    maximumFractionDigits: 0
+  }).format(Number(value || 0))
+}
+
+function buildBackupSummaryLines(name, summary) {
+  const s = summary || {}
+  return [
+    `File: ${name}`,
+    `Motor: ${s.motors ?? 0}`,
+    `Mitra/Owner: ${s.owners ?? 0}`,
+    `Hotel/Vendor: ${s.hotels ?? 0}`,
+    `Rental: ${s.rentals ?? 0}`,
+    `Pengeluaran: ${s.expenses ?? 0}`,
+    `Mutasi Kas: ${s.cashTransactions ?? 0}`,
+    `Periode Rental: ${s.rentalsMinDate || '-'} s/d ${s.rentalsMaxDate || '-'}`,
+    `Total Rental: ${formatBackupCurrency(s.rentalTotal)}`,
+    `Total Pengeluaran: ${formatBackupCurrency(s.expenseTotal)}`
+  ]
+}
+
 const transactionResetExpiresLabel = computed(() => {
   if (!transactionResetStatus.value.expiresAt) return '-'
   return formatFileDate(transactionResetStatus.value.expiresAt)
@@ -1110,12 +1138,14 @@ async function toggleAutoBackupOnClose() {
 }
 
 async function restoreLocal(backup) {
-  if (!confirm(`Restore dari "${backup.name}"?\n\nData saat ini akan diganti.`)) return
   backupLoading.value = true
   try {
-    await window.api.backupRestoreLocal({ path: backup.path })
+    const inspect = await window.api.backupInspectLocal({ path: backup.path })
+    const summaryText = buildBackupSummaryLines(backup.name, inspect?.summary).join('\n')
+    if (!confirm(`${summaryText}\n\nRestore backup ini?\nData saat ini akan diganti, dan safety backup akan dibuat dulu.`)) return
+    const result = await window.api.backupRestoreLocal({ path: backup.path })
     await refreshAfterRestore()
-    setMsg('Restore berhasil tanpa restart aplikasi.')
+    setMsg(`Restore berhasil. Safety backup: ${result.safetyBackupName || '-'}`)
   }
   catch (e) { setMsg('Restore gagal: ' + e.message, false) }
   finally { backupLoading.value = false }
@@ -1133,18 +1163,7 @@ async function inspectLocalBackup(backup) {
   backupLoading.value = true
   try {
     const result = await window.api.backupInspectLocal({ path: backup.path })
-    const s = result?.summary || {}
-    const lines = [
-      `File: ${backup.name}`,
-      `Motor: ${s.motors ?? 0}`,
-      `Mitra/Owner: ${s.owners ?? 0}`,
-      `Hotel/Vendor: ${s.hotels ?? 0}`,
-      `Rental: ${s.rentals ?? 0}`,
-      `Pengeluaran: ${s.expenses ?? 0}`,
-      `Mutasi Kas: ${s.cashTransactions ?? 0}`,
-      `Periode Rental: ${s.rentalsMinDate || '-'} s/d ${s.rentalsMaxDate || '-'}`
-    ]
-    alert(lines.join('\n'))
+    alert(buildBackupSummaryLines(backup.name, result?.summary).join('\n'))
   } catch (e) {
     setMsg('Gagal membaca isi backup: ' + e.message, false)
   } finally {
@@ -1153,15 +1172,29 @@ async function inspectLocalBackup(backup) {
 }
 
 async function restoreDrive(backup) {
-  if (!confirm(`Restore dari Drive: "${backup.name}"?\n\nData saat ini akan diganti.`)) return
   backupLoading.value = true
   try {
-    await window.api.backupGdriveRestore({ fileId: backup.id, fileName: backup.name })
+    const inspect = await window.api.backupGdriveInspect({ fileId: backup.id, fileName: backup.name })
+    const summaryText = buildBackupSummaryLines(backup.name, inspect?.summary).join('\n')
+    if (!confirm(`${summaryText}\n\nRestore backup Drive ini?\nData saat ini akan diganti, dan safety backup akan dibuat dulu.`)) return
+    const result = await window.api.backupGdriveRestore({ fileId: backup.id, fileName: backup.name })
     await refreshAfterRestore()
-    setMsg('Restore berhasil tanpa restart aplikasi.')
+    setMsg(`Restore berhasil. Safety backup: ${result.safetyBackupName || '-'}`)
   }
   catch (e) { setMsg('Restore gagal: ' + e.message, false) }
   finally { backupLoading.value = false }
+}
+
+async function inspectDriveBackup(backup) {
+  backupLoading.value = true
+  try {
+    const result = await window.api.backupGdriveInspect({ fileId: backup.id, fileName: backup.name })
+    alert(buildBackupSummaryLines(backup.name, result?.summary).join('\n'))
+  } catch (e) {
+    setMsg('Gagal membaca isi backup Drive: ' + e.message, false)
+  } finally {
+    backupLoading.value = false
+  }
 }
 
 async function refreshAfterRestore() {

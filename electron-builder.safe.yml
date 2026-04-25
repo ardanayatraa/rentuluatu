@@ -1,0 +1,33 @@
+appId: com.wavy.rental.safe
+productName: Wavy Rental Safe
+directories:
+  buildResources: build
+  output: dist-safe
+files:
+  - '!**/.vscode/*'
+  - '!docs/**'
+  - '!src/*'
+  - '!electron.vite.config.{js,ts,mjs,cjs}'
+  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - '!dist/**'
+  - '!dist-safe/**'
+  - '!tmp/**'
+asarUnpack:
+  - resources/**
+  - node_modules/sql.js/dist/sql-wasm.wasm
+win:
+  executableName: wavy-safe
+  forceCodeSigning: false
+nsis:
+  artifactName: wavy-${version}-safe-setup.${ext}
+  shortcutName: Wavy Rental Safe
+  uninstallDisplayName: Wavy Rental Safe
+  createDesktopShortcut: always
+  runAfterFinish: true
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+  license: build/license.txt
+npmRebuild: false

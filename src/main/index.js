@@ -199,9 +199,7 @@ function createWindow() {
         mainWindow.webContents.send('app:auto-backup-close-state', {
           visible: true,
           success: true,
-          message: result.updated
-            ? 'Backup harian berhasil diperbarui. Aplikasi akan ditutup...'
-            : 'Backup harian berhasil dibuat. Aplikasi akan ditutup...'
+          message: `Backup otomatis berhasil dibuat (${result.filename}). Aplikasi akan ditutup...`
         })
         setTimeout(() => {
           isClosingAfterBackup = true

@@ -93,6 +93,7 @@ contextBridge.exposeInMainWorld('api', {
   backupRestoreLocal: (data) => invoke('backup:restore-local', data),
   backupGdriveUpload: () => invoke('backup:gdrive-upload'),
   backupGdriveList: () => invoke('backup:gdrive-list'),
+  backupGdriveInspect: (data) => invoke('backup:gdrive-inspect', data),
   backupGdriveRestore: (data) => invoke('backup:gdrive-restore', data),
   backupGdriveDelete: (data) => invoke('backup:gdrive-delete', data),
   backupSetPassphrase: (data) => invoke('backup:set-passphrase', data),
