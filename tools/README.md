@@ -23,6 +23,15 @@ node tools/generate-serial.js A1B2C3D4E5F6G7H8 LIFETIME
 
 Tool internal khusus admin/dev untuk skenario pindah laptop atau recovery backup.
 
+### Build `.exe` (Windows)
+
+```bash
+npm run build:recovery:win
+```
+
+Output:
+- `dist/recovery-admin-tool.exe`
+
 ### Jalankan
 
 ```bash

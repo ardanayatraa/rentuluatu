@@ -1,20 +1,35 @@
-import { ipcMain, app, shell } from 'electron'
+import { ipcMain, app, shell, dialog } from 'electron'
 import { join } from 'path'
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, unlinkSync, copyFileSync } from 'fs'
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypto'
 import { createServer } from 'http'
-import { forceSaveDb } from '../db'
+import { forceSaveDb, reloadDbFromBuffer } from '../db'
 import { Readable } from 'stream'
 import { logActivity } from '../lib/activity-log'
 
 // googleapis di-lazy load supaya tidak crash saat startup
 let _google = null
+let _sql = null
+let skipAutoBackupOnClose = false
 async function getGoogle() {
   if (!_google) {
     const mod = await import('googleapis')
     _google = mod.google
   }
   return _google
+}
+
+async function getSqlJs() {
+  if (_sql) return _sql
+  const mod = await import('sql.js')
+  const initSqlJs = mod.default || mod
+  const wasmPath = join(
+    app.isPackaged
+      ? join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm')
+      : join(__dirname, '../../../node_modules/sql.js/dist/sql-wasm.wasm')
+  )
+  _sql = await initSqlJs({ locateFile: () => wasmPath })
+  return _sql
 }
 
 // ── Load .env manual ──────────────────────────────────────────────────────────
@@ -275,10 +290,54 @@ function parseRecoveryKeyBuffer({ buffer, backupFilename }) {
   if (!parsed || typeof parsed !== 'object' || !parsed.passphrase) {
     throw new Error('Recovery key tidak valid')
   }
-  if (backupFilename && parsed.backupFilename && parsed.backupFilename !== backupFilename) {
-    throw new Error('Recovery key tidak cocok dengan file backup')
-  }
+  // Jangan blok restore hanya karena nama file berbeda (misal file di-rename saat copy/download).
+  // Selama key bisa didecrypt dan passphrase valid, backup tetap dapat direstore.
   return String(parsed.passphrase)
+}
+
+async function inspectBackupFile(backupPath) {
+  if (!existsSync(backupPath)) throw new Error('File backup tidak ditemukan')
+  const fileData = readFileSync(backupPath)
+  let plainData = fileData
+
+  if (backupPath.endsWith('.wavy')) {
+    try {
+      plainData = decryptBackupWithLocalPassphrase({ fileData })
+    } catch (error) {
+      const recoveryKeyPath = getRecoveryKeyPathForLocalBackup(backupPath)
+      if (!existsSync(recoveryKeyPath)) throw new Error('Backup terenkripsi butuh file key pendamping (*.key.wavy)')
+      const keyBuffer = readFileSync(recoveryKeyPath)
+      plainData = decryptBackupWithRecoveryKey({
+        fileData,
+        keyBuffer,
+        backupFilename: backupPath.split(/[/\\]/).pop()
+      })
+    }
+  }
+
+  const SQL = await getSqlJs()
+  const db = new SQL.Database(plainData)
+  const one = (sql) => {
+    const stmt = db.prepare(sql)
+    let row = null
+    if (stmt.step()) row = stmt.getAsObject()
+    stmt.free()
+    return row || {}
+  }
+
+  const summary = {
+    motors: Number(one('SELECT COUNT(*) AS n FROM motors').n || 0),
+    owners: Number(one('SELECT COUNT(*) AS n FROM owners').n || 0),
+    hotels: Number(one('SELECT COUNT(*) AS n FROM hotels').n || 0),
+    rentals: Number(one('SELECT COUNT(*) AS n FROM rentals').n || 0),
+    expenses: Number(one('SELECT COUNT(*) AS n FROM expenses').n || 0),
+    cashTransactions: Number(one('SELECT COUNT(*) AS n FROM cash_transactions').n || 0),
+    rentalsMinDate: String(one('SELECT MIN(date_time) AS v FROM rentals').v || ''),
+    rentalsMaxDate: String(one('SELECT MAX(date_time) AS v FROM rentals').v || '')
+  }
+
+  db.close()
+  return summary
 }
 
 function getBackupSettingsPath() {
@@ -301,8 +360,13 @@ function saveBackupSettings(nextSettings) {
 }
 
 export function shouldAutoBackupOnClose() {
+  if (skipAutoBackupOnClose) return false
   const settings = loadBackupSettings()
   return Boolean(settings.autoBackupOnClose && CLIENT_ID && CLIENT_SECRET && loadToken())
+}
+
+export function skipAutoBackupForNextClose() {
+  skipAutoBackupOnClose = true
 }
 
 async function uploadBackupToDrive({ filename, buffer }) {
@@ -512,6 +576,68 @@ export function registerBackupHandlers() {
       .sort((a, b) => b.modifiedTime.localeCompare(a.modifiedTime))
   })
 
+  ipcMain.handle('backup:import-local', async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Pilih file backup dari luar',
+      buttonLabel: 'Import',
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        { name: 'Backup Wavy', extensions: ['wavy', 'db'] },
+        { name: 'Semua File', extensions: ['*'] }
+      ]
+    })
+
+    if (result.canceled || !result.filePaths?.length) {
+      return { success: false, canceled: true, imported: [], skipped: [] }
+    }
+
+    const backupDir = getBackupDir()
+    const imported = []
+    const skipped = []
+    const importedSet = new Set()
+
+    const tryImportFile = (sourcePath, targetName) => {
+      const targetPath = join(backupDir, targetName)
+      if (importedSet.has(targetPath)) return
+      copyFileSync(sourcePath, targetPath)
+      importedSet.add(targetPath)
+      imported.push(targetName)
+    }
+
+    for (const sourcePath of result.filePaths) {
+      const sourceName = String(sourcePath).split(/[/\\]/).pop() || ''
+      const lower = sourceName.toLowerCase()
+      const isKey = lower.endsWith(RECOVERY_KEY_SUFFIX.toLowerCase())
+      const isBackup = lower.endsWith('.wavy') || lower.endsWith('.db')
+
+      if (!isKey && !isBackup) {
+        skipped.push({ file: sourceName, reason: 'Format tidak didukung' })
+        continue
+      }
+
+      tryImportFile(sourcePath, sourceName)
+
+      // Jika user pilih file .wavy, import juga key pendamping bila ada.
+      if (!isKey && lower.endsWith('.wavy')) {
+        const siblingKeyPath = `${sourcePath}${RECOVERY_KEY_SUFFIX}`
+        if (existsSync(siblingKeyPath)) {
+          tryImportFile(siblingKeyPath, `${sourceName}${RECOVERY_KEY_SUFFIX}`)
+        }
+      }
+    }
+
+    if (!imported.length) {
+      throw new Error('Tidak ada file backup yang berhasil diimport.')
+    }
+
+    logActivity({
+      action: 'backup.import-local',
+      detail: `Import backup dari file luar (${imported.length} file)`
+    })
+
+    return { success: true, canceled: false, imported, skipped }
+  })
+
   ipcMain.handle('backup:show-local-in-folder', (_, { path: backupPath }) => {
     if (!backupPath) throw new Error('Path backup tidak valid')
     const normalizedPath = String(backupPath)
@@ -522,6 +648,17 @@ export function registerBackupHandlers() {
     if (!existsSync(normalizedPath)) throw new Error('File backup tidak ditemukan')
     shell.showItemInFolder(normalizedPath)
     return { success: true }
+  })
+
+  ipcMain.handle('backup:inspect-local', async (_, { path: backupPath }) => {
+    if (!backupPath) throw new Error('Path backup tidak valid')
+    const normalizedPath = String(backupPath)
+    const backupDir = getBackupDir()
+    if (!normalizedPath.startsWith(backupDir)) {
+      throw new Error('Lokasi file backup tidak valid')
+    }
+    const summary = await inspectBackupFile(normalizedPath)
+    return { success: true, summary }
   })
 
   // Restore dari backup lokal
@@ -560,16 +697,12 @@ export function registerBackupHandlers() {
     }
 
     writeFileSync(dbPath, plainData)
+    reloadDbFromBuffer(plainData)
     logActivity({
       action: 'backup.restore-local',
       detail: `Restore backup lokal (${backupPath.split(/[/\\]/).pop() || backupPath})`
     })
-    setTimeout(() => {
-      try { app.relaunch() } catch { /* ignore */ }
-      app.exit(0)
-    }, 800)
-
-    return { success: true, relaunching: true }
+    return { success: true, relaunching: false }
   })
 
   // ── Upload ke Google Drive (terenkripsi) ───────────────────────────────────
@@ -642,16 +775,12 @@ export function registerBackupHandlers() {
     }
 
     writeFileSync(dbPath, plainData)
+    reloadDbFromBuffer(plainData)
     logActivity({
       action: 'backup.gdrive-restore',
       detail: `Restore backup dari Google Drive (${fileName || fileId})`
     })
-    setTimeout(() => {
-      try { app.relaunch() } catch { /* ignore */ }
-      app.exit(0)
-    }, 800)
-
-    return { success: true, filename: fileName, relaunching: true }
+    return { success: true, filename: fileName, relaunching: false }
   })
 
   ipcMain.handle('backup:gdrive-delete', async (_, { fileId, fileName }) => {

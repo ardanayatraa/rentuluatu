@@ -17,14 +17,10 @@
             v-model="code"
             type="password"
             class="w-full border border-slate-200 rounded-lg px-4 py-3 text-center text-lg tracking-widest focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-            placeholder="Kosongkan saat login pertama"
+            placeholder="Masukkan kode akses"
             autofocus
           />
         </div>
-
-        <p class="text-[11px] text-slate-500 text-left">
-          Login pertama (install baru): biarkan kosong, lalu set password.
-        </p>
 
         <p v-if="error" class="text-red-500 text-xs">{{ error }}</p>
 

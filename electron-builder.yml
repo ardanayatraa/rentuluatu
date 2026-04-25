@@ -24,6 +24,7 @@ nsis:
   runAfterFinish: true
   oneClick: false
   allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
   license: build/license.txt
 mac:
   entitlementsInherit: build/entitlements.mac.plist

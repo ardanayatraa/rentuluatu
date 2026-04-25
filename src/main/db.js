@@ -5,6 +5,7 @@ import initSqlJs from 'sql.js'
 
 let db
 let dbPath
+let sqlModule
 let saveTimer = null
 let isDirty = false
 const SAVE_DEBOUNCE_MS = 250
@@ -21,16 +22,16 @@ export async function initDb() {
       ? join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm')
       : join(__dirname, '../../node_modules/sql.js/dist/sql-wasm.wasm')
   )
-  const SQL = await initSqlJs({ locateFile: () => wasmPath })
+  sqlModule = await initSqlJs({ locateFile: () => wasmPath })
   const userDataPath = app.getPath('userData')
   mkdirSync(userDataPath, { recursive: true })
   dbPath = join(userDataPath, 'wavy.db')
 
   if (existsSync(dbPath)) {
     const fileBuffer = readFileSync(dbPath)
-    db = new SQL.Database(fileBuffer)
+    db = new sqlModule.Database(fileBuffer)
   } else {
-    db = new SQL.Database()
+    db = new sqlModule.Database()
   }
 
   createBaseSchema()
@@ -107,6 +108,30 @@ function all(sql, params = []) {
   }
   stmt.free()
   return rows
+}
+
+export function reloadDbFromBuffer(buffer) {
+  if (!sqlModule) throw new Error('Database engine belum siap')
+  if (saveTimer) {
+    clearTimeout(saveTimer)
+    saveTimer = null
+  }
+  isDirty = false
+
+  try {
+    db?.close?.()
+  } catch {
+    // ignore
+  }
+
+  db = buffer ? new sqlModule.Database(buffer) : new sqlModule.Database()
+  createBaseSchema()
+  ensureRequiredColumns()
+  runMigrations()
+  ensureRequiredColumns()
+  createBaseIndexes()
+  seedDefaults()
+  forceSaveDb()
 }
 
 function hasTableColumn(tableName, columnName) {

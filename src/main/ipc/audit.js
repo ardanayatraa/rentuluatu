@@ -1,7 +1,11 @@
-import { ipcMain } from 'electron'
+import { ipcMain, app } from 'electron'
 import { dbOps, saveDb } from '../db'
 import { calcCommission } from '../lib/finance'
 import { logActivity } from '../lib/activity-log'
+
+function isInternalToolsEnabled() {
+  return !app.isPackaged || process.env.WAVY_INTERNAL_TOOLS === '1'
+}
 
 function normalizeNumber(value) {
   const num = Number(value || 0)
@@ -521,6 +525,9 @@ export function registerAuditHandlers() {
     return report
   })
   ipcMain.handle('audit:auto-fix', () => {
+    if (!isInternalToolsEnabled()) {
+      throw new Error('Auto-fix audit dinonaktifkan untuk build client')
+    }
     const result = runAutoFix()
     logActivity({
       action: 'audit.auto-fix',

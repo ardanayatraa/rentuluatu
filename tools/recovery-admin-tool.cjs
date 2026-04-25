@@ -1,11 +1,10 @@
 ﻿#!/usr/bin/env node
-import { createDecipheriv, scryptSync } from 'crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
-import { dirname, resolve } from 'path'
-import os from 'os'
+const { createDecipheriv, scryptSync } = require('crypto')
+const { existsSync, mkdirSync, readFileSync, writeFileSync } = require('fs')
+const { dirname, resolve } = require('path')
+const os = require('os')
 
 const ENC_MAGIC = Buffer.from('WAVY01')
-const KEY_SUFFIX = '.key.wavy'
 const LEGACY_RECOVERY_PASSWORD = 'wavy2026'
 
 function parseArgs(argv) {
@@ -30,7 +29,7 @@ function parseArgs(argv) {
 }
 
 function usage() {
-  console.log(`\nWavy Recovery Admin Tool (Node.js, no Python)\n\nUsage:\n  node tools/recovery-admin-tool.js inspect-key --key-file <path> [--backup-name <name>] [--recovery-password <secret>] [--show-passphrase]\n  node tools/recovery-admin-tool.js check-pair --backup-file <path.wavy> --key-file <path.key.wavy> [--recovery-password <secret>]\n  node tools/recovery-admin-tool.js decrypt-backup --backup-file <path.wavy> --key-file <path.key.wavy> --out <path.db> [--recovery-password <secret>]\n  node tools/recovery-admin-tool.js apply-key --key-file <path.key.wavy> [--key-path <path/.backup-key>] [--recovery-password <secret>]\n\nNotes:\n  - recovery password default diambil dari env BACKUP_RECOVERY_PASSWORD.\n  - untuk production, set BACKUP_RECOVERY_PASSWORD yang sama dengan app build.\n`) 
+  console.log(`\nWavy Recovery Admin Tool (Node.js, no Python)\n\nUsage:\n  recovery-admin-tool.exe inspect-key --key-file <path> [--backup-name <name>] [--recovery-password <secret>] [--show-passphrase]\n  recovery-admin-tool.exe check-pair --backup-file <path.wavy> --key-file <path.key.wavy> [--recovery-password <secret>]\n  recovery-admin-tool.exe decrypt-backup --backup-file <path.wavy> --key-file <path.key.wavy> --out <path.db> [--recovery-password <secret>]\n  recovery-admin-tool.exe apply-key --key-file <path.key.wavy> [--key-path <path/.backup-key>] [--recovery-password <secret>]\n`) 
 }
 
 function deriveKey(passphrase, salt) {

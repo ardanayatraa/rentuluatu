@@ -7,6 +7,9 @@ vi.mock('electron', () => ({
     handle: vi.fn((channel, fn) => {
       handlers.set(channel, fn)
     })
+  },
+  app: {
+    isPackaged: false
   }
 }))
 

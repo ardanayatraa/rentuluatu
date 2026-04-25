@@ -11,12 +11,27 @@ const STABLE_USER_DATA_DIR = 'Wavy Rental'
 function configureStableUserDataPath() {
   const legacyUserDataPath = app.getPath('userData')
   const stableUserDataPath = join(app.getPath('appData'), STABLE_USER_DATA_DIR)
+  const stableDbPath = join(stableUserDataPath, 'wavy.db')
 
-  if (legacyUserDataPath !== stableUserDataPath && existsSync(legacyUserDataPath) && !existsSync(stableUserDataPath)) {
-    mkdirSync(stableUserDataPath, { recursive: true })
-    cpSync(legacyUserDataPath, stableUserDataPath, { recursive: true })
-  } else {
-    mkdirSync(stableUserDataPath, { recursive: true })
+  mkdirSync(stableUserDataPath, { recursive: true })
+
+  if (!existsSync(stableDbPath)) {
+    const appDataRoot = app.getPath('appData')
+    const legacyCandidates = [
+      legacyUserDataPath,
+      join(appDataRoot, 'wavy'),
+      join(appDataRoot, 'Wavy'),
+      join(appDataRoot, 'Wavy - CashFlow Monitoring')
+    ]
+
+    const sourcePath = legacyCandidates.find((candidatePath) => {
+      if (!candidatePath || candidatePath === stableUserDataPath) return false
+      return existsSync(join(candidatePath, 'wavy.db'))
+    })
+
+    if (sourcePath) {
+      cpSync(sourcePath, stableUserDataPath, { recursive: true, force: false, errorOnExist: false })
+    }
   }
 
   app.setPath('userData', stableUserDataPath)

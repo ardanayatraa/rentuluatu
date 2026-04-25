@@ -84,7 +84,7 @@
                 <span class="material-symbols-outlined text-sm">fact_check</span>
                 {{ auditLoading ? 'Mengecek...' : 'Cek Sekarang' }}
               </button>
-              <button @click="runAuditAutoFix" :disabled="auditFixing || auditLoading" class="btn-primary text-xs px-3 py-1.5">
+              <button v-if="isDev" @click="runAuditAutoFix" :disabled="auditFixing || auditLoading" class="btn-primary text-xs px-3 py-1.5">
                 <span class="material-symbols-outlined text-sm">build_circle</span>
                 {{ auditFixing ? 'Memperbaiki...' : 'Perbaiki Otomatis' }}
               </button>
@@ -240,7 +240,7 @@
         </div>
 
         <!-- Danger Zone Reset -->
-        <div v-if="isDev || productionReset.visible" class="card border border-red-200 bg-red-50/30">
+        <div v-if="isDev" class="card border border-red-200 bg-red-50/30">
           <h3 class="font-bold text-red-600 text-sm mb-2 flex items-center gap-2">
             <span class="material-symbols-outlined text-base">warning</span> Reset Database
           </h3>
@@ -367,6 +367,11 @@
               <span class="material-symbols-outlined text-sm">save</span>
               {{ backupLoading ? 'Menyimpan...' : 'Buat Checkpoint Lokal' }}
             </button>
+            <button @click="importExternalBackup" :disabled="backupLoading"
+              class="btn-secondary flex-1 justify-center text-xs">
+              <span class="material-symbols-outlined text-sm">upload_file</span>
+              Import dari File
+            </button>
             <button @click="loadBackupList" class="btn-secondary text-xs px-3" title="Refresh">
               <span class="material-symbols-outlined text-sm">refresh</span>
             </button>
@@ -408,6 +413,10 @@
                 <button @click="restoreLocal(b)"
                   class="text-xs text-primary font-bold hover:underline flex items-center gap-1">
                   <span class="material-symbols-outlined text-sm">restore</span> Restore
+                </button>
+                <button @click="inspectLocalBackup(b)"
+                  class="text-xs text-indigo-600 font-bold hover:underline flex items-center gap-1">
+                  <span class="material-symbols-outlined text-sm">visibility</span> Lihat Isi
                 </button>
                 <button @click="showLocalBackupInFolder(b)"
                   class="text-xs text-slate-500 font-bold hover:text-slate-700 flex items-center gap-1">
@@ -998,6 +1007,7 @@ async function runProductionSeed() {
 }
 
 async function runAuditAutoFix() {
+  if (!isDev) return
   auditFixing.value = true
   auditError.value = ''
   auditFixMessage.value = ''
@@ -1062,6 +1072,23 @@ async function createLocalBackup() {
   finally { backupLoading.value = false }
 }
 
+async function importExternalBackup() {
+  backupLoading.value = true
+  try {
+    const result = await window.api.backupImportLocal()
+    if (result?.canceled) return
+    await loadBackupList()
+    const skippedCount = Array.isArray(result?.skipped) ? result.skipped.length : 0
+    const importedCount = Array.isArray(result?.imported) ? result.imported.length : 0
+    const suffix = skippedCount > 0 ? ` (${skippedCount} file dilewati)` : ''
+    setMsg(`Import selesai: ${importedCount} file berhasil.${suffix}`)
+  } catch (e) {
+    setMsg('Import backup gagal: ' + e.message, false)
+  } finally {
+    backupLoading.value = false
+  }
+}
+
 async function uploadToGdrive() {
   backupLoading.value = true
   try { const res = await window.api.backupGdriveUpload(); setMsg(`Berhasil upload: ${res.filename}`); if (backupTab.value === 'drive') await loadDriveBackups() }
@@ -1085,7 +1112,11 @@ async function toggleAutoBackupOnClose() {
 async function restoreLocal(backup) {
   if (!confirm(`Restore dari "${backup.name}"?\n\nData saat ini akan diganti.`)) return
   backupLoading.value = true
-  try { await window.api.backupRestoreLocal({ path: backup.path }); setMsg('Restore berhasil! App akan reload...'); setTimeout(() => window.location.reload(), 1500) }
+  try {
+    await window.api.backupRestoreLocal({ path: backup.path })
+    await refreshAfterRestore()
+    setMsg('Restore berhasil tanpa restart aplikasi.')
+  }
   catch (e) { setMsg('Restore gagal: ' + e.message, false) }
   finally { backupLoading.value = false }
 }
@@ -1098,12 +1129,52 @@ async function showLocalBackupInFolder(backup) {
   }
 }
 
+async function inspectLocalBackup(backup) {
+  backupLoading.value = true
+  try {
+    const result = await window.api.backupInspectLocal({ path: backup.path })
+    const s = result?.summary || {}
+    const lines = [
+      `File: ${backup.name}`,
+      `Motor: ${s.motors ?? 0}`,
+      `Mitra/Owner: ${s.owners ?? 0}`,
+      `Hotel/Vendor: ${s.hotels ?? 0}`,
+      `Rental: ${s.rentals ?? 0}`,
+      `Pengeluaran: ${s.expenses ?? 0}`,
+      `Mutasi Kas: ${s.cashTransactions ?? 0}`,
+      `Periode Rental: ${s.rentalsMinDate || '-'} s/d ${s.rentalsMaxDate || '-'}`
+    ]
+    alert(lines.join('\n'))
+  } catch (e) {
+    setMsg('Gagal membaca isi backup: ' + e.message, false)
+  } finally {
+    backupLoading.value = false
+  }
+}
+
 async function restoreDrive(backup) {
   if (!confirm(`Restore dari Drive: "${backup.name}"?\n\nData saat ini akan diganti.`)) return
   backupLoading.value = true
-  try { await window.api.backupGdriveRestore({ fileId: backup.id, fileName: backup.name }); setMsg('Restore berhasil! App akan reload...'); setTimeout(() => window.location.reload(), 1500) }
+  try {
+    await window.api.backupGdriveRestore({ fileId: backup.id, fileName: backup.name })
+    await refreshAfterRestore()
+    setMsg('Restore berhasil tanpa restart aplikasi.')
+  }
   catch (e) { setMsg('Restore gagal: ' + e.message, false) }
   finally { backupLoading.value = false }
+}
+
+async function refreshAfterRestore() {
+  await loadBackupList()
+  await loadActivityLogs({ resetPage: true })
+  await runSystemAudit()
+  if (gdriveConnected.value) {
+    try {
+      await loadDriveBackups()
+    } catch {
+      // ignore
+    }
+  }
 }
 
 async function deleteDriveBackup(backup) {

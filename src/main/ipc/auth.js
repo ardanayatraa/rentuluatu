@@ -24,11 +24,11 @@ export function registerAuthHandlers() {
           clearCurrentActor()
           logActivity({
             action: 'auth.login.failed',
-            detail: `Login gagal untuk "${username}" (setup awal wajib kode akses kosong)`,
+            detail: `Login gagal untuk "${username}" (kode akses tidak valid)`,
             actor: { id: null, username: 'guest' },
             source: 'user'
           })
-          return { success: false, message: 'Login pertama: kosongkan kode akses, lalu buat password baru.' }
+          return { success: false, message: 'Kode akses salah' }
         }
       } else if (user.password_hash.startsWith('$2')) {
         try {
