@@ -3,6 +3,26 @@
 
 export const CHANGELOG = [
   {
+    version: '1.0.28',
+    date: '2026-04-29',
+    badge: { text: 'Extend Standalone & Restore Safety', tone: 'emerald' },
+    intro: 'Rilis ini menjadikan Extend sebagai transaksi mandiri, merapikan hitungan laporan/komisi, dan memperketat alur backup restore.',
+    items: [
+      {
+        title: 'Extend Jadi Transaksi Mandiri',
+        desc: 'Extend tidak lagi bergantung pada transaksi rental lama. Nama pelanggan kosong disimpan sebagai "-", dan input motor/vendor/harga dihitung seperti transaksi biasa.'
+      },
+      {
+        title: 'Hitungan Komisi dan Vendor Dirapikan',
+        desc: 'Fee vendor dari transaksi extend ikut masuk laporan vendor, neraca, dan pembagian Wavy Gets serta Bagian Mitra.'
+      },
+      {
+        title: 'Backup Restore Lebih Aman',
+        desc: 'Restore lokal dibatasi ke folder backup aplikasi, membuat safety backup sebelum replace database, dan backup lama dengan relasi extend otomatis dinormalisasi.'
+      }
+    ]
+  },
+  {
     version: '1.0.20',
     date: '2026-04-19',
     badge: { text: 'Admin Tooling & Report Cleanup', tone: 'emerald' },

@@ -93,13 +93,6 @@ export function registerRentalHandlers() {
       [replacementRentalId]
     )
   }
-  const getExtendChildren = (parentRentalId) => dbOps.all(
-    `SELECT * FROM rentals
-     WHERE parent_rental_id = ?
-       AND relation_type = 'extend'
-     ORDER BY id DESC`,
-    [parentRentalId]
-  )
   const ensureRentalDeleteAllowed = (rental) => {
     if (!rental) throw new Error('Rental tidak ditemukan')
     if (rental.payout_id && rental.payout_id !== 0) {
@@ -116,21 +109,11 @@ export function registerRentalHandlers() {
 
     const rental = dbOps.get('SELECT * FROM rentals WHERE id = ?', [normalizedId])
     ensureRentalDeleteAllowed(rental)
-
-    const extendChildren = getExtendChildren(normalizedId)
-    for (const child of extendChildren) {
-      validateDeleteCascade(child.id, visited)
-    }
   }
   const deleteRentalCascade = (rentalId, visited = new Set()) => {
     const normalizedId = Number(rentalId || 0)
     if (!normalizedId || visited.has(normalizedId)) return
     visited.add(normalizedId)
-
-    const extendChildren = getExtendChildren(normalizedId)
-    for (const child of extendChildren) {
-      deleteRentalCascade(child.id, visited)
-    }
 
     deleteRefundTransactionsByRentalId(normalizedId)
     deleteRentalCashTransactions(normalizedId)
@@ -263,7 +246,6 @@ export function registerRentalHandlers() {
         pr.invoice_number as parent_invoice_number,
         pr.date_time as parent_date_time,
         pr.customer_name as parent_customer_name,
-        pr.is_extension as parent_is_extension,
         pr.relation_type as parent_relation_type,
         pm.model as parent_model,
         pm.plate_number as parent_plate_number
@@ -306,6 +288,7 @@ export function registerRentalHandlers() {
     const motor = dbOps.get('SELECT * FROM motors WHERE id = ?', [data.motor_id])
     if (!motor) throw new Error('Motor tidak ditemukan')
     const paymentMethod = assertValidPaymentMethod(data.payment_method)
+    const customerName = String(data.customer_name || '').trim() || '-'
 
     // FIX #3: Validasi vendor_fee tidak boleh melebihi total_price
     const vendorFee = data.vendor_fee || 0
@@ -326,7 +309,7 @@ export function registerRentalHandlers() {
         INSERT INTO rentals (date_time, customer_name, hotel, hotel_id, motor_id, period_days,
           payment_method, total_price, price_per_day, vendor_fee, sisa, wavy_gets, owner_gets, status, invoice_number, relation_type)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [data.date_time, data.customer_name, data.hotel || null, data.hotel_id || null, data.motor_id,
+      `, [data.date_time, customerName, data.hotel || null, data.hotel_id || null, data.motor_id,
           data.period_days, paymentMethod, data.total_price, pricePerDay,
           vendorFee, sisa, wavy_gets, owner_gets, rentalStatus, invoiceNumber, 'rental'])
 
@@ -337,7 +320,7 @@ export function registerRentalHandlers() {
           paymentMethod,
           totalPrice: data.total_price,
           vendorFee,
-          customerName: data.customer_name,
+          customerName,
           motorModel: motor.model,
           dateTime: data.date_time,
           relationType: 'rental'
@@ -358,12 +341,10 @@ export function registerRentalHandlers() {
   })
 
   ipcMain.handle('rental:extend', (_, data) => {
-    const parentRental = dbOps.get('SELECT * FROM rentals WHERE id = ?', [data.parent_rental_id])
-    if (!parentRental) throw new Error('Transaksi awal tidak ditemukan')
-    if (parentRental.status === 'refunded') throw new Error('Transaksi refunded tidak bisa di-extend')
-
     const motor = dbOps.get('SELECT * FROM motors WHERE id = ?', [data.motor_id])
     if (!motor) throw new Error('Motor tidak ditemukan')
+
+    const customerName = String(data.customer_name || '').trim() || '-'
 
     const periodDays = Number(data.period_days || 0)
     const totalPrice = Number(data.total_price || 0)
@@ -372,8 +353,9 @@ export function registerRentalHandlers() {
 
     const paymentMethod = assertValidPaymentMethod(data.payment_method)
 
-    // Aturan bisnis: extend tidak membawa fee vendor hotel.
-    const vendorFee = 0
+    const vendorFee = Number(data.vendor_fee || 0)
+    if (vendorFee < 0) throw new Error('Vendor fee tidak boleh negatif')
+    if (vendorFee > totalPrice) throw new Error('Vendor fee tidak boleh melebihi total harga sewa')
 
     const { sisa, wavy_gets, owner_gets } = calcCommission(motor.type, totalPrice, vendorFee)
     const pricePerDay = periodDays > 0 ? totalPrice / periodDays : totalPrice
@@ -390,9 +372,9 @@ export function registerRentalHandlers() {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, 1, 'extend', ?)
       `, [
         data.date_time,
-        parentRental.customer_name,
-        parentRental.hotel || null,
-        parentRental.hotel_id || null,
+        customerName,
+        data.hotel || null,
+        data.hotel_id || null,
         data.motor_id,
         periodDays,
         paymentMethod,
@@ -403,7 +385,7 @@ export function registerRentalHandlers() {
         wavy_gets,
         owner_gets,
         invoiceNumber,
-        parentRental.id
+        null
       ])
 
       const { id: rentalId } = dbOps.get('SELECT last_insert_rowid() as id')
@@ -412,7 +394,7 @@ export function registerRentalHandlers() {
         paymentMethod,
         totalPrice,
         vendorFee,
-        customerName: parentRental.customer_name,
+        customerName,
         motorModel: motor.model,
         dateTime: data.date_time,
         relationType: 'extend'
@@ -422,7 +404,7 @@ export function registerRentalHandlers() {
       logActivity({
         source: 'user',
         action: 'rental.extend',
-        detail: `Extend rental #${parentRental.id} menjadi transaksi #${rentalId} (${invoiceNumber})`
+        detail: `Tambah extend #${rentalId} (${invoiceNumber})`
       })
       return { id: rentalId, invoice_number: invoiceNumber }
     } catch (error) {
@@ -649,10 +631,11 @@ export function registerRentalHandlers() {
     const motor = dbOps.get('SELECT * FROM motors WHERE id = ?', [data.motor_id])
     if (!motor) throw new Error('Motor tidak ditemukan')
     const paymentMethod = assertValidPaymentMethod(data.payment_method)
+    const customerName = String(data.customer_name || '').trim() || '-'
 
     // FIX #3: Validasi vendor_fee saat update juga
     let vendorFee = data.vendor_fee || 0
-    if (existingRental.relation_type === 'extend' || existingRental.relation_type === 'swap') {
+    if (existingRental.relation_type === 'swap') {
       vendorFee = 0
     }
     if (vendorFee < 0) throw new Error('Vendor fee tidak boleh negatif')
@@ -671,7 +654,7 @@ export function registerRentalHandlers() {
         UPDATE rentals SET date_time=?, customer_name=?, hotel=?, hotel_id=?, motor_id=?, period_days=?,
           payment_method=?, total_price=?, price_per_day=?, vendor_fee=?, sisa=?, wavy_gets=?, owner_gets=?
         WHERE id=?
-      `, [data.date_time, data.customer_name, data.hotel || null, data.hotel_id || null, data.motor_id, data.period_days,
+      `, [data.date_time, customerName, data.hotel || null, data.hotel_id || null, data.motor_id, data.period_days,
           paymentMethod, data.total_price, pricePerDay, vendorFee, sisa, wavy_gets, owner_gets, id])
 
       if (existingRental.status !== 'refunded') {
@@ -680,7 +663,7 @@ export function registerRentalHandlers() {
           paymentMethod,
           totalPrice: data.total_price,
           vendorFee,
-          customerName: data.customer_name,
+          customerName,
           motorModel: motor.model,
           dateTime: data.date_time,
           relationType: existingRental.relation_type || 'rental'

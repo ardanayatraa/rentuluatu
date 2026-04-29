@@ -1,5 +1,5 @@
 import { ipcMain, app, shell, dialog } from 'electron'
-import { basename, dirname, join } from 'path'
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'path'
 import {
   copyFileSync,
   existsSync,
@@ -277,6 +277,25 @@ function createSafetyBackupFilename(date = new Date()) {
 
 function safeUnlink(filePath) {
   try { unlinkSync(filePath) } catch { /* ignore */ }
+}
+
+function assertLocalBackupPath(backupPath) {
+  if (!backupPath) throw new Error('Path backup tidak valid')
+  const backupDir = resolve(getBackupDir())
+  const normalizedPath = resolve(String(backupPath))
+  const relativePath = relative(backupDir, normalizedPath)
+  const firstSegment = relativePath.split(/[\\/]/)[0]
+  if (!relativePath || firstSegment === '..' || isAbsolute(relativePath)) {
+    throw new Error('Lokasi file backup tidak valid')
+  }
+  const lowerPath = normalizedPath.toLowerCase()
+  if (lowerPath.endsWith(RECOVERY_KEY_SUFFIX.toLowerCase())) {
+    throw new Error('File key tidak bisa direstore langsung')
+  }
+  if (!lowerPath.endsWith('.wavy') && !lowerPath.endsWith('.db')) {
+    throw new Error('Format backup tidak valid')
+  }
+  return normalizedPath
 }
 
 function parseBackupDateFromName(name) {
@@ -862,41 +881,32 @@ export function registerBackupHandlers() {
   })
 
   ipcMain.handle('backup:show-local-in-folder', (_, { path: backupPath }) => {
-    if (!backupPath) throw new Error('Path backup tidak valid')
-    const normalizedPath = String(backupPath)
-    const backupDir = getBackupDir()
-    if (!normalizedPath.startsWith(backupDir)) {
-      throw new Error('Lokasi file backup tidak valid')
-    }
+    const normalizedPath = assertLocalBackupPath(backupPath)
     if (!existsSync(normalizedPath)) throw new Error('File backup tidak ditemukan')
     shell.showItemInFolder(normalizedPath)
     return { success: true }
   })
 
   ipcMain.handle('backup:inspect-local', async (_, { path: backupPath }) => {
-    if (!backupPath) throw new Error('Path backup tidak valid')
-    const normalizedPath = String(backupPath)
-    const backupDir = getBackupDir()
-    if (!normalizedPath.startsWith(backupDir)) {
-      throw new Error('Lokasi file backup tidak valid')
-    }
+    const normalizedPath = assertLocalBackupPath(backupPath)
     const summary = await inspectBackupFile(normalizedPath)
     return { success: true, summary }
   })
 
   // Restore dari backup lokal
   ipcMain.handle('backup:restore-local', async (_, { path: backupPath }) => {
-    if (!existsSync(backupPath)) throw new Error('File backup tidak ditemukan')
+    const normalizedPath = assertLocalBackupPath(backupPath)
+    if (!existsSync(normalizedPath)) throw new Error('File backup tidak ditemukan')
 
     forceSaveDb()
-    const plainData = readPlainLocalBackup(backupPath)
+    const plainData = readPlainLocalBackup(normalizedPath)
     const summary = await validateBackupBuffer(plainData)
     const safetyBackup = writeSafetyBackupIfPossible()
     replaceDbFileAtomically(plainData)
     reloadDbFromBuffer(plainData)
     logActivity({
       action: 'backup.restore-local',
-      detail: `Restore backup lokal (${basename(backupPath) || backupPath})`
+      detail: `Restore backup lokal (${basename(normalizedPath) || normalizedPath})`
     })
     return {
       success: true,

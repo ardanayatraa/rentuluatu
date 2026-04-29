@@ -166,6 +166,35 @@ describe('data safety hardening', () => {
     expect(dbOps.get('SELECT COUNT(*) as c FROM cash_transactions').c).toBe(2)
   })
 
+  it('normalisasi DB melepas parent rental dari extend lama', async () => {
+    const userDataPath = makeTempDir()
+    const { dbModule } = await loadRuntime(userDataPath)
+    const { dbOps, forceSaveDb, reloadDbFromBuffer } = dbModule
+
+    dbOps.runRaw("INSERT OR IGNORE INTO owners (id, name) VALUES (1, 'Owner A')")
+    dbOps.runRaw(
+      "INSERT OR IGNORE INTO motors (id, model, plate_number, type, owner_id) VALUES (1, 'Vario', 'DK 9001 XX', 'titipan', 1)"
+    )
+    dbOps.runRaw(`
+      INSERT INTO rentals (
+        id, date_time, customer_name, motor_id, period_days, payment_method, total_price,
+        price_per_day, vendor_fee, sisa, wavy_gets, owner_gets, status, invoice_number, relation_type
+      ) VALUES (200, '2026-04-01T10:00:00', 'Ayu', 1, 2, 'tunai', 300000, 150000, 0, 300000, 90000, 210000, 'completed', 'LEG-200', 'rental')
+    `)
+    dbOps.runRaw(`
+      INSERT INTO rentals (
+        id, date_time, customer_name, motor_id, period_days, payment_method, total_price,
+        price_per_day, vendor_fee, sisa, wavy_gets, owner_gets, status, invoice_number,
+        is_extension, relation_type, parent_rental_id
+      ) VALUES (201, '2026-04-03T10:00:00', 'Ayu', 1, 1, 'tunai', 150000, 150000, 0, 150000, 45000, 105000, 'completed', 'LEG-201', 1, 'extend', 200)
+    `)
+    forceSaveDb()
+
+    reloadDbFromBuffer(readFileSync(join(userDataPath, 'wavy.db')))
+
+    expect(dbOps.get('SELECT parent_rental_id FROM rentals WHERE id = 201').parent_rental_id).toBeNull()
+  })
+
   it('restore lokal valid membuat safety backup terenkripsi dan mengganti DB setelah validasi', async () => {
     const userDataPath = makeTempDir()
     const { handlers, dbModule } = await loadRuntime(userDataPath)
@@ -188,6 +217,40 @@ describe('data safety hardening', () => {
     ).toBe(0)
     expect(
       dbModule.dbOps.get("SELECT COUNT(*) as c FROM rentals WHERE customer_name = 'Ayu'").c
+    ).toBe(1)
+
+    const safetyRestore = await handlers.get('backup:restore-local')(null, {
+      path: result.safetyBackupPath
+    })
+    expect(safetyRestore.success).toBe(true)
+    expect(safetyRestore.summary.rentals).toBe(2)
+    expect(
+      dbModule.dbOps.get("SELECT COUNT(*) as c FROM rentals WHERE customer_name = 'Doni'").c
+    ).toBe(1)
+    expect(
+      dbModule.dbOps.get("SELECT COUNT(*) as c FROM rentals WHERE customer_name = 'Ayu'").c
+    ).toBe(1)
+  })
+
+  it('restore lokal menolak path di luar folder backup dan DB aktif tidak berubah', async () => {
+    const userDataPath = makeTempDir()
+    const { handlers, dbModule } = await loadRuntime(userDataPath)
+    insertBusinessRows(dbModule, { customer: 'Ayu' })
+
+    const backup = await handlers.get('backup:create-local')()
+    insertBusinessRows(dbModule, { customer: 'Doni' })
+
+    const outsidePath = join(userDataPath, 'outside.wavy')
+    writeFileSync(outsidePath, readFileSync(backup.path))
+    const dbPath = join(userDataPath, 'wavy.db')
+    const before = readFileSync(dbPath)
+
+    await expect(
+      handlers.get('backup:restore-local')(null, { path: outsidePath })
+    ).rejects.toThrow('Lokasi file backup tidak valid')
+    expect(readFileSync(dbPath).equals(before)).toBe(true)
+    expect(
+      dbModule.dbOps.get("SELECT COUNT(*) as c FROM rentals WHERE customer_name = 'Doni'").c
     ).toBe(1)
   })
 
@@ -225,6 +288,45 @@ describe('data safety hardening', () => {
       'Tabel wajib hilang'
     )
     expect(readFileSync(dbPath).equals(before)).toBe(true)
+  })
+
+  it('restore lokal dari backup lama tetap melepas parent rental extend', async () => {
+    const userDataPath = makeTempDir()
+    const { handlers, dbModule } = await loadRuntime(userDataPath)
+    const { dbOps, forceSaveDb } = dbModule
+
+    dbOps.runRaw("INSERT OR IGNORE INTO owners (id, name) VALUES (1, 'Owner A')")
+    dbOps.runRaw(
+      "INSERT OR IGNORE INTO motors (id, model, plate_number, type, owner_id) VALUES (1, 'Vario', 'DK 9002 XX', 'titipan', 1)"
+    )
+    dbOps.runRaw(`
+      INSERT INTO rentals (
+        id, date_time, customer_name, motor_id, period_days, payment_method, total_price,
+        price_per_day, vendor_fee, sisa, wavy_gets, owner_gets, status, invoice_number, relation_type
+      ) VALUES (300, '2026-04-01T10:00:00', 'Legacy', 1, 2, 'tunai', 300000, 150000, 0, 300000, 90000, 210000, 'completed', 'LEG-300', 'rental')
+    `)
+    dbOps.runRaw(`
+      INSERT INTO rentals (
+        id, date_time, customer_name, motor_id, period_days, payment_method, total_price,
+        price_per_day, vendor_fee, sisa, wavy_gets, owner_gets, status, invoice_number,
+        is_extension, relation_type, parent_rental_id
+      ) VALUES (301, '2026-04-03T10:00:00', 'Legacy', 1, 1, 'tunai', 150000, 150000, 0, 150000, 45000, 105000, 'completed', 'LEG-301', 1, 'extend', 300)
+    `)
+    forceSaveDb()
+
+    const backupDir = join(userDataPath, 'backups')
+    mkdirSync(backupDir, { recursive: true })
+    const legacyBackupPath = join(backupDir, 'legacy-extend.db')
+    writeFileSync(legacyBackupPath, readFileSync(join(userDataPath, 'wavy.db')))
+
+    dbOps.runRaw('DELETE FROM rentals')
+    forceSaveDb()
+
+    const result = await handlers.get('backup:restore-local')(null, { path: legacyBackupPath })
+
+    expect(result.success).toBe(true)
+    expect(dbOps.get('SELECT COUNT(*) as c FROM rentals').c).toBe(2)
+    expect(dbOps.get('SELECT parent_rental_id FROM rentals WHERE id = 301').parent_rental_id).toBeNull()
   })
 
   it('backup dan restore dataset multi-tahun mempertahankan jumlah row dan total nominal', async () => {

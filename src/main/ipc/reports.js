@@ -409,7 +409,7 @@ export function registerReportHandlers() {
        WHERE status != 'refunded'
          AND date_time <= ?
          AND hotel_id IS NOT NULL
-         AND COALESCE(relation_type, 'rental') IN ('rental', 'swap_source')
+         AND COALESCE(relation_type, 'rental') IN ('rental', 'extend', 'swap_source')
          AND hotel_payout_id IS NULL
          AND NOT EXISTS (
            SELECT 1

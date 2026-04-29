@@ -159,6 +159,15 @@ function ensureRequiredColumns() {
       db.run("UPDATE expenses SET cash_bucket = 'pendapatan' WHERE cash_bucket IS NULL OR TRIM(cash_bucket) = ''")
     }
   } catch (_) {}
+
+  try {
+    db.run(`
+      UPDATE rentals
+      SET parent_rental_id = NULL
+      WHERE LOWER(COALESCE(relation_type, '')) = 'extend'
+         OR COALESCE(is_extension, 0) = 1
+    `)
+  } catch (_) {}
 }
 
 export const dbOps = { run, runRaw, get, all }

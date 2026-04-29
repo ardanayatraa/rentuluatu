@@ -28,7 +28,7 @@ export function registerHotelHandlers() {
           WHERE r.hotel_id = h.id
             AND r.status != 'refunded'
             AND r.vendor_fee > 0
-            AND COALESCE(r.relation_type, 'rental') IN ('rental', 'swap_source')
+            AND COALESCE(r.relation_type, 'rental') IN ('rental', 'extend', 'swap_source')
         ) as total_commission,
         (
           SELECT COALESCE(SUM(r.vendor_fee), 0)
@@ -36,7 +36,7 @@ export function registerHotelHandlers() {
           WHERE r.hotel_id = h.id
             AND r.status != 'refunded'
             AND r.vendor_fee > 0
-            AND COALESCE(r.relation_type, 'rental') IN ('rental', 'swap_source')
+            AND COALESCE(r.relation_type, 'rental') IN ('rental', 'extend', 'swap_source')
             AND NOT EXISTS (
               SELECT 1
               FROM cash_transactions ct
@@ -144,7 +144,7 @@ export function registerHotelHandlers() {
       FROM rentals r
       JOIN motors m ON r.motor_id = m.id
       WHERE r.hotel_id = ? AND r.status != 'refunded' AND r.vendor_fee > 0
-        AND COALESCE(r.relation_type, 'rental') IN ('rental', 'swap_source')
+        AND COALESCE(r.relation_type, 'rental') IN ('rental', 'extend', 'swap_source')
       ${rentalDateFilter}
       ORDER BY r.date_time DESC
     `, previewParams)

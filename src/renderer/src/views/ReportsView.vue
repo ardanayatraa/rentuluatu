@@ -494,10 +494,10 @@
         <div class="card table-card mb-4">
           <div class="px-6 pt-5 mb-4 flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
             <div>
-              <h3 class="text-sm font-extrabold text-primary">Jejak Extend & Ganti Unit</h3>
-            <p class="text-xs text-slate-400 mt-1">Riwayat sewa per transaksi: transaksi awal, ganti unit, dan extend</p>
+              <h3 class="text-sm font-extrabold text-primary">Jejak Ganti Unit</h3>
+            <p class="text-xs text-slate-400 mt-1">Riwayat transaksi sumber dan motor pengganti.</p>
             </div>
-            <span class="badge-neutral text-xs">{{ rentalJourneys.length }} riwayat sewa</span>
+            <span class="badge-neutral text-xs">{{ rentalJourneys.length }} ganti unit</span>
           </div>
           <div class="px-6 pb-5 space-y-3">
             <div v-for="(journey, index) in rentalJourneys" :key="journey.key || index" class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
@@ -506,7 +506,7 @@
                 -> {{ step }}
               </p>
             </div>
-            <div v-if="!rentalJourneys.length" class="py-6 text-center text-slate-400 text-sm">Tidak ada data extend / ganti unit pada periode ini</div>
+            <div v-if="!rentalJourneys.length" class="py-6 text-center text-slate-400 text-sm">Tidak ada data ganti unit pada periode ini</div>
           </div>
         </div>
         <div class="card table-card mb-4">
@@ -913,23 +913,20 @@ const rentalJourneys = computed(() => {
   const rentals = (transactionsData.value.rentals || []).map(item => ({ ...item }))
   if (!rentals.length) return []
 
-  const byId = new Map(rentals.map(item => [Number(item.id), item]))
   const childrenMap = new Map()
   for (const item of rentals) {
     const parentId = Number(item.parent_rental_id || 0)
     if (!parentId) continue
+    if (String(item.relation_type || '').toLowerCase() !== 'swap') continue
     if (!childrenMap.has(parentId)) childrenMap.set(parentId, [])
     childrenMap.get(parentId).push(item)
   }
 
-  const relationOrder = { swap: 1, extend: 2 }
   const sortChildren = (list = []) => [...list].sort((a, b) => {
     const da = new Date(a.date).getTime()
     const db = new Date(b.date).getTime()
     if (da !== db) return da - db
-    const oa = relationOrder[String(a.relation_type || '').toLowerCase()] || 9
-    const ob = relationOrder[String(b.relation_type || '').toLowerCase()] || 9
-    return oa - ob
+    return Number(a.id || 0) - Number(b.id || 0)
   })
 
   const roots = rentals
@@ -948,8 +945,6 @@ const rentalJourneys = computed(() => {
       const relation = String(child.relation_type || '').toLowerCase()
       if (relation === 'swap') {
         steps.push(`Ganti ke ${child.motor_model || '-'} (${child.plate_number || '-'}) tgl ${formatDate(child.date)}`)
-      } else if (relation === 'extend') {
-        steps.push(`Extend sampai ${formatDate(child.date)} (${child.period_days || 0} hari)`)
       }
       walk(child, steps)
     }
@@ -969,18 +964,16 @@ const rentalJourneys = computed(() => {
     })
   }
 
-  // fallback untuk child yg parent-nya tidak masuk periode filter
+  // fallback untuk ganti unit yg parent-nya tidak masuk periode filter
   for (const item of rentals) {
     const id = Number(item.id)
     if (visited.has(id)) continue
     const relation = String(item.relation_type || '').toLowerCase()
-    if (relation !== 'swap' && relation !== 'extend') continue
+    if (relation !== 'swap') continue
     const fallbackRoot = item.parent_invoice_number
       ? `Transaksi awal [${item.parent_invoice_number}] ${item.parent_motor_model || ''} (${item.parent_plate_number || '-'})`
       : `Transaksi awal (di luar periode)`
-    const step = relation === 'swap'
-      ? `Ganti ke ${item.motor_model || '-'} (${item.plate_number || '-'}) tgl ${formatDate(item.date)}`
-      : `Extend sampai ${formatDate(item.date)} (${item.period_days || 0} hari)`
+    const step = `Ganti ke ${item.motor_model || '-'} (${item.plate_number || '-'}) tgl ${formatDate(item.date)}`
     journeys.push({
       key: `fallback-${id}`,
       root: fallbackRoot,

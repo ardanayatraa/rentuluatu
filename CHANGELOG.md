@@ -2,6 +2,19 @@
 
 Format: `MAJOR.MINOR.PATCH` (SemVer)
 
+## 1.0.28 (2026-04-29)
+- **Daily Record - Extend**:
+  - Extend sekarang disimpan sebagai transaksi mandiri, bukan relasi dari rental lama.
+  - Nama pelanggan kosong otomatis tersimpan sebagai `-`.
+  - Form Extend mendukung input motor, hotel/vendor, fee vendor, harga kotor, metode bayar, dan preview pembagian Wavy/Mitra.
+- **Laporan & Komisi**:
+  - Fee vendor dari Extend ikut dihitung di laporan vendor dan neraca.
+  - Jejak laporan transaksi hanya menampilkan Ganti Unit, bukan Extend.
+- **Backup/Restore**:
+  - Restore lokal dibatasi ke folder backup aplikasi.
+  - Restore membuat safety backup sebelum mengganti database.
+  - Backup lama yang masih menyimpan parent Extend otomatis dinormalisasi saat dibuka/restore.
+
 ## 1.0.19 (2026-04-19)
 - **Pengaturan - Reset Transaksi**:
   - Tambah tab khusus **Reset Transaksi** untuk kebutuhan testing admin.

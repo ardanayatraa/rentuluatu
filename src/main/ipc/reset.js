@@ -358,7 +358,6 @@ function seedProductionSimulationData() {
     vendorFee: 0
   }))
 
-  const extendParent = baseRentals[0]
   insertRental({
     dateTime: '2026-04-03T09:30:00',
     customerName: 'Andi',
@@ -369,7 +368,7 @@ function seedProductionSimulationData() {
     vendorFee: 0,
     relationType: 'extend',
     isExtension: 1,
-    parentRentalId: extendParent.rentalId
+    parentRentalId: null
   })
 
   const swapSource = insertRental({
@@ -613,15 +612,15 @@ function seedSandboxData({ rentalCount = 500, daysBack = 365 }) {
   // Seed sample EXTEND agar tab extend terisi realistis
   const extendTarget = Math.min(Math.max(1, Math.round(rentalCount * 0.08)), completedBaseRentals.length)
   for (let index = 0; index < extendTarget; index += 1) {
-    const parent = pick(completedBaseRentals)
+    const sample = pick(completedBaseRentals)
     const extendDays = randomInt(1, 4)
     const extendPricePerDay = pick([75000, 85000, 100000, 125000, 150000])
     const extendTotal = extendDays * extendPricePerDay
-    // Aturan bisnis: extend tidak membawa fee vendor.
+    // Extend disimpan sebagai transaksi mandiri; fee vendor tetap opsional.
     const extendVendorFee = 0
-    const extendCommission = calcCommission(parent.motorType, extendTotal, extendVendorFee)
+    const extendCommission = calcCommission(sample.motorType, extendTotal, extendVendorFee)
     const extendDateTime = randomDateTimeWithinDays(daysBack)
-    const extendInvoice = `EXT-${extendDateTime.slice(0, 10).replace(/-/g, '')}-${String(parent.id).padStart(5, '0')}-${index + 1}`
+    const extendInvoice = `EXT-${extendDateTime.slice(0, 10).replace(/-/g, '')}-${String(index + 1).padStart(4, '0')}`
     const extendPaymentMethod = pick(['tunai', 'transfer', 'qris', 'debit_card'])
     const extendCashAccount = cashAccountByType[extendPaymentMethod] || cashAccounts[0]
 
@@ -630,13 +629,13 @@ function seedSandboxData({ rentalCount = 500, daysBack = 365 }) {
         date_time, customer_name, hotel, hotel_id, motor_id, period_days, payment_method,
         total_price, price_per_day, vendor_fee, sisa, wavy_gets, owner_gets, status,
         invoice_number, is_extension, relation_type, parent_rental_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, 1, 'extend', ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, 1, 'extend', NULL)
     `, [
       extendDateTime,
-      parent.customerName,
-      parent.hotelName,
-      parent.hotelId,
-      parent.motorId,
+      sample.customerName || '-',
+      sample.hotelName,
+      sample.hotelId,
+      sample.motorId,
       extendDays,
       extendPaymentMethod,
       extendTotal,
@@ -645,8 +644,7 @@ function seedSandboxData({ rentalCount = 500, daysBack = 365 }) {
       extendCommission.sisa,
       extendCommission.wavy_gets,
       extendCommission.owner_gets,
-      extendInvoice,
-      parent.id
+      extendInvoice
     ])
 
     const extendRentalId = Number(dbOps.get('SELECT last_insert_rowid() as id')?.id || 0)

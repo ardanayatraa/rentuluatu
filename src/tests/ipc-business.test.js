@@ -202,6 +202,22 @@ describe('IPC business logic', () => {
     expect(hasSafeOperationalFilter).toBe(true)
   })
 
+  it('balance sheet menghitung fee vendor extend sebagai bagian transaksi vendor', async () => {
+    dbOps.all.mockImplementation((sql) => {
+      if (sql.includes('FROM cash_accounts')) return []
+      return []
+    })
+    dbOps.get.mockImplementation(() => ({ total: 0 }))
+
+    registerReportHandlers()
+    handlers.get('report:balance-sheet')(null, { endDate: '2026-04-30' })
+
+    const hotelPayableQuery = dbOps.get.mock.calls.find(([sql]) =>
+      sql.includes('SUM(vendor_fee)') && sql.includes("ct.reference_type = 'rental_vendor_fee'")
+    )?.[0]
+    expect(hotelPayableQuery).toContain("COALESCE(relation_type, 'rental') IN ('rental', 'extend', 'swap_source')")
+  })
+
   it('dashboard payment breakdown memakai mutasi kas masuk per metode bayar', async () => {
     dbOps.all.mockImplementation((sql) => {
       if (sql.includes('FROM cash_transactions ct') && sql.includes("ct.reference_type IN ('rental', 'manual_income', 'rental_swap_settlement')")) {
@@ -322,6 +338,90 @@ describe('IPC business logic', () => {
     expect(saveDb).toHaveBeenCalled()
   })
 
+  it('rental extend membuat transaksi extend mandiri dari input form', async () => {
+    dbOps.get.mockImplementation((sql, params) => {
+      if (sql.includes('SELECT * FROM motors')) return { id: 1, type: 'titipan', model: 'Vario' }
+      if (sql.includes('COUNT(*) as c FROM rentals WHERE invoice_number LIKE')) return { c: 4 }
+      if (sql.includes('SELECT last_insert_rowid() as id')) return { id: 88 }
+      if (sql.includes("SELECT * FROM cash_accounts WHERE type = 'tunai'")) return { id: 7, type: 'tunai', name: 'Kas Tunai', balance: 0 }
+      if (sql.includes('SELECT * FROM cash_accounts WHERE type = ?')) return { id: 7, type: params[0], name: 'Kas Tunai', balance: 0 }
+      return null
+    })
+
+    registerRentalHandlers()
+    const result = await handlers.get('rental:extend')(null, {
+      date_time: '2026-04-09T09:00:00',
+      customer_name: 'Sari',
+      hotel: 'Hotel B',
+      hotel_id: 4,
+      motor_id: 1,
+      period_days: 2,
+      payment_method: 'tunai',
+      total_price: 400_000,
+      vendor_fee: 50_000
+    })
+
+    expect(result).toEqual({ id: 88, invoice_number: 'WVY-2026-04-0005' })
+    const insertCall = dbOps.runRaw.mock.calls.find(([sql]) =>
+      sql.includes('INSERT INTO rentals') && sql.includes("'extend'")
+    )
+    const insertParams = insertCall?.[1] || []
+    expect(insertParams.slice(0, 12)).toEqual([
+      '2026-04-09T09:00:00',
+      'Sari',
+      'Hotel B',
+      4,
+      1,
+      2,
+      'tunai',
+      400_000,
+      200_000,
+      50_000,
+      350_000,
+      105_000
+    ])
+    expect(insertParams[12]).toBeCloseTo(245_000)
+    expect(insertParams.slice(13)).toEqual(['WVY-2026-04-0005', null])
+    expect(dbOps.run).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO cash_transactions'),
+      [7, 400_000, 88, 'Sewa Vario - Sari', '2026-04-09']
+    )
+    expect(dbOps.run).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO cash_transactions'),
+      [7, 50_000, 88, 'Fee Vendor (Extend) - Sari', '2026-04-09']
+    )
+  })
+
+  it('rental extend tetap tersimpan saat nama pelanggan kosong', async () => {
+    dbOps.get.mockImplementation((sql, params) => {
+      if (sql.includes('SELECT * FROM motors')) return { id: 1, type: 'titipan', model: 'Vario' }
+      if (sql.includes('COUNT(*) as c FROM rentals WHERE invoice_number LIKE')) return { c: 0 }
+      if (sql.includes('SELECT last_insert_rowid() as id')) return { id: 89 }
+      if (sql.includes('SELECT * FROM cash_accounts WHERE type = ?')) return { id: 7, type: params[0], name: 'Kas Tunai', balance: 0 }
+      return null
+    })
+
+    registerRentalHandlers()
+    await handlers.get('rental:extend')(null, {
+      date_time: '2026-04-10T09:00:00',
+      customer_name: '',
+      motor_id: 1,
+      period_days: 1,
+      payment_method: 'tunai',
+      total_price: 200_000,
+      vendor_fee: 0
+    })
+
+    const insertCall = dbOps.runRaw.mock.calls.find(([sql]) =>
+      sql.includes('INSERT INTO rentals') && sql.includes("'extend'")
+    )
+    expect(insertCall?.[1]?.[1]).toBe('-')
+    expect(dbOps.run).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO cash_transactions'),
+      [7, 200_000, 89, 'Sewa Vario - -', '2026-04-10']
+    )
+  })
+
   it('rental update merekonsiliasi saldo kas lama lalu menulis transaksi kas baru', async () => {
     dbOps.get.mockImplementation((sql, params) => {
       if (sql.includes('SELECT * FROM rentals WHERE id = ?')) {
@@ -414,7 +514,7 @@ describe('IPC business logic', () => {
     expect(saveDb).toHaveBeenCalled()
   })
 
-  it('rental delete menghapus extend turunan secara berantai', async () => {
+  it('rental delete tidak menghapus extend legacy yang masih punya parent lama', async () => {
     dbOps.get.mockImplementation((sql, params) => {
       if (sql.includes('SELECT * FROM rentals WHERE id = ?')) {
         if (params[0] === 20) return { id: 20, payout_id: null, hotel_payout_id: null }
@@ -424,13 +524,8 @@ describe('IPC business logic', () => {
       return null
     })
     dbOps.all.mockImplementation((sql, params) => {
-      if (sql.includes('FROM rentals') && sql.includes("relation_type = 'extend'")) {
-        if (params[0] === 20) return [{ id: 21, parent_rental_id: 20, relation_type: 'extend' }]
-        return []
-      }
       if (sql.includes('SELECT * FROM refunds WHERE rental_id = ?')) return []
       if (sql.includes('reference_type IN (\'rental\', \'rental_vendor_fee\')')) {
-        if (params[0] === 21) return [{ id: 101, cash_account_id: 1, type: 'in', amount: 300_000 }]
         if (params[0] === 20) return [{ id: 102, cash_account_id: 1, type: 'in', amount: 150_000 }]
       }
       return []
@@ -440,12 +535,8 @@ describe('IPC business logic', () => {
     const result = handlers.get('rental:delete')(null, 20)
 
     expect(result).toEqual({ success: true })
-    expect(dbOps.run).toHaveBeenCalledWith('DELETE FROM rentals WHERE id = ?', [21])
+    expect(dbOps.run).not.toHaveBeenCalledWith('DELETE FROM rentals WHERE id = ?', [21])
     expect(dbOps.run).toHaveBeenCalledWith('DELETE FROM rentals WHERE id = ?', [20])
-    expect(dbOps.run).toHaveBeenCalledWith(
-      'UPDATE cash_accounts SET balance = balance + ? WHERE id = ?',
-      [-300_000, 1]
-    )
     expect(dbOps.run).toHaveBeenCalledWith(
       'UPDATE cash_accounts SET balance = balance + ? WHERE id = ?',
       [-150_000, 1]
@@ -599,6 +690,26 @@ describe('IPC business logic', () => {
       cash_account_id: 7,
       date: '2026-04-07'
     })).toThrow('Pembayaran terpisah fee vendor dinonaktifkan. Fee vendor dibayar tunai saat transaksi rental.')
+  })
+
+  it('hotel summary dan preview memasukkan fee vendor dari extend', async () => {
+    dbOps.all.mockImplementation(() => [])
+
+    registerHotelHandlers()
+    handlers.get('hotel:get-all')(null)
+    handlers.get('hotel:payout-preview')(null, {
+      hotelId: 3,
+      startDate: '2026-04-01',
+      endDate: '2026-04-30'
+    })
+
+    const relationQueries = dbOps.all.mock.calls
+      .map(([sql]) => sql)
+      .filter((sql) => sql.includes("COALESCE(r.relation_type, 'rental') IN"))
+    expect(relationQueries.length).toBeGreaterThanOrEqual(2)
+    relationQueries.forEach((sql) => {
+      expect(sql).toContain("COALESCE(r.relation_type, 'rental') IN ('rental', 'extend', 'swap_source')")
+    })
   })
 
   it('hotel create menyimpan data vendor baru dan memanggil saveDb', async () => {

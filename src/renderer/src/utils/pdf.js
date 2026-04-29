@@ -450,9 +450,9 @@ export function buildTransactionsHtml({ rentals, operationalExpenses, motorExpen
   <div style="font-size:10px;color:#555;margin-bottom:6px">Kas Pendapatan: ${rp(rentalCash.pendapatan)} · Kas Modal: ${rp(rentalCash.modal)} · Total Saldo Rekening: ${rp(rentalCash.rekening)}</div>
   <table><thead><tr><th>Tanggal</th><th>Tipe</th><th>Pelanggan</th><th>Motor</th><th>Sumber Kas</th><th>Pembayaran</th><th class="right">Jumlah</th><th>Status</th></tr></thead>
   <tbody>${rentalRows || '<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:16px">Tidak ada data</td></tr>'}</tbody></table>
-  <div class="section-title">Jejak Extend & Ganti Unit</div>
+  <div class="section-title">Jejak Ganti Unit</div>
   <table><thead><tr><th>Transaksi Awal</th><th>Riwayat</th></tr></thead>
-  <tbody>${journeyRows || '<tr><td colspan="2" style="text-align:center;color:#94a3b8;padding:16px">Tidak ada data extend / ganti unit</td></tr>'}</tbody></table>
+  <tbody>${journeyRows || '<tr><td colspan="2" style="text-align:center;color:#94a3b8;padding:16px">Tidak ada data ganti unit</td></tr>'}</tbody></table>
   <div class="section-title">Pengeluaran Operasional</div>
   <div style="font-size:10px;color:#555;margin-bottom:6px">Kas Pendapatan: ${rp(operationalCash.pendapatan)} · Kas Modal: ${rp(operationalCash.modal)} · Total Saldo Rekening: ${rp(operationalCash.rekening)}</div>
   <table><thead><tr><th>Tanggal</th><th>Tipe</th><th>Kategori</th><th>Motor</th><th>Sumber Kas</th><th>Pembayaran</th><th class="right">Jumlah</th><th>Status</th></tr></thead>

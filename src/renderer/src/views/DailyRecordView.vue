@@ -169,9 +169,6 @@
                 <span class="inline-flex items-center rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold px-3 py-1">
                   Extend
                 </span>
-                <button v-if="r.parent_rental_id" @click="goToParentRental(r)" class="text-xs text-primary hover:underline font-semibold">
-                  Lihat sumber: {{ parentLabel(r) }}
-                </button>
                 <p class="text-xs text-slate-500">
                   Pembayaran: {{ paymentMethodLabel(r.payment_method) }} · {{ formatRp(r.total_price) }}
                 </p>
@@ -202,7 +199,7 @@
               </div>
               <div v-else-if="hasRelatedTransactions(r)" class="mt-1">
                 <span class="inline-flex items-center rounded-full bg-blue-100 text-blue-700 text-xs font-semibold px-3 py-1">
-                  Rental Utama
+                  Sumber Ganti Unit
                 </span>
               </div>
             </td>
@@ -442,31 +439,65 @@
     <n-modal v-model:show="showExtendModal" preset="card" :title="extendModalTitle" style="max-width: 520px" :auto-focus="false" :trap-focus="false">
       <form @submit.prevent="submitExtend" class="space-y-4">
         <div class="grid grid-cols-2 gap-4">
-          <div class="col-span-2">
-            <label class="block text-xs font-bold text-slate-500 mb-1">Transaksi Sumber</label>
-            <select v-model.number="extendForm.parent_rental_id" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required>
-              <option :value="null" disabled>Pilih transaksi sumber</option>
-              <option v-for="r in extendSourceOptions" :key="r.id" :value="r.id">{{ formatExtendSourceLabel(r) }}</option>
-            </select>
-          </div>
           <div>
             <label class="block text-xs font-bold text-slate-500 mb-1">Tgl</label>
             <input v-model="extendForm.date_time" type="datetime-local" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required />
           </div>
           <div>
+            <label class="block text-xs font-bold text-slate-500 mb-1">Nama Pelanggan</label>
+            <input v-model="extendForm.customer_name" type="text" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div class="col-span-2">
             <label class="block text-xs font-bold text-slate-500 mb-1">DK Motor</label>
             <select v-model="extendForm.motor_id" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required>
               <option value="" disabled>Pilih DK Motor</option>
               <option v-for="m in allMotors" :key="m.id" :value="m.id">{{ m.plate_number }} — {{ m.model }}</option>
             </select>
+            <div v-if="selectedExtendMotor" class="mt-2 bg-primary/5 border border-primary/20 rounded-lg px-3 py-2 text-sm flex justify-between">
+              <span class="font-semibold text-primary">{{ selectedExtendMotor.model }} - {{ selectedExtendMotor.plate_number }}</span>
+              <span class="text-slate-500 text-xs">{{ getSplitLabel(selectedExtendMotor.type) }}{{ selectedExtendMotor.owner_name ? ' - ' + selectedExtendMotor.owner_name : '' }}</span>
+            </div>
+          </div>
+          <div class="col-span-2">
+            <label class="block text-xs font-bold text-slate-500 mb-1">Hotel / Vendor Hotel</label>
+            <div class="relative">
+              <input
+                v-model="extendForm.hotel"
+                type="text"
+                placeholder="Ketik untuk mengisi teks biasa atau mencari nama hotel..."
+                class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm pr-8"
+                @input="extendForm.hotel_id = null; extendForm.vendor_fee = 0"
+                @focus="showExtendVendorDropdown = true"
+                @blur="onExtendVendorBlur"
+              />
+              <span class="material-symbols-outlined absolute right-2 top-2 text-slate-400 text-base">domain</span>
+            </div>
+            <div v-if="showExtendVendorDropdown && filteredExtendVendors.length"
+              class="border border-slate-200 rounded-lg mt-1 max-h-40 overflow-y-auto bg-white shadow-lg z-50 relative">
+              <div
+                v-for="h in filteredExtendVendors" :key="h.id"
+                @mousedown.prevent="selectExtendVendor(h)"
+                class="px-3 py-2.5 hover:bg-slate-50 cursor-pointer text-sm font-medium"
+              >
+                {{ h.name }}
+              </div>
+            </div>
+            <div v-if="extendForm.hotel_id" class="mt-2 text-xs font-bold text-primary flex items-center gap-1">
+              <span class="material-symbols-outlined text-[14px]">check_circle</span>
+              Terhubung ke data hotel yang terdaftar
+            </div>
           </div>
           <div>
             <label class="block text-xs font-bold text-slate-500 mb-1">Periode (hari)</label>
             <input v-model.number="extendForm.period_days" type="number" min="1" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required />
           </div>
           <div>
-            <label class="block text-xs font-bold text-slate-500 mb-1">Total Price</label>
+            <label class="block text-xs font-bold text-slate-500 mb-1">Harga Kotor</label>
             <input v-model.number="extendForm.total_price" type="number" min="1" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required />
+          </div>
+          <div v-if="extendForm.hotel_id">
+            <label class="block text-xs font-bold text-slate-500 mb-1">Fee Vendor</label>
+            <input v-model.number="extendForm.vendor_fee" type="number" min="0" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
           </div>
           <div class="col-span-2">
             <label class="block text-xs font-bold text-slate-500 mb-1">Metode Pembayaran</label>
@@ -488,6 +519,30 @@
                 <span class="text-sm font-medium">Debit Card</span>
               </label>
             </div>
+          </div>
+        </div>
+
+        <div v-if="selectedExtendMotor && extendForm.total_price"
+          class="bg-slate-50 rounded-lg p-4 text-sm space-y-1.5 border border-slate-200">
+          <div class="flex justify-between">
+            <span class="text-slate-500">Harga Kotor</span>
+            <span class="font-bold">{{ formatRp(extendForm.total_price) }}</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500">Fee Vendor</span>
+            <span class="text-red-500">- {{ formatRp(extendForm.vendor_fee || 0) }}</span>
+          </div>
+          <div class="flex justify-between border-t border-slate-200 pt-1.5">
+            <span class="text-slate-500 font-bold">Nilai Bersih</span>
+            <span class="font-bold">{{ formatRp(extendForm.total_price - (extendForm.vendor_fee || 0)) }}</span>
+          </div>
+          <div class="flex justify-between text-primary">
+            <span>Wavy Gets ({{ getWavyPctLabel(selectedExtendMotor.type) }})</span>
+            <span class="font-bold">{{ formatRp(calcExtendWavy()) }}</span>
+          </div>
+          <div class="flex justify-between text-slate-600">
+            <span>Bagian Mitra ({{ `${Math.round(getOwnerPct(selectedExtendMotor.type) * 100)}%` }})</span>
+            <span class="font-bold">{{ formatRp(calcExtendOwner()) }}</span>
           </div>
         </div>
 
@@ -513,14 +568,14 @@
             />
             <select v-model.number="swapForm.source_rental_id" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required>
               <option :value="null" disabled>{{ filteredSwapSourceOptions.length ? 'Pilih transaksi sumber' : 'Tidak ada transaksi yang cocok' }}</option>
-              <option v-for="r in filteredSwapSourceOptions" :key="r.id" :value="r.id">{{ formatExtendSourceLabel(r) }} · {{ r.period_days }} hari · {{ formatRp(r.total_price) }}</option>
+              <option v-for="r in filteredSwapSourceOptions" :key="r.id" :value="r.id">{{ formatSwapSourceLabel(r) }} · {{ r.period_days }} hari · {{ formatRp(r.total_price) }}</option>
             </select>
             <p v-if="filteredSwapSourceOptions.length" class="text-xs text-slate-400 mt-1">Menampilkan {{ filteredSwapSourceOptions.length }} transaksi (terbaru di atas)</p>
           </div>
           <div v-else class="col-span-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
             <p class="text-xs font-bold text-slate-500 mb-1">Transaksi Sumber</p>
             <p class="font-semibold text-slate-700">
-              {{ selectedSwapSource ? `${formatExtendSourceLabel(selectedSwapSource)} · ${selectedSwapSource.period_days} hari · ${formatRp(selectedSwapSource.total_price)}` : '-' }}
+              {{ selectedSwapSource ? `${formatSwapSourceLabel(selectedSwapSource)} · ${selectedSwapSource.period_days} hari · ${formatRp(selectedSwapSource.total_price)}` : '-' }}
             </p>
           </div>
 
@@ -696,15 +751,16 @@ const swapSourceKeyword = ref('')
 const swapMotorKeyword = ref('')
 const activeRecordTab = ref('rental')
 const payoutFilter = ref('unpaid') // Default: 'unpaid' (Belum Payout)
-const extendActionLabel = computed(() => activeRecordTab.value === 'extend' ? 'Extend Lagi' : 'Extend')
-const extendModalTitle = computed(() => activeRecordTab.value === 'extend' ? 'Extend Lagi' : 'Extend Rental')
-const extendSubmitLabel = computed(() => activeRecordTab.value === 'extend' ? 'Simpan Extend Lagi' : 'Simpan Extend')
+const extendActionLabel = computed(() => 'Tambah Extend')
+const extendModalTitle = computed(() => 'Tambah Extend')
+const extendSubmitLabel = computed(() => 'Simpan Extend')
 const editId = ref(null)
 const selectedRental = ref(null)
 const selectedMotor = ref(null)
 const motorSearch = ref('')
 const showMotorDropdown = ref(false)
 const showVendorDropdown = ref(false)
+const showExtendVendorDropdown = ref(false)
 const currentPage = ref(1)
 const pageSize = ref(10)
 const sortOrder = ref('oldest')
@@ -725,11 +781,14 @@ const form = ref({
 })
 const refundForm = ref({ remaining_days: 1, percentage: 100, custom_amount: 0, reason: '' })
 const extendForm = ref({
-  parent_rental_id: null,
   date_time: nowDateTime(),
+  customer_name: '',
+  hotel: '',
+  hotel_id: null,
   motor_id: '',
   period_days: 1,
   total_price: 0,
+  vendor_fee: 0,
   payment_method: 'tunai'
 })
 const swapForm = ref({
@@ -750,12 +809,12 @@ function rentalRelation(rental) {
 }
 
 function hasRelatedTransactions(rental) {
-  // Cek apakah rental ini punya extend atau swap child
+  // Cek apakah rental ini punya transaksi ganti unit.
   if (!rental || !rental.id) return false
   if (!rentals.value || rentals.value.length === 0) return false
   return rentals.value.some(r => 
     r.parent_rental_id === rental.id && 
-    (r.relation_type === 'extend' || r.relation_type === 'swap')
+    r.relation_type === 'swap'
   )
 }
 
@@ -834,18 +893,9 @@ const filteredRentals = computed(() => {
     return sortOrder.value === 'oldest' ? aTime - bTime : bTime - aTime
   })
 })
-const extendSourceOptions = computed(() => {
-  const options = rentals.value
-    .filter(r => {
-      // payout_id = 0 adalah legacy (belum dibayar), payout_id > 0 adalah sudah dibayar
-      const notPaidOut = !r.payout_id || r.payout_id === 0
-      const notHotelPaidOut = !r.hotel_payout_id || r.hotel_payout_id === 0
-      return r.status === 'completed' && notPaidOut && notHotelPaidOut
-    })
-    .sort((a, b) => new Date(b.date_time) - new Date(a.date_time))
-  console.log('[Extend Options]', options.length, 'rentals available')
-  return options
-})
+const selectedExtendMotor = computed(() =>
+  allMotors.value.find((m) => Number(m.id) === Number(extendForm.value.motor_id))
+)
 const swapSourceOptions = computed(() => {
   const options = rentals.value
     .filter((r) => canSwapRental(r))
@@ -912,7 +962,7 @@ const filteredSwapMotorOptions = computed(() => {
   })
 })
 
-const showVendorFeeColumn = computed(() => activeRecordTab.value === 'rental')
+const showVendorFeeColumn = computed(() => activeRecordTab.value === 'rental' || activeRecordTab.value === 'extend')
 const tableColumnCount = computed(() => (showVendorFeeColumn.value ? 12 : 11))
 
 const totalPages = computed(() => Math.max(1, Math.ceil(filteredRentals.value.length / pageSize.value)))
@@ -942,14 +992,6 @@ watch(pageSize, () => {
 
 watch(totalPages, (value) => {
   if (currentPage.value > value) currentPage.value = value
-})
-
-watch(() => extendForm.value.parent_rental_id, (value) => {
-  if (!value) return
-  const parent = rentals.value.find(r => Number(r.id) === Number(value))
-  if (!parent) return
-  extendForm.value.motor_id = parent.motor_id
-  extendForm.value.payment_method = parent.payment_method || 'tunai'
 })
 
 watch(() => swapForm.value.source_rental_id, (value) => {
@@ -993,15 +1035,31 @@ const filteredVendors = computed(() => {
   return allVendors.value.filter(v => v.name.toLowerCase().includes(q)).slice(0, 10)
 })
 
+const filteredExtendVendors = computed(() => {
+  if (!extendForm.value.hotel || extendForm.value.hotel_id) return allVendors.value.slice(0, 10)
+  const q = extendForm.value.hotel.toLowerCase()
+  return allVendors.value.filter(v => v.name.toLowerCase().includes(q)).slice(0, 10)
+})
+
 function selectVendor(v) {
   form.value.hotel_id = v.id
   form.value.hotel = v.name
   showVendorDropdown.value = false
 }
 
+function selectExtendVendor(v) {
+  extendForm.value.hotel_id = v.id
+  extendForm.value.hotel = v.name
+  showExtendVendorDropdown.value = false
+}
+
 function onVendorBlur() {
   // Jika search tidak kosong tapi belum ngeklik, abaikan atau reset ID
   setTimeout(() => { showVendorDropdown.value = false }, 150)
+}
+
+function onExtendVendorBlur() {
+  setTimeout(() => { showExtendVendorDropdown.value = false }, 150)
 }
 
 function openAdd() {
@@ -1043,25 +1101,35 @@ function openEdit(rental) {
 }
 
 function openExtend(rental) {
+  extendError.value = ''
+  showExtendVendorDropdown.value = false
   showExtendModal.value = true
   extendForm.value = {
-    parent_rental_id: rental.id,
     date_time: nowDateTime(),
+    customer_name: rental.customer_name || '',
+    hotel: rental.hotel || '',
+    hotel_id: rental.hotel_id || null,
     motor_id: rental.motor_id,
     period_days: 1,
     total_price: 0,
+    vendor_fee: 0,
     payment_method: rental.payment_method || 'tunai'
   }
 }
 
 function openExtendFromTab() {
+  extendError.value = ''
+  showExtendVendorDropdown.value = false
   showExtendModal.value = true
   extendForm.value = {
-    parent_rental_id: null,
     date_time: nowDateTime(),
+    customer_name: '',
+    hotel: '',
+    hotel_id: null,
     motor_id: '',
     period_days: 1,
     total_price: 0,
+    vendor_fee: 0,
     payment_method: 'tunai'
   }
 }
@@ -1101,7 +1169,7 @@ function openSwapFromTab() {
   }
 }
 
-function formatExtendSourceLabel(rental) {
+function formatSwapSourceLabel(rental) {
   return `${formatDate(rental.date_time)} - ${rental.customer_name} - ${rental.plate_number}`
 }
 
@@ -1179,9 +1247,7 @@ async function goToParentRental(rental) {
 
   highlightedRentalId.value = parentId
   const parentRelation = String(rental.parent_relation_type || '').toLowerCase()
-  if (parentRelation === 'extend' || Number(rental.parent_is_extension || 0) === 1) {
-    activeRecordTab.value = 'extend'
-  } else if (parentRelation === 'swap' || parentRelation === 'swap_source') {
+  if (parentRelation === 'swap' || parentRelation === 'swap_source') {
     activeRecordTab.value = 'swap'
   } else {
     activeRecordTab.value = 'rental'
@@ -1228,6 +1294,18 @@ function calcOwner() {
   if (!selectedMotor.value) return 0
   const sisa = form.value.total_price - (form.value.vendor_fee || 0)
   return sisa * getOwnerPct(selectedMotor.value.type)
+}
+
+function calcExtendWavy() {
+  if (!selectedExtendMotor.value) return 0
+  const sisa = extendForm.value.total_price - (extendForm.value.vendor_fee || 0)
+  return sisa * getWavyPct(selectedExtendMotor.value.type)
+}
+
+function calcExtendOwner() {
+  if (!selectedExtendMotor.value) return 0
+  const sisa = extendForm.value.total_price - (extendForm.value.vendor_fee || 0)
+  return sisa * getOwnerPct(selectedExtendMotor.value.type)
 }
 
 function calcRefundAmount() {
@@ -1278,10 +1356,6 @@ async function submitRental() {
 
 async function submitExtend() {
   extendError.value = ''
-  if (!extendForm.value.parent_rental_id) {
-    extendError.value = 'Data sumber extend tidak ditemukan'
-    return
-  }
   if (!extendForm.value.motor_id) {
     extendError.value = 'DK motor wajib dipilih'
     return
@@ -1292,6 +1366,15 @@ async function submitExtend() {
   }
   if (!extendForm.value.total_price || extendForm.value.total_price <= 0) {
     extendError.value = 'Total price harus lebih dari 0'
+    return
+  }
+  const vendorFee = Number(extendForm.value.vendor_fee || 0)
+  if (vendorFee < 0) {
+    extendError.value = 'Vendor fee tidak boleh negatif'
+    return
+  }
+  if (vendorFee > Number(extendForm.value.total_price || 0)) {
+    extendError.value = 'Vendor fee tidak boleh melebihi total harga sewa'
     return
   }
 
