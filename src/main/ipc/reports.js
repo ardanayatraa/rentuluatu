@@ -195,7 +195,7 @@ export function registerReportHandlers() {
     const rentals = dbOps.all(`
       SELECT r.id, r.date_time, r.customer_name, r.period_days,
              r.total_price, r.owner_gets, r.wavy_gets, r.sisa,
-             r.payment_method, r.payout_id,
+             r.payment_method, r.payout_id, r.relation_type,
              m.id as motor_id, m.model, m.plate_number
       FROM rentals r
       JOIN motors m ON r.motor_id = m.id

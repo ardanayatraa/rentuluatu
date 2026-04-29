@@ -166,9 +166,6 @@
             <td class="px-6 py-4">
               <p class="font-medium">{{ r.customer_name }}</p>
               <div v-if="rentalRelation(r) === 'extend'" class="mt-1 flex flex-col items-start gap-1.5">
-                <span class="inline-flex items-center rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold px-3 py-1">
-                  Extend
-                </span>
                 <p class="text-xs text-slate-500">
                   Pembayaran: {{ paymentMethodLabel(r.payment_method) }} · {{ formatRp(r.total_price) }}
                 </p>
@@ -449,43 +446,42 @@
           </div>
           <div class="col-span-2">
             <label class="block text-xs font-bold text-slate-500 mb-1">DK Motor</label>
-            <select v-model="extendForm.motor_id" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required>
-              <option value="" disabled>Pilih DK Motor</option>
-              <option v-for="m in allMotors" :key="m.id" :value="m.id">{{ m.plate_number }} — {{ m.model }}</option>
-            </select>
+            <div class="relative">
+              <input
+                v-model="extendMotorSearch"
+                type="text"
+                placeholder="Cari DK motor (plat/model)..."
+                class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm pr-8"
+                @focus="showExtendMotorDropdown = true"
+                @blur="onExtendMotorBlur"
+              />
+              <span class="material-symbols-outlined absolute right-2 top-2 text-slate-400 text-base">search</span>
+            </div>
+            <div v-if="showExtendMotorDropdown && filteredExtendMotors.length"
+              class="border border-slate-200 rounded-lg mt-1 max-h-48 overflow-y-auto bg-white shadow-lg z-50 relative">
+              <div
+                v-for="m in filteredExtendMotors" :key="m.id"
+                @mousedown.prevent="selectExtendMotor(m)"
+                class="px-3 py-2.5 hover:bg-slate-50 cursor-pointer text-sm flex justify-between items-center"
+              >
+                <span class="font-medium">{{ m.model }}</span>
+                <div class="text-right">
+                  <span class="text-slate-400 text-xs font-mono block">{{ m.plate_number }}</span>
+                  <span v-if="m.owner_name" class="text-slate-400 text-xs block">{{ m.owner_name }}</span>
+                </div>
+              </div>
+            </div>
+            <div v-if="showExtendMotorDropdown && extendMotorSearch && !filteredExtendMotors.length"
+              class="border border-slate-200 rounded-lg mt-1 px-3 py-2 text-sm text-slate-400 bg-white">
+              Motor tidak ditemukan
+            </div>
             <div v-if="selectedExtendMotor" class="mt-2 bg-primary/5 border border-primary/20 rounded-lg px-3 py-2 text-sm flex justify-between">
               <span class="font-semibold text-primary">{{ selectedExtendMotor.model }} - {{ selectedExtendMotor.plate_number }}</span>
               <span class="text-slate-500 text-xs">{{ getSplitLabel(selectedExtendMotor.type) }}{{ selectedExtendMotor.owner_name ? ' - ' + selectedExtendMotor.owner_name : '' }}</span>
             </div>
           </div>
           <div class="col-span-2">
-            <label class="block text-xs font-bold text-slate-500 mb-1">Hotel / Vendor Hotel</label>
-            <div class="relative">
-              <input
-                v-model="extendForm.hotel"
-                type="text"
-                placeholder="Ketik untuk mengisi teks biasa atau mencari nama hotel..."
-                class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm pr-8"
-                @input="extendForm.hotel_id = null; extendForm.vendor_fee = 0"
-                @focus="showExtendVendorDropdown = true"
-                @blur="onExtendVendorBlur"
-              />
-              <span class="material-symbols-outlined absolute right-2 top-2 text-slate-400 text-base">domain</span>
-            </div>
-            <div v-if="showExtendVendorDropdown && filteredExtendVendors.length"
-              class="border border-slate-200 rounded-lg mt-1 max-h-40 overflow-y-auto bg-white shadow-lg z-50 relative">
-              <div
-                v-for="h in filteredExtendVendors" :key="h.id"
-                @mousedown.prevent="selectExtendVendor(h)"
-                class="px-3 py-2.5 hover:bg-slate-50 cursor-pointer text-sm font-medium"
-              >
-                {{ h.name }}
-              </div>
-            </div>
-            <div v-if="extendForm.hotel_id" class="mt-2 text-xs font-bold text-primary flex items-center gap-1">
-              <span class="material-symbols-outlined text-[14px]">check_circle</span>
-              Terhubung ke data hotel yang terdaftar
-            </div>
+            <p class="text-xs text-slate-400">Vendor hotel tidak perlu diisi untuk transaksi extend.</p>
           </div>
           <div>
             <label class="block text-xs font-bold text-slate-500 mb-1">Periode (hari)</label>
@@ -494,10 +490,6 @@
           <div>
             <label class="block text-xs font-bold text-slate-500 mb-1">Harga Kotor</label>
             <input v-model.number="extendForm.total_price" type="number" min="1" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required />
-          </div>
-          <div v-if="extendForm.hotel_id">
-            <label class="block text-xs font-bold text-slate-500 mb-1">Fee Vendor</label>
-            <input v-model.number="extendForm.vendor_fee" type="number" min="0" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
           </div>
           <div class="col-span-2">
             <label class="block text-xs font-bold text-slate-500 mb-1">Metode Pembayaran</label>
@@ -759,8 +751,9 @@ const selectedRental = ref(null)
 const selectedMotor = ref(null)
 const motorSearch = ref('')
 const showMotorDropdown = ref(false)
+const extendMotorSearch = ref('')
+const showExtendMotorDropdown = ref(false)
 const showVendorDropdown = ref(false)
-const showExtendVendorDropdown = ref(false)
 const currentPage = ref(1)
 const pageSize = ref(10)
 const sortOrder = ref('oldest')
@@ -1018,6 +1011,16 @@ const filteredMotors = computed(() => {
   }).slice(0, 20)
 })
 
+const filteredExtendMotors = computed(() => {
+  if (!extendMotorSearch.value) return allMotors.value.slice(0, 20)
+  const q = extendMotorSearch.value.toLowerCase().replace(/\s+/g, '')
+  return allMotors.value.filter((m) => {
+    const model = String(m.model || '').toLowerCase().replace(/\s+/g, '')
+    const plate = String(m.plate_number || '').toLowerCase().replace(/\s+/g, '')
+    return model.includes(q) || plate.includes(q)
+  }).slice(0, 20)
+})
+
 function selectMotor(m) {
   selectedMotor.value = m
   form.value.motor_id = m.id
@@ -1025,19 +1028,23 @@ function selectMotor(m) {
   showMotorDropdown.value = false
 }
 
+function selectExtendMotor(m) {
+  extendForm.value.motor_id = m.id
+  extendMotorSearch.value = `${m.model} - ${m.plate_number}`
+  showExtendMotorDropdown.value = false
+}
+
 function onMotorBlur() {
   setTimeout(() => { showMotorDropdown.value = false }, 150)
+}
+
+function onExtendMotorBlur() {
+  setTimeout(() => { showExtendMotorDropdown.value = false }, 150)
 }
 
 const filteredVendors = computed(() => {
   if (!form.value.hotel || form.value.hotel_id) return allVendors.value.slice(0, 10)
   const q = form.value.hotel.toLowerCase()
-  return allVendors.value.filter(v => v.name.toLowerCase().includes(q)).slice(0, 10)
-})
-
-const filteredExtendVendors = computed(() => {
-  if (!extendForm.value.hotel || extendForm.value.hotel_id) return allVendors.value.slice(0, 10)
-  const q = extendForm.value.hotel.toLowerCase()
   return allVendors.value.filter(v => v.name.toLowerCase().includes(q)).slice(0, 10)
 })
 
@@ -1047,19 +1054,9 @@ function selectVendor(v) {
   showVendorDropdown.value = false
 }
 
-function selectExtendVendor(v) {
-  extendForm.value.hotel_id = v.id
-  extendForm.value.hotel = v.name
-  showExtendVendorDropdown.value = false
-}
-
 function onVendorBlur() {
   // Jika search tidak kosong tapi belum ngeklik, abaikan atau reset ID
   setTimeout(() => { showVendorDropdown.value = false }, 150)
-}
-
-function onExtendVendorBlur() {
-  setTimeout(() => { showExtendVendorDropdown.value = false }, 150)
 }
 
 function openAdd() {
@@ -1102,13 +1099,15 @@ function openEdit(rental) {
 
 function openExtend(rental) {
   extendError.value = ''
-  showExtendVendorDropdown.value = false
+  const motor = allMotors.value.find((m) => Number(m.id) === Number(rental.motor_id))
+  extendMotorSearch.value = motor ? `${motor.model} - ${motor.plate_number}` : ''
+  showExtendMotorDropdown.value = false
   showExtendModal.value = true
   extendForm.value = {
     date_time: nowDateTime(),
     customer_name: rental.customer_name || '',
-    hotel: rental.hotel || '',
-    hotel_id: rental.hotel_id || null,
+    hotel: '',
+    hotel_id: null,
     motor_id: rental.motor_id,
     period_days: 1,
     total_price: 0,
@@ -1119,7 +1118,8 @@ function openExtend(rental) {
 
 function openExtendFromTab() {
   extendError.value = ''
-  showExtendVendorDropdown.value = false
+  extendMotorSearch.value = ''
+  showExtendMotorDropdown.value = false
   showExtendModal.value = true
   extendForm.value = {
     date_time: nowDateTime(),
@@ -1378,7 +1378,12 @@ async function submitExtend() {
     return
   }
 
-  await window.api.extendRental({ ...extendForm.value })
+  await window.api.extendRental({
+    ...extendForm.value,
+    hotel: '',
+    hotel_id: null,
+    vendor_fee: 0
+  })
   showExtendModal.value = false
   await loadRentals()
 }

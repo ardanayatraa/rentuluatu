@@ -467,8 +467,11 @@ export function printTransactionsReport(args) { printWindow(buildTransactionsHtm
 
 // ─── 5. Laporan Hak Mitra (Slip Pembayaran) ─────────────────────────────
 export function buildOwnerCommissionHtml({ data, period }) {
-  const { owner, rentals, byMotor = [], payouts, totalOwnerGets, totalPaid, totalUnpaid, totalExpenses = 0, totalNet = 0 } = data
-  const rentalRows = rentals.map(r => `<tr>
+  const { owner, motors = [], rentals, byMotor = [], payouts, totalOwnerGets, totalPaid, totalUnpaid, totalExpenses = 0, totalNet = 0 } = data
+  const totalOwnedMotors = Array.isArray(motors) ? motors.length : 0
+  const regularRentals = rentals.filter((r) => String(r.relation_type || 'rental') !== 'extend')
+  const extendRentals = rentals.filter((r) => String(r.relation_type || 'rental') === 'extend')
+  const regularRentalRows = regularRentals.map(r => `<tr>
     <td>${fmtDateTime(r.date_time)}</td>
     <td>${r.model} ${r.plate_number}</td>
     <td>${r.customer_name}</td>
@@ -476,6 +479,14 @@ export function buildOwnerCommissionHtml({ data, period }) {
     <td class="right">${rp(r.total_price)}</td>
     <td class="right">${rp(r.owner_gets)}</td>
     <td>${r.payout_id ? 'Lunas' : 'Belum Dibayar'}</td>
+  </tr>`).join('')
+  const extendRentalRows = extendRentals.map(r => `<tr>
+    <td>${fmtDateTime(r.date_time)}</td>
+    <td>${r.customer_name}</td>
+    <td>${r.model} ${r.plate_number}</td>
+    <td class="right">${r.period_days} hari</td>
+    <td>${r.payment_method || '-'}</td>
+    <td class="right">${rp(r.total_price)}</td>
   </tr>`).join('')
   const payoutRows = payouts.map(p => `<tr>
     <td>${fmtDate(p.date)}</td><td>${p.cash_account_name}</td>
@@ -513,14 +524,20 @@ export function buildOwnerCommissionHtml({ data, period }) {
         <div class="summary-card"><div class="label">Belum Dibayar</div><div class="value">${rp(totalUnpaid)}</div></div>
         <div class="summary-card"><div class="label">Hasil Bersih</div><div class="value">${rp(totalNet)}</div></div>
         <div class="summary-card"><div class="label">Jml Transaksi</div><div class="value">${rentals.length}x</div></div>
+        <div class="summary-card"><div class="label">Total Motor Milik</div><div class="value">${totalOwnedMotors} unit</div></div>
       </div>
     </div>
   </div>
-  <div class="section-title">Rincian Rental</div>
+  <div class="section-title">Rincian Transaksi Biasa</div>
   <table><thead><tr>
     <th>Tanggal</th><th>Motor</th><th>Pelanggan</th><th class="right">Durasi</th>
     <th class="right">Total Sewa</th><th class="right">Bagian Mitra</th><th>Status</th>
-  </tr></thead><tbody>${rentalRows || '<tr><td colspan="7" style="text-align:center;padding:16px;color:#888">Tidak ada data</td></tr>'}</tbody></table>
+  </tr></thead><tbody>${regularRentalRows || '<tr><td colspan="7" style="text-align:center;padding:16px;color:#888">Tidak ada data</td></tr>'}</tbody></table>
+  <div class="section-title">Rincian Transaksi Extend</div>
+  <table><thead><tr>
+    <th>Tanggal</th><th>Nama</th><th>Motor</th><th class="right">Periode</th>
+    <th>Payment</th><th class="right">Harga</th>
+  </tr></thead><tbody>${extendRentalRows || '<tr><td colspan="6" style="text-align:center;padding:16px;color:#888">Tidak ada data extend</td></tr>'}</tbody></table>
   ${motorExpenseSectionHtml}
   ${payouts.length ? '<div class="section-title">Riwayat Pembayaran</div><table><thead><tr><th>Tanggal</th><th>Akun Kas</th><th class="right">Jumlah Dibayar</th></tr></thead><tbody>' + payoutRows + '</tbody></table>' : ''}
   <div class="sign-area"><div class="sign-box">
@@ -719,5 +736,3 @@ export function buildRankingHtml({ rows, period }) {
   </tbody></table>
   ${footerHtml()}`
 }
-
-
