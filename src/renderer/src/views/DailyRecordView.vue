@@ -165,12 +165,7 @@
             </td>
             <td class="px-6 py-4">
               <p class="font-medium">{{ r.customer_name }}</p>
-              <div v-if="rentalRelation(r) === 'extend'" class="mt-1 flex flex-col items-start gap-1.5">
-                <p class="text-xs text-slate-500">
-                  Pembayaran: {{ paymentMethodLabel(r.payment_method) }} · {{ formatRp(r.total_price) }}
-                </p>
-              </div>
-              <div v-else-if="rentalRelation(r) === 'swap'" class="mt-1 flex flex-col items-start gap-1.5">
+              <div v-if="rentalRelation(r) === 'swap'" class="mt-1 flex flex-col items-start gap-1.5">
                 <span class="inline-flex items-center rounded-full bg-violet-100 text-violet-700 text-xs font-semibold px-3 py-1">
                   Motor Pengganti
                 </span>
@@ -209,12 +204,12 @@
             <td class="px-6 py-4">
               <div class="flex flex-col items-start gap-1.5">
                 <span :class="paymentMethodBadge(displayPaymentMethod(r))">{{ paymentMethodLabel(displayPaymentMethod(r)) }}</span>
-                <p v-if="paymentSummary(r)" class="text-xs text-slate-500">{{ paymentSummary(r) }}</p>
+                <p v-if="rentalRelation(r) !== 'extend' && paymentSummary(r)" class="text-xs text-slate-500">{{ paymentSummary(r) }}</p>
               </div>
             </td>
             <td class="px-6 py-4 text-right">
               <p class="font-semibold">{{ formatRp(transactionNetAmount(r)) }}</p>
-              <p v-if="Number(r.vendor_fee || 0) > 0" class="text-xs text-slate-400">Gross {{ formatRp(r.total_price) }}</p>
+              <p v-if="rentalRelation(r) !== 'extend' && Number(r.vendor_fee || 0) > 0" class="text-xs text-slate-400">Gross {{ formatRp(r.total_price) }}</p>
             </td>
             <td v-if="showVendorFeeColumn" class="px-6 py-4 text-right text-amber-600">{{ r.vendor_fee > 0 ? formatRp(r.vendor_fee) : '-' }}</td>
             <td class="px-6 py-4 text-right font-bold text-primary">{{ formatRp(r.wavy_gets) }}</td>

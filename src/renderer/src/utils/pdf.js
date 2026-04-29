@@ -515,6 +515,7 @@ export function buildOwnerCommissionHtml({ data, period }) {
       <div class="info-label">Data Mitra</div>
       <div class="info-name">${owner.name}</div>
       <div class="info-detail">No. HP: ${owner.phone || '-'}</div>
+      <div class="info-detail">Jumlah Motor: ${totalOwnedMotors} unit</div>
     </div>
     <div style="flex:1">
       <div class="summary-grid" style="grid-template-columns:repeat(2,1fr)">
@@ -524,7 +525,6 @@ export function buildOwnerCommissionHtml({ data, period }) {
         <div class="summary-card"><div class="label">Belum Dibayar</div><div class="value">${rp(totalUnpaid)}</div></div>
         <div class="summary-card"><div class="label">Hasil Bersih</div><div class="value">${rp(totalNet)}</div></div>
         <div class="summary-card"><div class="label">Jml Transaksi</div><div class="value">${rentals.length}x</div></div>
-        <div class="summary-card"><div class="label">Total Motor Milik</div><div class="value">${totalOwnedMotors} unit</div></div>
       </div>
     </div>
   </div>
