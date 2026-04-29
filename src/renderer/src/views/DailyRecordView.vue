@@ -129,6 +129,19 @@
       </select>
     </div>
 
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+      <div class="card">
+        <p class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Total Pendapatan</p>
+        <p class="text-2xl font-black text-emerald-600 font-headline">{{ formatRp(filteredRevenueTotal) }}</p>
+        <p class="text-xs text-slate-400 mt-1">Mengikuti filter aktif (periode, status, keyword, dan jenis transaksi).</p>
+      </div>
+      <div class="card">
+        <p class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Jumlah Transaksi</p>
+        <p class="text-2xl font-black text-slate-700 font-headline">{{ filteredRentals.length }}</p>
+        <p class="text-xs text-slate-400 mt-1">Tab: {{ activeRecordTabLabel }}</p>
+      </div>
+    </div>
+
     <!-- Table -->
     <div class="card table-card">
       <div class="table-scroll">
@@ -718,6 +731,16 @@ function formatTime(dateStr) {
   return new Date(dateStr).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
 }
 
+function todayDate() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function monthStartDate(date = new Date()) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  return `${year}-${month}-01`
+}
+
 const rentals = ref([])
 const loading = ref(false)
 const allMotors = ref([])
@@ -754,7 +777,7 @@ const pageSize = ref(10)
 const sortOrder = ref('oldest')
 const highlightedRentalId = ref(null)
 
-const defaultFilters = Object.freeze({ startDate: '', endDate: '', status: '', keyword: '' })
+const defaultFilters = Object.freeze({ startDate: monthStartDate(), endDate: todayDate(), status: '', keyword: '' })
 const filters = ref({ ...defaultFilters })
 const form = ref({
   date_time: nowDateTime(),
@@ -964,6 +987,14 @@ const pagedRentals = computed(() => {
 })
 const pageStart = computed(() => filteredRentals.value.length ? ((currentPage.value - 1) * pageSize.value) + 1 : 0)
 const pageEnd = computed(() => Math.min(currentPage.value * pageSize.value, filteredRentals.value.length))
+const filteredRevenueTotal = computed(() => filteredRentals.value
+  .filter((r) => String(r?.status || '').toLowerCase() !== 'refunded')
+  .reduce((sum, rental) => sum + transactionNetAmount(rental), 0))
+const activeRecordTabLabel = computed(() => ({
+  rental: 'Transaksi Rental',
+  extend: 'Extend',
+  swap: 'Ganti Unit'
+}[activeRecordTab.value] || 'Transaksi Rental'))
 
 watch(() => filters.value.keyword, () => {
   currentPage.value = 1
