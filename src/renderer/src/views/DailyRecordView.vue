@@ -137,7 +137,7 @@
           <tr class="bg-slate-50 text-slate-400 text-xs uppercase font-bold">
             <th class="px-6 py-4">Tanggal</th>
             <th class="px-6 py-4">Pelanggan</th>
-            <th class="px-6 py-4">Hotel / Vendor Hotel</th>
+            <th v-if="showHotelColumn" class="px-6 py-4">Hotel / Vendor Hotel</th>
             <th class="px-6 py-4">Motor</th>
             <th class="px-6 py-4">Periode</th>
             <th class="px-6 py-4">Bayar</th>
@@ -195,7 +195,7 @@
                 </span>
               </div>
             </td>
-            <td class="px-6 py-4 text-slate-500">{{ r.hotel || '-' }}</td>
+            <td v-if="showHotelColumn" class="px-6 py-4 text-slate-500">{{ r.hotel || '-' }}</td>
             <td class="px-6 py-4">
               <span class="font-medium">{{ r.model }}</span>
               <span class="text-slate-400 text-xs ml-1">{{ r.plate_number }}</span>
@@ -950,8 +950,12 @@ const filteredSwapMotorOptions = computed(() => {
   })
 })
 
-const showVendorFeeColumn = computed(() => activeRecordTab.value === 'rental' || activeRecordTab.value === 'extend')
-const tableColumnCount = computed(() => (showVendorFeeColumn.value ? 12 : 11))
+const showHotelColumn = computed(() => activeRecordTab.value !== 'extend')
+const showVendorFeeColumn = computed(() => activeRecordTab.value === 'rental')
+const tableColumnCount = computed(() => {
+  const baseColumnCount = 10 // without Hotel/Vendor and Fee Vendor
+  return baseColumnCount + (showHotelColumn.value ? 1 : 0) + (showVendorFeeColumn.value ? 1 : 0)
+})
 
 const totalPages = computed(() => Math.max(1, Math.ceil(filteredRentals.value.length / pageSize.value)))
 const pagedRentals = computed(() => {
