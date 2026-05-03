@@ -6,10 +6,21 @@ export function registerMotorHandlers() {
   const ownerLabelForAsetPt = 'Owner Pribadi (PT)'
   const isAsetPtType = (t) => String(t || '').toLowerCase() === 'aset_pt' || String(t || '').toLowerCase() === 'pribadi'
 
-  ipcMain.handle('motor:get-all', () => {
+  ipcMain.handle('motor:get-all', (_, filters = {}) => {
     const cols = dbOps.all("PRAGMA table_info(motors)")
     const hasIsActive = cols.some(c => c.name === 'is_active')
-    const whereClause = hasIsActive ? 'WHERE (m.is_active = 1 OR m.is_active IS NULL)' : ''
+    const where = []
+    const params = []
+    if (hasIsActive) where.push('(m.is_active = 1 OR m.is_active IS NULL)')
+    if (filters.startDate) {
+      where.push('date(m.created_at) >= date(?)')
+      params.push(filters.startDate)
+    }
+    if (filters.endDate) {
+      where.push('date(m.created_at) <= date(?)')
+      params.push(filters.endDate)
+    }
+    const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : ''
     const isActiveSelect = hasIsActive ? 'm.is_active,' : 'NULL as is_active,'
     return dbOps.all(`
       SELECT
@@ -25,7 +36,7 @@ export function registerMotorHandlers() {
       LEFT JOIN owners o ON m.owner_id = o.id
       ${whereClause}
       ORDER BY m.model ASC
-    `)
+    `, params)
   })
 
   ipcMain.handle('motor:get-by-id', (_, id) => {

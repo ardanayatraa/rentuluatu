@@ -4,7 +4,6 @@ import { cpSync, existsSync, mkdirSync } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { initDb, dbOps, forceSaveDb } from './db'
 import { registerAllHandlers } from './ipc'
-import { runAutoCloseBackup, shouldAutoBackupOnClose } from './ipc/backup'
 
 const STABLE_USER_DATA_DIR = 'Wavy Rental'
 
@@ -163,8 +162,6 @@ async function runSeeder() {
 }
 
 function createWindow() {
-  let isClosingAfterBackup = false
-  let closeBackupInProgress = false
   const mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -183,40 +180,8 @@ function createWindow() {
 
   mainWindow.on('ready-to-show', () => mainWindow.show())
 
-  mainWindow.on('close', (event) => {
-    if (isClosingAfterBackup || closeBackupInProgress || !shouldAutoBackupOnClose()) return
-
-    event.preventDefault()
-    closeBackupInProgress = true
-    mainWindow.webContents.send('app:auto-backup-close-state', {
-      visible: true,
-      success: true,
-      message: 'Silakan tunggu, sedang backup data ke Google Drive...'
-    })
-
-    runAutoCloseBackup()
-      .then((result) => {
-        mainWindow.webContents.send('app:auto-backup-close-state', {
-          visible: true,
-          success: true,
-          message: `Backup otomatis berhasil dibuat (${result.filename}). Aplikasi akan ditutup...`
-        })
-        setTimeout(() => {
-          isClosingAfterBackup = true
-          mainWindow.destroy()
-        }, 700)
-      })
-      .catch((error) => {
-        mainWindow.webContents.send('app:auto-backup-close-state', {
-          visible: true,
-          success: false,
-          message: `Backup otomatis gagal: ${error.message}. Aplikasi akan tetap ditutup...`
-        })
-        setTimeout(() => {
-          isClosingAfterBackup = true
-          mainWindow.destroy()
-        }, 1400)
-      })
+  mainWindow.on('close', () => {
+    forceSaveDb()
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -250,6 +215,10 @@ app.whenReady().then(async () => {
 })
 
 app.on('before-quit', () => {
+  forceSaveDb()
+})
+
+app.on('will-quit', () => {
   forceSaveDb()
 })
 

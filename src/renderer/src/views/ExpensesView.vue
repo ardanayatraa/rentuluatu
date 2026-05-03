@@ -42,9 +42,21 @@
 
     <!-- Filters -->
     <div class="card mb-6 flex gap-4 items-center flex-wrap">
-      <input v-model="filters.startDate" type="date" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-      <span class="text-slate-400">—</span>
-      <input v-model="filters.endDate" type="date" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+      <select v-model="filters.periodMode" @change="syncExpensePeriod" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+        <option value="all">Semua Data</option>
+        <option value="month">Per Bulan</option>
+        <option value="year">Per Tahun</option>
+        <option value="custom">Rentang Tanggal</option>
+      </select>
+      <input v-if="filters.periodMode === 'month'" v-model="filters.periodMonth" @change="syncExpensePeriod" type="month" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+      <select v-else-if="filters.periodMode === 'year'" v-model="filters.periodYear" @change="syncExpensePeriod" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+        <option v-for="year in availableYears" :key="year" :value="year">{{ year }}</option>
+      </select>
+      <template v-else-if="filters.periodMode === 'custom'">
+        <input v-model="filters.startDate" type="date" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+      <span class="text-slate-400">-</span>
+        <input v-model="filters.endDate" type="date" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+      </template>
       <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-600">
         {{ activeExpenseTab === 'motor' ? 'Pengeluaran Motor' : 'Operasional Kantor' }}
       </div>
@@ -287,13 +299,24 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { formatRp, formatDate, today } from '../utils/format'
+import { createPeriodFilter, getAvailableYears, getRecentRestorePeriod, syncPeriodRange } from '../utils/periodFilter'
 
 const expenses = ref([])
 const loading = ref(false)
 const allMotors = ref([])
 const showModal = ref(false)
 const activeExpenseTab = ref('umum')
-const filters = ref({ startDate: '', endDate: '', type: 'umum', motorId: '' })
+const initialPeriodFilter = getRecentRestorePeriod() || createPeriodFilter('month')
+const availableYears = getAvailableYears()
+const filters = ref({
+  periodMode: initialPeriodFilter.mode,
+  periodMonth: initialPeriodFilter.month,
+  periodYear: initialPeriodFilter.year,
+  startDate: initialPeriodFilter.startDate,
+  endDate: initialPeriodFilter.endDate,
+  type: 'umum',
+  motorId: ''
+})
 const form = ref({ type: 'umum', motor_id: '', category: 'air', amount: 0, payment_method: 'tunai', date: today(), description: '' })
 const customCategory = ref('')
 const formError = ref('')
@@ -374,7 +397,7 @@ function switchExpenseTab(tab) {
   activeExpenseTab.value = tab
   filters.value.type = tab
   onFilterTypeChange()
-  loadExpenses()
+  loadExpenses({ allowAllFallback: true })
 }
 
 function onTypeChange() {
@@ -462,10 +485,59 @@ function openAdd() {
   showModal.value = true
 }
 
-async function loadExpenses() {
+function getExpensePeriodFilter() {
+  return {
+    mode: filters.value.periodMode,
+    month: filters.value.periodMonth,
+    year: filters.value.periodYear,
+    startDate: filters.value.startDate,
+    endDate: filters.value.endDate
+  }
+}
+
+function syncExpensePeriod() {
+  const period = getExpensePeriodFilter()
+  const range = syncPeriodRange(period)
+  filters.value.periodMonth = period.month
+  filters.value.periodYear = period.year
+  filters.value.startDate = range.startDate
+  filters.value.endDate = range.endDate
+}
+
+function buildExpenseQueryFilters() {
+  syncExpensePeriod()
+  return {
+    startDate: filters.value.startDate,
+    endDate: filters.value.endDate,
+    type: filters.value.type,
+    motorId: filters.value.motorId
+  }
+}
+
+function buildAllExpenseQueryFilters() {
+  return {
+    startDate: '',
+    endDate: '',
+    type: filters.value.type,
+    motorId: filters.value.motorId
+  }
+}
+
+async function loadExpenses({ allowAllFallback = false } = {}) {
   loading.value = true
   try {
-    expenses.value = await window.api.getExpenses({ ...filters.value })
+    const result = await window.api.getExpenses(buildExpenseQueryFilters())
+    if (allowAllFallback && !result.length && filters.value.periodMode !== 'all') {
+      const allRows = await window.api.getExpenses(buildAllExpenseQueryFilters())
+      if (allRows.length) {
+        filters.value.periodMode = 'all'
+        syncExpensePeriod()
+        expenses.value = allRows
+        currentPage.value = 1
+        return
+      }
+    }
+    expenses.value = result
     currentPage.value = 1
   } finally {
     loading.value = false
@@ -545,7 +617,7 @@ watch(
 
 onMounted(async () => {
   await loadCashAccounts()
-  await loadExpenses()
+  await loadExpenses({ allowAllFallback: true })
   allMotors.value = await window.api.getMotors()
 })
 </script>

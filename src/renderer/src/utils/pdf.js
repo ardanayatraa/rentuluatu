@@ -17,7 +17,7 @@ async function getLogoBase64() {
 let _logoBase64 = ''
 getLogoBase64().then(b64 => { _logoBase64 = b64 })
 
-const rp = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID', { minimumFractionDigits: 0 })
+const rp = (n) => 'Rp&nbsp;' + Number(n || 0).toLocaleString('id-ID', { minimumFractionDigits: 0 })
 const REKENING_METHODS = ['transfer', 'qris', 'debit_card']
 const paymentLabel = (method) => ({
   tunai: 'Tunai',
@@ -51,6 +51,11 @@ const fmtDateTime = (d) => {
   const dt = new Date(d)
   return dt.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) +
     ' ' + dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+}
+
+const fmtSlipDate = (d) => {
+  if (!d) return '-'
+  return new Date(d).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
 const esc = (value) => String(value ?? '-')
@@ -91,6 +96,7 @@ const baseStyle = `<style>
   thead tr { background: #111; }
   th { font-size: 9px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.5px; padding: 7px 10px; text-align: left; }
   th.right, td.right { text-align: right; }
+  td.right { white-space: nowrap; word-break: keep-all; overflow-wrap: normal; }
   td { padding: 6px 10px; border-bottom: 1px solid #e8e8e8; color: #222; }
   tbody tr:nth-child(even) td { background: #f9f9f9; }
   tbody tr:last-child td { border-bottom: 1px solid #ccc; font-weight: 600; }
@@ -111,6 +117,52 @@ const baseStyle = `<style>
   .info-box .info-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #555; margin-bottom: 6px; }
   .info-box .info-name { font-size: 13px; font-weight: 700; color: #111; margin-bottom: 3px; }
   .info-box .info-detail { font-size: 10px; color: #444; line-height: 1.6; }
+  .slip-header { align-items: center; margin-bottom: 14px; padding-bottom: 10px; }
+  .slip-title-line { font-size: 12px; font-weight: 800; letter-spacing: .7px; text-transform: uppercase; color: #111; line-height: 1.24; }
+  .slip-title-company { font-size: 11px; font-weight: 650; letter-spacing: .55px; }
+  .slip-title-brand { font-weight: 850; }
+  .slip-meta { text-align: right; font-size: 10px; color: #555; line-height: 1.55; }
+  .slip-meta strong { color: #111; font-weight: 800; }
+  .slip-top { display: grid; grid-template-columns: 1fr 1.2fr; gap: 14px; margin-bottom: 18px; }
+  .slip-box { border: 1px solid #999; min-height: 106px; padding: 10px 12px; }
+  .slip-detail { display: grid; grid-template-columns: 116px 1fr; gap: 8px; font-size: 10px; line-height: 1.8; }
+  .slip-summary { border: 1px solid #999; min-height: 106px; display: grid; grid-template-columns: 1fr 1fr; }
+  .slip-summary > div { padding: 8px 12px; border-top: 1px solid #ddd; }
+  .slip-summary > div:nth-child(-n+2) { border-top: none; }
+  .slip-summary > div:nth-child(even) { border-left: 1px solid #ddd; }
+  .slip-summary .label { font-size: 9px; font-weight: 700; color: #555; text-transform: uppercase; letter-spacing: .4px; }
+  .slip-summary .value { font-size: 11px; font-weight: 800; color: #111; margin-top: 2px; }
+  .slip-summary .wide { grid-column: 1 / -1; border-top: 1px solid #999; padding-top: 7px; background: #eef2ff; text-align: center; }
+  .slip-table { table-layout: fixed; font-size: 9.5px; }
+  .slip-table th, .slip-table td { padding: 6px 8px; }
+  .slip-table th { white-space: normal; line-height: 1.15; letter-spacing: .2px; vertical-align: middle; }
+  .slip-table td.right { white-space: nowrap !important; word-break: keep-all; overflow-wrap: normal; }
+  .slip-total-row td.right { white-space: nowrap !important; word-break: keep-all; overflow-wrap: normal; }
+  .slip-transaction-table col:nth-child(1) { width: 13%; }
+  .slip-transaction-table col:nth-child(2) { width: 21%; }
+  .slip-transaction-table col:nth-child(3) { width: 12%; }
+  .slip-transaction-table col:nth-child(4) { width: 9%; }
+  .slip-transaction-table col:nth-child(5) { width: 15%; }
+  .slip-transaction-table col:nth-child(6) { width: 15%; }
+  .slip-transaction-table col:nth-child(7) { width: 15%; }
+  .slip-extension-table col:nth-child(1) { width: 16%; }
+  .slip-extension-table col:nth-child(2) { width: 33%; }
+  .slip-extension-table col:nth-child(3) { width: 17%; }
+  .slip-extension-table col:nth-child(4) { width: 17%; }
+  .slip-extension-table col:nth-child(5) { width: 17%; }
+  .slip-expense-table col:nth-child(1) { width: 16%; }
+  .slip-expense-table col:nth-child(2) { width: 30%; }
+  .slip-expense-table col:nth-child(3) { width: 36%; }
+  .slip-expense-table col:nth-child(4) { width: 18%; }
+  .slip-vendor-table col:nth-child(1) { width: 18%; }
+  .slip-vendor-table col:nth-child(2) { width: 20%; }
+  .slip-vendor-table col:nth-child(3) { width: 32%; }
+  .slip-vendor-table col:nth-child(4) { width: 12%; }
+  .slip-vendor-table col:nth-child(5) { width: 18%; }
+  .slip-total-row td { font-weight: 800 !important; border-top: 1px solid #111; background: #fff !important; }
+  .slip-sign-area { margin-top: 24px; display: flex; justify-content: flex-end; }
+  .slip-sign-box { text-align: center; min-width: 180px; font-size: 10px; color: #111; line-height: 1.7; }
+  .slip-sign-name { font-weight: 800; }
 
   @media print {
     body { padding: 0; }
@@ -259,6 +311,27 @@ function headerHtml(title, period, subtitle = '') {
     </div>
     <div class="meta">
       <div>Periode: <strong>${period}</strong></div>
+      <div>Dicetak: ${fmtDateTime(new Date())}</div>
+    </div>
+  </div>`
+}
+
+function ownerSlipHeaderHtml(period, title = 'LAPORAN PENDAPATAN') {
+  const logoImg = _logoBase64
+    ? `<img src="${_logoBase64}" alt="Logo" style="width:50px;height:50px;border-radius:9px;object-fit:cover" />`
+    : `<div style="width:50px;height:50px;border-radius:9px;background:#0ea5e9;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;color:white">W</div>`
+
+  return `<div class="header slip-header">
+    <div style="display:flex;align-items:center;gap:12px">
+      ${logoImg}
+      <div>
+        <div class="slip-title-line slip-title-company">PT. ARTHA BALI WISATA</div>
+        <div class="slip-title-line slip-title-brand">THE WAVY RENTAL</div>
+        <div class="slip-title-line">${esc(title)}</div>
+      </div>
+    </div>
+    <div class="slip-meta">
+      <div>Periode: <strong>${esc(period || '-')}</strong></div>
       <div>Dicetak: ${fmtDateTime(new Date())}</div>
     </div>
   </div>`
@@ -467,90 +540,139 @@ export function printTransactionsReport(args) { printWindow(buildTransactionsHtm
 
 // ─── 5. Laporan Hak Mitra (Slip Pembayaran) ─────────────────────────────
 export function buildOwnerCommissionHtml({ data, period }) {
-  const { owner, motors = [], rentals, byMotor = [], payouts, totalOwnerGets, totalPaid, totalUnpaid, totalExpenses = 0, totalNet = 0 } = data
+  const { owner = {}, motors = [], rentals = [], byMotor = [], totalOwnerGets = 0, totalExpenses = 0, totalNet = 0 } = data || {}
   const totalOwnedMotors = Array.isArray(motors) ? motors.length : 0
-  const regularRentals = rentals.filter((r) => String(r.relation_type || 'rental') !== 'extend')
-  const extendRentals = rentals.filter((r) => String(r.relation_type || 'rental') === 'extend')
+  const byDateAsc = (items, dateKey) => [...items].sort((a, b) => new Date(a?.[dateKey] || 0) - new Date(b?.[dateKey] || 0))
+  const sumBy = (items, key) => items.reduce((sum, item) => sum + Number(item?.[key] || 0), 0)
+  const rentalIncome = (item) => {
+    if (item?.rental_income !== undefined && item?.rental_income !== null) {
+      const explicitIncome = Number(item.rental_income)
+      if (Number.isFinite(explicitIncome)) return explicitIncome
+    }
+    const splitTotal = Number(item?.wavy_gets || 0) + Number(item?.owner_gets || 0)
+    if (Number(item?.sisa || 0) > 0) return Number(item.sisa || 0)
+    if (splitTotal > 0) return splitTotal
+    return Number(item?.total_price || 0) - Number(item?.vendor_fee || 0)
+  }
+  const sumIncome = (items) => items.reduce((sum, item) => sum + rentalIncome(item), 0)
+  const motorLabel = (item) => `${esc(item?.model || '-')} ${esc(item?.plate_number || '')}`.trim()
+  const regularRentals = byDateAsc(rentals.filter((r) => String(r.relation_type || 'rental') !== 'extend'), 'date_time')
+  const extendRentals = byDateAsc(rentals.filter((r) => String(r.relation_type || 'rental') === 'extend'), 'date_time')
+  const regularTotals = {
+    total: sumIncome(regularRentals),
+    rental: sumBy(regularRentals, 'wavy_gets'),
+    mitra: sumBy(regularRentals, 'owner_gets')
+  }
+  const extendTotals = {
+    total: sumIncome(extendRentals),
+    rental: sumBy(extendRentals, 'wavy_gets'),
+    mitra: sumBy(extendRentals, 'owner_gets')
+  }
+  const totalGlobalIncome = Number(data?.totalIncome ?? sumIncome(rentals))
+  const totalRentalGets = sumBy(rentals, 'wavy_gets')
+  const rentalShareBase = totalRentalGets + Number(totalOwnerGets || 0)
+  const rentalSharePct = rentalShareBase > 0 ? Math.round((totalRentalGets / rentalShareBase) * 100) : 0
+  const rentalShareLabel = rentalSharePct > 0 ? `Total Pendapatan Rental (${rentalSharePct}%)` : 'Total Pendapatan Rental'
+  const expenseNote = (expense) => {
+    const parts = [expense?.category, expense?.description]
+      .map((part) => String(part || '').trim())
+      .filter(Boolean)
+    const unique = parts.filter((part, index) =>
+      parts.findIndex((candidate) => candidate.toLowerCase() === part.toLowerCase()) === index
+    )
+    return unique.length ? unique.join(' - ') : '-'
+  }
   const regularRentalRows = regularRentals.map(r => `<tr>
     <td>${fmtDateTime(r.date_time)}</td>
-    <td>${r.model} ${r.plate_number}</td>
-    <td>${r.customer_name}</td>
-    <td class="right">${r.period_days} hari</td>
-    <td class="right">${rp(r.total_price)}</td>
+    <td>${motorLabel(r)}</td>
+    <td>${esc(r.customer_name || '-')}</td>
+    <td class="right">${esc(r.period_days || 0)} hari</td>
+    <td class="right">${rp(rentalIncome(r))}</td>
+    <td class="right">${rp(r.wavy_gets)}</td>
     <td class="right">${rp(r.owner_gets)}</td>
-    <td>${r.payout_id ? 'Lunas' : 'Belum Dibayar'}</td>
   </tr>`).join('')
+  const regularTotalRow = `<tr class="slip-total-row">
+    <td colspan="4">Total Transaksi</td>
+    <td class="right">${rp(regularTotals.total)}</td>
+    <td class="right">${rp(regularTotals.rental)}</td>
+    <td class="right">${rp(regularTotals.mitra)}</td>
+  </tr>`
   const extendRentalRows = extendRentals.map(r => `<tr>
-    <td>${fmtDateTime(r.date_time)}</td>
-    <td>${r.customer_name}</td>
-    <td>${r.model} ${r.plate_number}</td>
-    <td class="right">${r.period_days} hari</td>
-    <td>${r.payment_method || '-'}</td>
-    <td class="right">${rp(r.total_price)}</td>
+    <td>${fmtSlipDate(r.date_time)}</td>
+    <td>${motorLabel(r)}</td>
+    <td class="right">${rp(rentalIncome(r))}</td>
+    <td class="right">${rp(r.wavy_gets)}</td>
+    <td class="right">${rp(r.owner_gets)}</td>
   </tr>`).join('')
-  const payoutRows = payouts.map(p => `<tr>
-    <td>${fmtDate(p.date)}</td><td>${p.cash_account_name}</td>
-    <td class="right">${rp(p.amount)}</td>
-  </tr>`).join('')
-  const motorExpenseRows = byMotor.flatMap(m => (m.expenses || []).map(e => `<tr>
-    <td>${m.model} (${m.plate_number})</td>
-    <td>${fmtDate(e.date)}</td>
-    <td>${e.category || '-'}</td>
-    <td>${e.description || '-'}</td>
+  const extendTotalRow = `<tr class="slip-total-row">
+    <td colspan="2">Total Extension</td>
+    <td class="right">${rp(extendTotals.total)}</td>
+    <td class="right">${rp(extendTotals.rental)}</td>
+    <td class="right">${rp(extendTotals.mitra)}</td>
+  </tr>`
+  const motorExpenseItems = byDateAsc(byMotor.flatMap(m => (m.expenses || []).map(e => ({
+    ...e,
+    model: e.model || m.model,
+    plate_number: e.plate_number || m.plate_number
+  }))), 'date')
+  const motorExpenseRows = motorExpenseItems.map(e => `<tr>
+    <td>${fmtSlipDate(e.date)}</td>
+    <td>${motorLabel(e)}</td>
+    <td>${esc(expenseNote(e))}</td>
     <td class="right">${rp(e.amount)}</td>
-  </tr>`)).join('')
-  const motorExpenseSectionHtml = motorExpenseRows
-    ? `<div class="section-title">Pengeluaran per Motor</div>
-      <table>
-        <thead><tr><th>Motor</th><th>Tanggal</th><th>Kategori</th><th>Keterangan</th><th class="right">Jumlah</th></tr></thead>
-        <tbody>
-          ${motorExpenseRows}
-          <tr><td colspan="4" style="font-weight:700">Total Pengeluaran Motor</td><td class="right">( ${rp(totalExpenses)} )</td></tr>
-        </tbody>
-      </table>`
-    : ''
-  return `${headerHtml('Laporan Hak Mitra', period, 'Mitra: ' + owner.name)}
-  <div style="display:flex;gap:20px;margin-bottom:20px">
-    <div class="info-box" style="flex:1">
-      <div class="info-label">Data Mitra</div>
-      <div class="info-name">${owner.name}</div>
-      <div class="info-detail">No. HP: ${owner.phone || '-'}</div>
-      <div class="info-detail">Jumlah Motor: ${totalOwnedMotors} unit</div>
+  </tr>`).join('')
+  const noRegularRows = '<tr><td colspan="7" style="text-align:center;padding:16px;color:#888">Tidak ada data</td></tr>'
+  const noExtendRows = '<tr><td colspan="5" style="text-align:center;padding:16px;color:#888">Tidak ada data extension</td></tr>'
+  const noExpenseRows = '<tr><td colspan="4" style="text-align:center;padding:16px;color:#888">Tidak ada pengeluaran kendaraan</td></tr>'
+
+  return `${ownerSlipHeaderHtml(period)}
+  <div class="slip-top">
+    <div class="slip-box">
+      <div class="slip-detail"><strong>Nama Pemilik</strong><span>: ${esc(owner.name || '-')}</span></div>
+      <div class="slip-detail"><strong>Nomor Handphone</strong><span>: ${esc(owner.phone || '-')}</span></div>
+      <div class="slip-detail"><strong>Jumlah Kendaraan</strong><span>: ${totalOwnedMotors} unit</span></div>
     </div>
-    <div style="flex:1">
-      <div class="summary-grid" style="grid-template-columns:repeat(2,1fr)">
-        <div class="summary-card"><div class="label">Total Hak Mitra</div><div class="value">${rp(totalOwnerGets)}</div></div>
-        <div class="summary-card"><div class="label">Total Pengeluaran</div><div class="value">${rp(totalExpenses)}</div></div>
-        <div class="summary-card"><div class="label">Sudah Dibayar</div><div class="value">${rp(totalPaid)}</div></div>
-        <div class="summary-card"><div class="label">Belum Dibayar</div><div class="value">${rp(totalUnpaid)}</div></div>
-        <div class="summary-card"><div class="label">Hasil Bersih</div><div class="value">${rp(totalNet)}</div></div>
-        <div class="summary-card"><div class="label">Jml Transaksi</div><div class="value">${rentals.length}x</div></div>
-      </div>
+    <div class="slip-summary">
+      <div><div class="label">Jumlah Transaksi</div><div class="value">${rentals.length}x</div></div>
+      <div><div class="label">Pendapatan Transaksi</div><div class="value">${rp(totalGlobalIncome)}</div></div>
+      <div><div class="label">${rentalShareLabel}</div><div class="value">${rp(totalRentalGets)}</div></div>
+      <div><div class="label">Pengeluaran Mitra</div><div class="value">${rp(totalExpenses)}</div></div>
+      <div class="wide"><div class="label">Pendapatan Bersih Mitra</div><div class="value">${rp(totalNet)}</div></div>
     </div>
   </div>
-  <div class="section-title">Rincian Transaksi Biasa</div>
-  <table><thead><tr>
-    <th>Tanggal</th><th>Motor</th><th>Pelanggan</th><th class="right">Durasi</th>
-    <th class="right">Total Sewa</th><th class="right">Bagian Mitra</th><th>Status</th>
-  </tr></thead><tbody>${regularRentalRows || '<tr><td colspan="7" style="text-align:center;padding:16px;color:#888">Tidak ada data</td></tr>'}</tbody></table>
-  <div class="section-title">Rincian Transaksi Extend</div>
-  <table><thead><tr>
-    <th>Tanggal</th><th>Nama</th><th>Motor</th><th class="right">Periode</th>
-    <th>Payment</th><th class="right">Harga</th>
-  </tr></thead><tbody>${extendRentalRows || '<tr><td colspan="6" style="text-align:center;padding:16px;color:#888">Tidak ada data extend</td></tr>'}</tbody></table>
-  ${motorExpenseSectionHtml}
-  ${payouts.length ? '<div class="section-title">Riwayat Pembayaran</div><table><thead><tr><th>Tanggal</th><th>Akun Kas</th><th class="right">Jumlah Dibayar</th></tr></thead><tbody>' + payoutRows + '</tbody></table>' : ''}
-  <div class="sign-area"><div class="sign-box">
-    <div style="font-size:10px;color:#555">Hormat kami,</div>
-    <div class="sign-line">PT. Artha Bali Wisata</div>
+  <div class="section-title">Rincian Transaksi</div>
+  <table class="slip-table slip-transaction-table">
+  <colgroup><col><col><col><col><col><col><col></colgroup>
+  <thead><tr>
+    <th>Tanggal</th><th>Model</th><th>Penyewa</th><th class="right">Durasi</th>
+    <th class="right">Pendapatan</th><th class="right">Pendapatan Rental</th><th class="right">Pendapatan Mitra</th>
+  </tr></thead><tbody>${regularRentalRows || noRegularRows}${regularTotalRow}</tbody></table>
+  <div class="section-title">Rincian Transaksi Extension</div>
+  <table class="slip-table slip-extension-table">
+  <colgroup><col><col><col><col><col></colgroup>
+  <thead><tr>
+    <th>Tanggal</th><th>Model</th>
+    <th class="right">Pendapatan</th><th class="right">Pendapatan Rental</th><th class="right">Pendapatan Mitra</th>
+  </tr></thead><tbody>${extendRentalRows || noExtendRows}${extendTotalRow}</tbody></table>
+  <div class="section-title">Pengeluaran Kendaraan</div>
+  <table class="slip-table slip-expense-table">
+    <colgroup><col><col><col><col></colgroup>
+    <thead><tr><th>Tanggal</th><th>Model</th><th>Keterangan</th><th class="right">Jumlah</th></tr></thead>
+    <tbody>
+      ${motorExpenseRows || noExpenseRows}
+      <tr class="slip-total-row"><td colspan="3">Total Pengeluaran</td><td class="right">( ${rp(totalExpenses)} )</td></tr>
+    </tbody>
+  </table>
+  <div class="slip-sign-area"><div class="slip-sign-box">
+    <div>Hormat kami,</div>
+    <div class="slip-sign-name">The Wavy Rental</div>
   </div></div>
-  ${footerHtml()}`
+  `
 }
 export function printOwnerCommissionReport(args) { printWindow(buildOwnerCommissionHtml(args)) }
 
 export function buildHotelCommissionHtml({ hotel, rentals = [], period }) {
   const totalCommission = rentals.reduce((sum, item) => sum + Number(item.vendor_fee || 0), 0)
-  const averageCommission = rentals.length ? Math.round(totalCommission / rentals.length) : 0
 
   const rentalRows = rentals.map(r => `<tr>
     <td>${fmtDateTime(r.date_time)}</td>
@@ -559,35 +681,37 @@ export function buildHotelCommissionHtml({ hotel, rentals = [], period }) {
     <td class="right">${esc(r.period_days)} hari</td>
     <td class="right">${rp(r.vendor_fee)}</td>
   </tr>`).join('')
+  const noRentalRows = '<tr><td colspan="5" style="text-align:center;padding:16px;color:#888">Tidak ada fee partner pada periode ini</td></tr>'
+  const totalRow = `<tr class="slip-total-row"><td colspan="4">Total Pendapatan</td><td class="right">${rp(totalCommission)}</td></tr>`
 
-  return `${headerHtml('Slip Fee Vendor Hotel', period, 'Vendor Hotel: ' + esc(hotel?.name || '-'))}
+  return `${ownerSlipHeaderHtml(period, 'SLIP FEE PARTNER')}
   <div style="display:flex;gap:20px;margin-bottom:20px">
     <div class="info-box" style="flex:1">
-      <div class="info-label">Data Vendor Hotel</div>
+      <div class="info-label">Data Partner</div>
       <div class="info-name">${esc(hotel?.name || '-')}</div>
       <div class="info-detail">
-        Telepon: ${esc(hotel?.phone || '-')}<br>
-        Status Dokumen: Fee vendor dibayar otomatis saat transaksi pada periode terpilih
+        Telepon: ${esc(hotel?.phone || '-')}
       </div>
     </div>
 	    <div style="flex:1">
 	      <div class="summary-grid" style="grid-template-columns:repeat(2,1fr)">
-	        <div class="summary-card"><div class="label">Jumlah Rental</div><div class="value">${rentals.length}x</div></div>
-	        <div class="summary-card"><div class="label">Total Fee Vendor</div><div class="value">${rp(totalCommission)}</div></div>
-	        <div class="summary-card"><div class="label">Rata-rata Fee Vendor</div><div class="value">${rp(averageCommission)}</div></div>
+	        <div class="summary-card"><div class="label">Jumlah Transaksi</div><div class="value">${rentals.length}x</div></div>
+	        <div class="summary-card"><div class="label">Total Pendapatan</div><div class="value">${rp(totalCommission)}</div></div>
 	      </div>
 	    </div>
 	  </div>
-	  <div class="section-title">Rincian Fee Vendor</div>
-	  <table><thead><tr>
+	  <div class="section-title">Rincian Fee Partner</div>
+	  <table class="slip-table slip-vendor-table">
+      <colgroup><col><col><col><col><col></colgroup>
+      <thead><tr>
 	    <th>Tanggal</th><th>Pelanggan</th><th>Motor</th><th class="right">Durasi</th>
-	    <th class="right">Fee Vendor</th>
-	  </tr></thead><tbody>${rentalRows || '<tr><td colspan="5" style="text-align:center;padding:16px;color:#888">Tidak ada fee vendor pada periode ini</td></tr>'}</tbody></table>
-	  <div class="sign-area"><div class="sign-box">
-	    <div style="font-size:10px;color:#555">Hormat kami,</div>
-	    <div class="sign-line">PT. Artha Bali Wisata</div>
+	    <th class="right">Fee Partner</th>
+	  </tr></thead><tbody>${rentalRows || noRentalRows}${totalRow}</tbody></table>
+	  <div class="slip-sign-area"><div class="slip-sign-box">
+	    <div>Hormat kami,</div>
+	    <div class="slip-sign-name">The Wavy Rental</div>
 	  </div></div>
-	  ${footerHtml()}`
+	  `
 }
 
 // ─── 6. Laporan Laba Rugi ──────────────────────────────────────────────────

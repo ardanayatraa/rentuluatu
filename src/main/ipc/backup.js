@@ -13,7 +13,7 @@ import {
 } from 'fs'
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypto'
 import { createServer } from 'http'
-import { forceSaveDb, reloadDbFromBuffer } from '../db'
+import { dbOps, forceSaveDb, reloadDbFromBuffer } from '../db'
 import { Readable } from 'stream'
 import { logActivity } from '../lib/activity-log'
 import { fileURLToPath } from 'url'
@@ -21,7 +21,6 @@ import { fileURLToPath } from 'url'
 // googleapis di-lazy load supaya tidak crash saat startup
 let _google = null
 let _sql = null
-let skipAutoBackupOnClose = false
 const MODULE_DIRNAME = typeof __dirname !== 'undefined' ? __dirname : dirname(fileURLToPath(import.meta.url))
 async function getGoogle() {
   if (!_google) {
@@ -80,9 +79,53 @@ const REQUIRED_BACKUP_TABLES = [
   'owners',
   'motors',
   'cash_accounts',
+  'hotels',
+  'hotel_payouts',
   'rentals',
+  'rental_swaps',
+  'refunds',
+  'payouts',
+  'payout_deductions',
   'expenses',
   'cash_transactions'
+]
+const BACKUP_COUNT_TABLES = [
+  ['users', 'users'],
+  ['owners', 'owners'],
+  ['motors', 'motors'],
+  ['cash_accounts', 'cashAccounts'],
+  ['hotels', 'hotels'],
+  ['hotel_payouts', 'hotelPayouts'],
+  ['rentals', 'rentals'],
+  ['rental_swaps', 'rentalSwaps'],
+  ['refunds', 'refunds'],
+  ['payouts', 'payouts'],
+  ['payout_deductions', 'payoutDeductions'],
+  ['expenses', 'expenses'],
+  ['cash_transactions', 'cashTransactions'],
+  ['license', 'license'],
+  ['downloads', 'downloads'],
+  ['activity_logs', 'activityLogs']
+]
+const RESTORE_VERIFY_TABLES = [
+  'owners',
+  'motors',
+  'hotels',
+  'hotel_payouts',
+  'rentals',
+  'rental_swaps',
+  'refunds',
+  'payouts',
+  'payout_deductions',
+  'expenses',
+  'cash_transactions'
+]
+const RESTORE_VERIFY_TOTALS = [
+  ['rentals', 'total_price', 'rentalTotal'],
+  ['expenses', 'amount', 'expenseTotal'],
+  ['hotel_payouts', 'amount', 'hotelPayoutTotal'],
+  ['payouts', 'amount', 'payoutTotal'],
+  ['refunds', 'refund_amount', 'refundTotal']
 ]
 const RETENTION_POLICY = {
   keepAllDays: 7,
@@ -186,6 +229,33 @@ function saveToken(token) { writeFileSync(getTokenPath(), JSON.stringify(token))
 function clearToken() {
   const p = getTokenPath()
   if (existsSync(p)) try { unlinkSync(p) } catch { /* ignore */ }
+}
+
+function isGoogleAuthTokenError(error) {
+  const status = Number(error?.status || error?.code || error?.response?.status || 0)
+  const reason = String(
+    error?.response?.data?.error ||
+      error?.cause?.message ||
+      error?.message ||
+      ''
+  ).toLowerCase()
+  return status === 401 && ['unauthorized_client', 'invalid_grant', 'invalid_client'].includes(reason)
+}
+
+function handleGoogleDriveError(error) {
+  if (isGoogleAuthTokenError(error)) {
+    clearToken()
+    return new Error('Sesi Google Drive sudah tidak valid. Silakan hubungkan ulang Google Drive.')
+  }
+  return error
+}
+
+async function withGoogleDriveAuthHandling(fn) {
+  try {
+    return await fn()
+  } catch (error) {
+    throw handleGoogleDriveError(error)
+  }
 }
 
 // ── OAuth2 ───────────────────────────────────────────────────────────────────
@@ -494,22 +564,88 @@ async function validateBackupBuffer(plainData) {
       if (!tableNames.has(tableName)) return 0
       return Number(oneFromDb(db, `SELECT COUNT(*) AS n FROM ${tableName}`).n || 0)
     }
+    const sumTable = (tableName, columnName) => {
+      if (!tableNames.has(tableName)) return 0
+      return Number(oneFromDb(db, `SELECT COALESCE(SUM(${columnName}), 0) AS v FROM ${tableName}`).v || 0)
+    }
+
+    const tableCounts = BACKUP_COUNT_TABLES.reduce((counts, [tableName, key]) => {
+      counts[tableName] = countTable(tableName)
+      counts[key] = counts[tableName]
+      return counts
+    }, {})
 
     return {
-      motors: countTable('motors'),
-      owners: countTable('owners'),
-      hotels: countTable('hotels'),
-      rentals: countTable('rentals'),
-      expenses: countTable('expenses'),
-      cashTransactions: countTable('cash_transactions'),
+      ...tableCounts,
+      tableCounts,
       rentalsMinDate: String(oneFromDb(db, 'SELECT MIN(date_time) AS v FROM rentals').v || ''),
       rentalsMaxDate: String(oneFromDb(db, 'SELECT MAX(date_time) AS v FROM rentals').v || ''),
-      rentalTotal: Number(oneFromDb(db, 'SELECT COALESCE(SUM(total_price), 0) AS v FROM rentals').v || 0),
-      expenseTotal: Number(oneFromDb(db, 'SELECT COALESCE(SUM(amount), 0) AS v FROM expenses').v || 0)
+      rentalTotal: sumTable('rentals', 'total_price'),
+      expenseTotal: sumTable('expenses', 'amount'),
+      hotelPayoutTotal: sumTable('hotel_payouts', 'amount'),
+      payoutTotal: sumTable('payouts', 'amount'),
+      refundTotal: sumTable('refunds', 'refund_amount')
     }
   } finally {
     db.close()
   }
+}
+
+function countActiveTable(tableName) {
+  return Number(dbOps.get(`SELECT COUNT(*) AS n FROM ${tableName}`)?.n || 0)
+}
+
+function sumActiveTable(tableName, columnName) {
+  return Number(dbOps.get(`SELECT COALESCE(SUM(${columnName}), 0) AS v FROM ${tableName}`)?.v || 0)
+}
+
+function assertRestoredBusinessTablesMatch(summary) {
+  const expectedCounts = summary?.tableCounts || {}
+  const mismatches = []
+
+  for (const tableName of RESTORE_VERIFY_TABLES) {
+    const expected = Number(expectedCounts[tableName] || 0)
+    const actual = countActiveTable(tableName)
+    if (actual !== expected) {
+      mismatches.push(`${tableName}: backup ${expected}, aktif ${actual}`)
+    }
+  }
+
+  for (const [tableName, columnName, key] of RESTORE_VERIFY_TOTALS) {
+    const expected = Math.round(Number(summary?.[key] || 0))
+    const actual = Math.round(sumActiveTable(tableName, columnName))
+    if (actual !== expected) {
+      mismatches.push(`${key}: backup ${expected}, aktif ${actual}`)
+    }
+  }
+
+  if (mismatches.length) {
+    throw new Error(`Restore gagal diverifikasi. Data aktif tidak sama dengan backup (${mismatches.join('; ')})`)
+  }
+}
+
+async function restorePlainDbBuffer(plainData) {
+  const summary = await validateBackupBuffer(plainData)
+  const safetyBackup = writeSafetyBackupIfPossible()
+
+  try {
+    replaceDbFileAtomically(plainData)
+    reloadDbFromBuffer(plainData)
+    assertRestoredBusinessTablesMatch(summary)
+  } catch (error) {
+    if (safetyBackup?.path) {
+      try {
+        const rollbackData = readPlainLocalBackup(safetyBackup.path)
+        replaceDbFileAtomically(rollbackData)
+        reloadDbFromBuffer(rollbackData)
+      } catch {
+        // Restore verification failed; keep the original error visible.
+      }
+    }
+    throw error
+  }
+
+  return { summary, safetyBackup }
 }
 
 async function inspectBackupFile(backupPath) {
@@ -552,7 +688,7 @@ function getBackupSettingsPath() {
 }
 
 function loadBackupSettings() {
-  const defaults = { autoBackupOnClose: true }
+  const defaults = { autoBackupOnClose: false }
   const p = getBackupSettingsPath()
   if (!existsSync(p)) return defaults
   try {
@@ -567,13 +703,12 @@ function saveBackupSettings(nextSettings) {
 }
 
 export function shouldAutoBackupOnClose() {
-  if (skipAutoBackupOnClose) return false
-  const settings = loadBackupSettings()
-  return Boolean(settings.autoBackupOnClose && CLIENT_ID && CLIENT_SECRET && loadToken())
+  return false
 }
 
 export function skipAutoBackupForNextClose() {
-  skipAutoBackupOnClose = true
+  // Auto backup saat close dinonaktifkan permanen; fungsi ini dibiarkan agar import lama tetap aman.
+  return false
 }
 
 async function getDriveContext() {
@@ -651,23 +786,25 @@ async function downloadDriveBackupPlain({ drive, folderId, fileId, fileName }) {
 }
 
 export async function runAutoCloseBackup() {
-  forceSaveDb()
-  const dbPath = getDbPath()
-  if (!existsSync(dbPath)) throw new Error('File database tidak ditemukan')
+  return withGoogleDriveAuthHandling(async () => {
+    forceSaveDb()
+    const dbPath = getDbPath()
+    if (!existsSync(dbPath)) throw new Error('File database tidak ditemukan')
 
-  const passphrase = getOrCreatePassphrase()
-  const plainData = readFileSync(dbPath)
-  const summary = await validateBackupBuffer(plainData)
-  const encData = encryptBuffer(plainData, passphrase)
-  const filename = createBackupFilename('auto_close')
-  const keyFilename = getRecoveryKeyFilename(filename)
-  const keyBuffer = buildRecoveryKeyBuffer({ backupFilename: filename, passphrase })
-  const { drive, folderId } = await getDriveContext()
+    const passphrase = getOrCreatePassphrase()
+    const plainData = readFileSync(dbPath)
+    const summary = await validateBackupBuffer(plainData)
+    const encData = encryptBuffer(plainData, passphrase)
+    const filename = createBackupFilename('auto_close')
+    const keyFilename = getRecoveryKeyFilename(filename)
+    const keyBuffer = buildRecoveryKeyBuffer({ backupFilename: filename, passphrase })
+    const { drive, folderId } = await getDriveContext()
 
-  const result = await uploadFileToDrive({ drive, folderId, filename, buffer: encData })
-  await uploadFileToDrive({ drive, folderId, filename: keyFilename, buffer: keyBuffer })
-  const retention = await pruneDriveBackups({ drive, folderId })
-  return { ...result, summary, retention }
+    const result = await uploadFileToDrive({ drive, folderId, filename, buffer: encData })
+    await uploadFileToDrive({ drive, folderId, filename: keyFilename, buffer: keyBuffer })
+    const retention = await pruneDriveBackups({ drive, folderId })
+    return { ...result, summary, retention }
+  })
 }
 
 // ── Register handlers ────────────────────────────────────────────────────────
@@ -679,19 +816,18 @@ export function registerBackupHandlers() {
   }))
 
   ipcMain.handle('backup:auto-close-status', () => {
-    const settings = loadBackupSettings()
-    return { enabled: Boolean(settings.autoBackupOnClose) }
+    return { enabled: false, available: false }
   })
 
-  ipcMain.handle('backup:auto-close-set', (_, { enabled }) => {
+  ipcMain.handle('backup:auto-close-set', () => {
     const current = loadBackupSettings()
-    const next = { ...current, autoBackupOnClose: Boolean(enabled) }
+    const next = { ...current, autoBackupOnClose: false }
     saveBackupSettings(next)
     logActivity({
       action: 'backup.auto-close-set',
-      detail: `Backup otomatis saat tutup app ${next.autoBackupOnClose ? 'diaktifkan' : 'dimatikan'}`
+      detail: 'Backup otomatis saat tutup app dinonaktifkan'
     })
-    return { success: true, enabled: next.autoBackupOnClose }
+    return { success: true, enabled: false, available: false }
   })
 
   // Buka browser + jalankan localhost callback server, resolve otomatis saat Google redirect balik
@@ -900,10 +1036,7 @@ export function registerBackupHandlers() {
 
     forceSaveDb()
     const plainData = readPlainLocalBackup(normalizedPath)
-    const summary = await validateBackupBuffer(plainData)
-    const safetyBackup = writeSafetyBackupIfPossible()
-    replaceDbFileAtomically(plainData)
-    reloadDbFromBuffer(plainData)
+    const { summary, safetyBackup } = await restorePlainDbBuffer(plainData)
     logActivity({
       action: 'backup.restore-local',
       detail: `Restore backup lokal (${basename(normalizedPath) || normalizedPath})`
@@ -918,7 +1051,7 @@ export function registerBackupHandlers() {
   })
 
   // ── Upload ke Google Drive (terenkripsi) ───────────────────────────────────
-  ipcMain.handle('backup:gdrive-upload', async () => {
+  ipcMain.handle('backup:gdrive-upload', async () => withGoogleDriveAuthHandling(async () => {
     forceSaveDb()
     const dbPath = getDbPath()
     if (!existsSync(dbPath)) throw new Error('File database tidak ditemukan')
@@ -939,31 +1072,28 @@ export function registerBackupHandlers() {
       detail: `Backup berhasil di-upload ke Google Drive (${filename})`
     })
     return { ...result, encrypted: true, summary, retention }
-  })
+  }))
 
-  ipcMain.handle('backup:gdrive-list', async () => {
+  ipcMain.handle('backup:gdrive-list', async () => withGoogleDriveAuthHandling(async () => {
     const { drive, folderId } = await getDriveContext()
     return listBackupFiles(drive, folderId)
-  })
+  }))
 
-  ipcMain.handle('backup:gdrive-inspect', async (_, { fileId, fileName }) => {
+  ipcMain.handle('backup:gdrive-inspect', async (_, { fileId, fileName }) => withGoogleDriveAuthHandling(async () => {
     if (!fileId) throw new Error('File backup tidak valid')
     const { drive, folderId } = await getDriveContext()
     const plainData = await downloadDriveBackupPlain({ drive, folderId, fileId, fileName })
     const summary = await validateBackupBuffer(plainData)
     return { success: true, summary }
-  })
+  }))
 
   // Download & restore dari Google Drive (decrypt otomatis)
-  ipcMain.handle('backup:gdrive-restore', async (_, { fileId, fileName }) => {
+  ipcMain.handle('backup:gdrive-restore', async (_, { fileId, fileName }) => withGoogleDriveAuthHandling(async () => {
     forceSaveDb()
 
     const { drive, folderId } = await getDriveContext()
     const plainData = await downloadDriveBackupPlain({ drive, folderId, fileId, fileName })
-    const summary = await validateBackupBuffer(plainData)
-    const safetyBackup = writeSafetyBackupIfPossible()
-    replaceDbFileAtomically(plainData)
-    reloadDbFromBuffer(plainData)
+    const { summary, safetyBackup } = await restorePlainDbBuffer(plainData)
     logActivity({
       action: 'backup.gdrive-restore',
       detail: `Restore backup dari Google Drive (${fileName || fileId})`
@@ -975,9 +1105,9 @@ export function registerBackupHandlers() {
       safetyBackupName: safetyBackup?.filename || null,
       relaunching: false
     }
-  })
+  }))
 
-  ipcMain.handle('backup:gdrive-delete', async (_, { fileId, fileName }) => {
+  ipcMain.handle('backup:gdrive-delete', async (_, { fileId, fileName }) => withGoogleDriveAuthHandling(async () => {
     const auth = await getAuthenticatedClient()
     if (!auth) throw new Error('Belum terhubung ke Google Drive')
     const google = await getGoogle()
@@ -995,5 +1125,5 @@ export function registerBackupHandlers() {
       detail: `Backup Google Drive dihapus (${fileId})`
     })
     return { success: true }
-  })
+  }))
 }

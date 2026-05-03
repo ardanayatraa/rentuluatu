@@ -99,8 +99,8 @@ describe('IPC business logic', () => {
       }
       if (sql.includes('FROM rentals r') && sql.includes('m.id as motor_id')) {
         return [
-          { id: 1, motor_id: 10, model: 'Vario', plate_number: 'DK 1234 AA', owner_gets: 200_000, payout_id: null, date_time: '2026-04-07T10:00:00', customer_name: 'A', period_days: 2, total_price: 300_000 },
-          { id: 2, motor_id: 11, model: 'NMax', plate_number: 'DK 5555 BB', owner_gets: 150_000, payout_id: 8, date_time: '2026-04-06T10:00:00', customer_name: 'B', period_days: 1, total_price: 220_000 }
+          { id: 1, motor_id: 10, model: 'Vario', plate_number: 'DK 1234 AA', owner_gets: 200_000, wavy_gets: 100_000, sisa: 300_000, payout_id: null, date_time: '2026-04-07T10:00:00', customer_name: 'A', period_days: 2, total_price: 300_000 },
+          { id: 2, motor_id: 11, model: 'NMax', plate_number: 'DK 5555 BB', owner_gets: 150_000, wavy_gets: 70_000, sisa: 220_000, payout_id: 8, date_time: '2026-04-06T10:00:00', customer_name: 'B', period_days: 1, total_price: 220_000 }
         ]
       }
       if (sql.includes('FROM expenses e') && sql.includes("e.type = 'motor'")) {
@@ -122,6 +122,7 @@ describe('IPC business logic', () => {
     })
 
     expect(report.totalOwnerGets).toBe(350_000)
+    expect(report.totalIncome).toBe(520_000)
     expect(report.totalPaid).toBe(150_000)
     expect(report.totalUnpaid).toBe(200_000)
     expect(report.totalExpenses).toBe(50_000)
@@ -148,6 +149,115 @@ describe('IPC business logic', () => {
         net_total: 150_000
       }
     ])
+  })
+
+  it('report owner commission konsisten untuk transaksi rental, extension, dan ganti motor', async () => {
+    dbOps.get.mockImplementation((sql, params) => {
+      if (sql.includes('SELECT * FROM owners')) return { id: params[0], name: 'Mitra Campuran' }
+      return null
+    })
+    dbOps.all.mockImplementation((sql) => {
+      if (sql.includes('SELECT * FROM motors WHERE owner_id')) {
+        return [
+          { id: 10, model: 'Vario', plate_number: 'DK 1234 AA' },
+          { id: 11, model: 'NMax', plate_number: 'DK 5555 BB' }
+        ]
+      }
+      if (sql.includes('FROM rentals r') && sql.includes('m.id as motor_id')) {
+        return [
+          {
+            id: 1,
+            motor_id: 10,
+            model: 'Vario',
+            plate_number: 'DK 1234 AA',
+            relation_type: 'rental',
+            total_price: 500_000,
+            vendor_fee: 50_000,
+            sisa: 450_000,
+            wavy_gets: 135_000,
+            owner_gets: 315_000,
+            payout_id: null,
+            date_time: '2026-04-01T10:00:00',
+            customer_name: 'A',
+            period_days: 3
+          },
+          {
+            id: 2,
+            motor_id: 10,
+            model: 'Vario',
+            plate_number: 'DK 1234 AA',
+            relation_type: 'extend',
+            total_price: 200_000,
+            vendor_fee: 0,
+            sisa: 200_000,
+            wavy_gets: 60_000,
+            owner_gets: 140_000,
+            payout_id: null,
+            date_time: '2026-04-04T10:00:00',
+            customer_name: 'A',
+            period_days: 1
+          },
+          {
+            id: 3,
+            motor_id: 10,
+            model: 'Vario',
+            plate_number: 'DK 1234 AA',
+            relation_type: 'swap_source',
+            total_price: 100_000,
+            vendor_fee: 20_000,
+            sisa: 80_000,
+            wavy_gets: 24_000,
+            owner_gets: 56_000,
+            payout_id: null,
+            date_time: '2026-04-05T10:00:00',
+            customer_name: 'B',
+            period_days: 1
+          },
+          {
+            id: 4,
+            motor_id: 11,
+            model: 'NMax',
+            plate_number: 'DK 5555 BB',
+            relation_type: 'swap',
+            total_price: 300_000,
+            vendor_fee: 0,
+            sisa: 300_000,
+            wavy_gets: 90_000,
+            owner_gets: 210_000,
+            payout_id: null,
+            date_time: '2026-04-06T10:00:00',
+            customer_name: 'B',
+            period_days: 2
+          }
+        ]
+      }
+      if (sql.includes('FROM expenses e') && sql.includes("e.type = 'motor'")) {
+        return [
+          { id: 21, motor_id: 10, model: 'Vario', plate_number: 'DK 1234 AA', amount: 100_000, category: 'Servis', description: 'Oli' }
+        ]
+      }
+      if (sql.includes('FROM payouts p')) return []
+      return []
+    })
+
+    registerReportHandlers()
+    const report = await handlers.get('report:owner-commission')(null, {
+      ownerId: 2,
+      startDate: '2026-04-01T00:00:00',
+      endDate: '2026-04-30T23:59:59'
+    })
+
+    expect(report.rentals.map((item) => item.relation_type)).toEqual(['rental', 'extend', 'swap_source', 'swap'])
+    expect(report.rentals.map((item) => item.rental_income)).toEqual([450_000, 200_000, 80_000, 300_000])
+    expect(report.totalIncome).toBe(1_030_000)
+    expect(report.totalOwnerGets).toBe(721_000)
+    expect(report.totalExpenses).toBe(100_000)
+    expect(report.totalNet).toBe(621_000)
+    expect(report.totalIncome).toBe(
+      report.rentals.reduce((sum, item) => sum + Number(item.wavy_gets || 0) + Number(item.owner_gets || 0), 0)
+    )
+    expect(report.byMotor.find((item) => item.motor_id === 10).rental_total).toBe(511_000)
+    expect(report.byMotor.find((item) => item.motor_id === 11).rental_total).toBe(210_000)
   })
 
   it('report:transactions tidak menghitung rental dengan status refunded sebagai pemasukan', async () => {
@@ -694,6 +804,10 @@ describe('IPC business logic', () => {
 
   it('hotel summary dan preview memasukkan fee vendor dari extend', async () => {
     dbOps.all.mockImplementation(() => [])
+    dbOps.get.mockImplementation((sql) => {
+      if (sql.includes('SELECT * FROM hotels WHERE id = ?')) return { id: 3, name: 'Hotel A' }
+      return null
+    })
 
     registerHotelHandlers()
     handlers.get('hotel:get-all')(null)
@@ -705,11 +819,15 @@ describe('IPC business logic', () => {
 
     const relationQueries = dbOps.all.mock.calls
       .map(([sql]) => sql)
-      .filter((sql) => sql.includes("COALESCE(r.relation_type, 'rental') IN"))
+      .filter((sql) => sql.includes('NULLIF(TRIM(r.relation_type)'))
     expect(relationQueries.length).toBeGreaterThanOrEqual(2)
     relationQueries.forEach((sql) => {
-      expect(sql).toContain("COALESCE(r.relation_type, 'rental') IN ('rental', 'extend', 'swap_source')")
+      expect(sql).toContain("IN ('rental', 'extend', 'swap_source')")
+      expect(sql).toContain("LOWER(COALESCE(r.status, 'completed')) != 'refunded'")
+      expect(sql).toContain("COALESCE(r.vendor_fee, 0) > 0")
     })
+    expect(relationQueries.some((sql) => sql.includes('LOWER(TRIM(r.hotel)) = LOWER(TRIM(h.name))'))).toBe(true)
+    expect(relationQueries.some((sql) => sql.includes('LOWER(TRIM(r.hotel)) = LOWER(TRIM(?))'))).toBe(true)
   })
 
   it('hotel create menyimpan data vendor baru dan memanggil saveDb', async () => {

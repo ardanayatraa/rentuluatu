@@ -14,6 +14,27 @@
     </div>
 
     <div class="mb-4 flex items-center justify-between gap-4 flex-wrap">
+      <div class="flex items-center gap-2 flex-wrap">
+        <select v-model="periodFilter.mode" @change="syncHotelPeriod" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+          <option value="month">Per Bulan</option>
+          <option value="year">Per Tahun</option>
+          <option value="custom">Rentang Tanggal</option>
+          <option value="all">Semua Data</option>
+        </select>
+        <input v-if="periodFilter.mode === 'month'" v-model="periodFilter.month" @change="syncHotelPeriod" type="month" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+        <select v-else-if="periodFilter.mode === 'year'" v-model="periodFilter.year" @change="syncHotelPeriod" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+          <option v-for="year in availableYears" :key="year" :value="year">{{ year }}</option>
+        </select>
+        <template v-else>
+          <input v-model="periodFilter.startDate" type="date" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+          <span class="text-slate-400">-</span>
+          <input v-model="periodFilter.endDate" type="date" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+        </template>
+        <button @click="loadData" class="btn-secondary text-sm py-2">
+          <span class="material-symbols-outlined text-sm">filter_list</span>
+          Filter
+        </button>
+      </div>
       <div class="relative">
         <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">search</span>
         <input
@@ -133,11 +154,14 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { formatRp } from '../utils/format'
+import { createPeriodFilter, getAvailableYears, syncPeriodRange } from '../utils/periodFilter'
 
 const router = useRouter()
 const hotels = ref([])
 const loading = ref(false)
 const searchQuery = ref('')
+const periodFilter = ref(createPeriodFilter('all'))
+const availableYears = getAvailableYears()
 
 const showModal = ref(false)
 const showDeleteConfirm = ref(false)
@@ -170,11 +194,15 @@ watch([searchQuery, pageSize], () => {
 async function loadData() {
   loading.value = true
   try {
-    hotels.value = await window.api.getHotels()
+    hotels.value = await window.api.getHotels(syncHotelPeriod())
     currentPage.value = 1
   } finally {
     loading.value = false
   }
+}
+
+function syncHotelPeriod() {
+  return syncPeriodRange(periodFilter.value)
 }
 
 function goToDetail(id) {

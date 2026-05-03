@@ -3,18 +3,34 @@ import { dbOps, saveDb } from '../db'
 import { logActivity } from '../lib/activity-log'
 
 export function registerOwnerHandlers() {
-  ipcMain.handle('owner:get-all', (_, { activeOnly = false } = {}) => {
+  ipcMain.handle('owner:get-all', (_, { activeOnly = false, startDate = null, endDate = null } = {}) => {
     const where = activeOnly ? 'WHERE o.is_active = 1' : ''
+    const rentalDateFilter = [
+      startDate ? 'AND date(r.date_time) >= date(?)' : '',
+      endDate ? 'AND date(r.date_time) <= date(?)' : ''
+    ].filter(Boolean).join(' ')
+    const payoutDateFilter = [
+      startDate ? 'AND date(p.date) >= date(?)' : '',
+      endDate ? 'AND date(p.date) <= date(?)' : ''
+    ].filter(Boolean).join(' ')
+    const params = [
+      ...(startDate ? [startDate] : []),
+      ...(endDate ? [endDate] : []),
+      ...(startDate ? [startDate] : []),
+      ...(endDate ? [endDate] : [])
+    ]
     return dbOps.all(`
       SELECT o.*, 
         (SELECT COALESCE(SUM(r.owner_gets), 0) FROM rentals r 
          JOIN motors m ON r.motor_id = m.id 
-         WHERE m.owner_id = o.id AND r.payout_id IS NULL AND r.status != 'refunded') as unpaid_commission
+         WHERE m.owner_id = o.id AND r.payout_id IS NULL AND r.status != 'refunded'
+         ${rentalDateFilter}) as unpaid_commission
         ,
         (SELECT COALESCE(SUM(p.amount), 0) FROM payouts p
-         WHERE p.owner_id = o.id) as paid_amount
+         WHERE p.owner_id = o.id
+         ${payoutDateFilter}) as paid_amount
       FROM owners o ${where} ORDER BY name ASC
-    `)
+    `, params)
   })
 
   ipcMain.handle('owner:get-by-id', (_, payload) => {

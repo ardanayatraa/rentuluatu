@@ -26,7 +26,22 @@
     </div>
 
     <!-- Filter -->
-    <div class="card mb-6 flex gap-4 items-center">
+    <div class="card mb-6 flex gap-4 items-center flex-wrap">
+      <select v-model="periodFilter.mode" @change="syncMotorPeriod" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+        <option value="month">Per Bulan</option>
+        <option value="year">Per Tahun</option>
+        <option value="custom">Rentang Tanggal</option>
+        <option value="all">Semua Data</option>
+      </select>
+      <input v-if="periodFilter.mode === 'month'" v-model="periodFilter.month" @change="syncMotorPeriod" type="month" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+      <select v-else-if="periodFilter.mode === 'year'" v-model="periodFilter.year" @change="syncMotorPeriod" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+        <option v-for="year in availableYears" :key="year" :value="year">{{ year }}</option>
+      </select>
+      <template v-else>
+        <input v-model="periodFilter.startDate" type="date" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+        <span class="text-slate-400">-</span>
+        <input v-model="periodFilter.endDate" type="date" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+      </template>
       <input v-model="search" type="text" placeholder="Cari model atau plat..."
         class="border border-slate-200 rounded-lg px-3 py-2 text-sm w-64" />
       <select v-model="filterType" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
@@ -39,6 +54,10 @@
         <option :value="25">25 / halaman</option>
         <option :value="50">50 / halaman</option>
       </select>
+      <button @click="loadData" class="btn-secondary text-sm py-2">
+        <span class="material-symbols-outlined text-sm">filter_list</span>
+        Filter
+      </button>
       <span class="ml-auto text-sm text-slate-500">{{ filteredMotors.length }} motor</span>
     </div>
 
@@ -201,6 +220,7 @@ import SearchSelect from '../components/SearchSelect.vue'
 import { getMotorTypeLabel, getWavyPctLabel, isAsetPt, normalizeMotorType } from '../utils/motorType'
 import { buildSimpleTableHtml, previewReport } from '../utils/pdf'
 import { saveMotorsExcel } from '../utils/excel'
+import { createPeriodFilter, formatPeriodLabel, getAvailableYears, periodFileLabel, syncPeriodRange } from '../utils/periodFilter'
 
 const motors = ref([])
 const loading = ref(false)
@@ -211,6 +231,8 @@ const showModal = ref(false)
 const editId = ref(null)
 const search = ref('')
 const filterType = ref('')
+const periodFilter = ref(createPeriodFilter('all'))
+const availableYears = getAvailableYears()
 const form = ref({ model: '', plate_number: '', type: 'aset_pt', owner_id: '' })
 const currentPage = ref(1)
 const pageSize = ref(10)
@@ -259,13 +281,9 @@ function toFileNamePart(value) {
     .replace(/\s+/g, '_')
 }
 
-function todayValue() {
-  return new Date().toISOString().split('T')[0]
-}
-
 function getExportFileLabel() {
   const typeLabel = filterType.value ? toFileNamePart(getMotorTypeLabel(filterType.value)) : 'Semua_Tipe'
-  return `${todayValue()}_${typeLabel}`
+  return `${periodFileLabel(periodFilter.value)}_${typeLabel}`
 }
 
 async function withExporting(kind, work) {
@@ -301,7 +319,7 @@ async function exportPdf() {
     const html = buildSimpleTableHtml({
       title: 'Daftar Motor',
       subtitle: `Filter: ${filterType.value ? getMotorTypeLabel(filterType.value) : 'Semua Tipe'}`,
-      period: `Per ${todayValue()}`,
+      period: formatPeriodLabel(periodFilter.value),
       summary: [
         { label: 'Total Motor', value: `${filteredMotors.value.length} unit` }
       ],
@@ -369,13 +387,17 @@ async function loadData() {
   loading.value = true
   ownersLoading.value = true
   try {
-    motors.value = await window.api.getMotors()
+    motors.value = await window.api.getMotors(syncMotorPeriod())
     owners.value = await window.api.getOwners({ activeOnly: true })
     currentPage.value = 1
   } finally {
     loading.value = false
     ownersLoading.value = false
   }
+}
+
+function syncMotorPeriod() {
+  return syncPeriodRange(periodFilter.value)
 }
 
 function openAdd() {
@@ -447,8 +469,7 @@ async function submitMotor() {
       await window.api.createMotor(payload)
     }
     showModal.value = false
-    motors.value = await window.api.getMotors()
-    currentPage.value = 1
+    await loadData()
   } catch (err) {
     motorError.value = err.message.replace("Error invoking remote method 'motor:create': Error: ", '')
       .replace("Error invoking remote method 'motor:update': Error: ", '')
@@ -468,8 +489,7 @@ async function confirmDeleteMotor() {
     await window.api.deleteMotor(pendingDeleteMotorId.value)
     showDeleteConfirm.value = false
     pendingDeleteMotorId.value = null
-    motors.value = await window.api.getMotors()
-    currentPage.value = 1
+    await loadData()
   } catch (err) {
     openMessage('Hapus Gagal', err.message.replace("Error invoking remote method 'motor:delete': Error: ", ''))
   }

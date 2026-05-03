@@ -9,7 +9,7 @@ let dbPath
 let sqlModule
 let saveTimer = null
 let isDirty = false
-const SAVE_DEBOUNCE_MS = 250
+let transactionDepth = 0
 const MODULE_DIRNAME = typeof __dirname !== 'undefined' ? __dirname : dirname(fileURLToPath(import.meta.url))
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -53,6 +53,10 @@ export function getDb() {
 
 function persistDbNow() {
   if (db && dbPath) {
+    if (saveTimer) {
+      clearTimeout(saveTimer)
+      saveTimer = null
+    }
     const data = db.export()
     writeFileSync(dbPath, Buffer.from(data))
     isDirty = false
@@ -62,11 +66,10 @@ function persistDbNow() {
 export function saveDb() {
   if (!db || !dbPath) return
   isDirty = true
+  if (transactionDepth > 0) return
   if (saveTimer) clearTimeout(saveTimer)
-  saveTimer = setTimeout(() => {
-    saveTimer = null
-    if (isDirty) persistDbNow()
-  }, SAVE_DEBOUNCE_MS)
+  saveTimer = null
+  persistDbNow()
 }
 
 export function forceSaveDb() {
@@ -86,7 +89,23 @@ function run(sql, params = []) {
 
 // runRaw: jalankan query tanpa langsung saveDb — dipakai saat butuh last_insert_rowid()
 function runRaw(sql, params = []) {
+  const command = String(sql || '').trim().split(/\s+/).slice(0, 2).join(' ').toUpperCase()
   db.run(sql, params)
+  if (command.startsWith('BEGIN')) {
+    transactionDepth += 1
+  } else if (command === 'COMMIT') {
+    transactionDepth = Math.max(0, transactionDepth - 1)
+    if (transactionDepth === 0 && isDirty) persistDbNow()
+  } else if (command === 'ROLLBACK') {
+    transactionDepth = Math.max(0, transactionDepth - 1)
+    if (transactionDepth === 0) {
+      isDirty = false
+      if (saveTimer) {
+        clearTimeout(saveTimer)
+        saveTimer = null
+      }
+    }
+  }
 }
 
 function get(sql, params = []) {
@@ -119,6 +138,7 @@ export function reloadDbFromBuffer(buffer) {
     saveTimer = null
   }
   isDirty = false
+  transactionDepth = 0
 
   try {
     db?.close?.()

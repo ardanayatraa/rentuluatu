@@ -72,6 +72,7 @@
         <div class="flex flex-wrap items-end gap-2">
           <select v-model="periodFilter.mode" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
             <option value="month">Per Bulan</option>
+            <option value="year">Per Tahun</option>
             <option value="custom">Rentang Tanggal</option>
             <option value="all">Semua Data</option>
           </select>
@@ -81,6 +82,13 @@
             type="month"
             class="border border-slate-200 rounded-lg px-3 py-2 text-sm"
           />
+          <select
+            v-if="periodFilter.mode === 'year'"
+            v-model="periodFilter.year"
+            class="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+          >
+            <option v-for="year in availableYears" :key="year" :value="year">{{ year }}</option>
+          </select>
           <template v-if="periodFilter.mode === 'custom'">
             <input v-model="periodFilter.startDate" type="date" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
             <span class="text-slate-400 self-center">-</span>
@@ -407,19 +415,23 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { formatRp, formatDate, nowDateTime } from '../utils/format'
 import { buildHotelCommissionHtml, previewReport } from '../utils/pdf'
+import {
+  currentMonthValue,
+  currentYearValue,
+  getAvailableYears,
+  getMonthRange,
+  getYearRange
+} from '../utils/periodFilter'
 
 const route = useRoute()
 const router = useRouter()
 const hotelId = Number(route.params.id)
 
-function currentMonthValue() {
-  return new Date().toISOString().slice(0, 7)
-}
-
 function createDefaultPeriodFilter() {
   return {
     mode: 'month',
     month: currentMonthValue(),
+    year: currentYearValue(),
     startDate: '',
     endDate: ''
   }
@@ -438,6 +450,7 @@ const successMessage = ref('')
 const payoutForm = ref({ cash_account_id: '' })
 
 const periodFilter = ref(createDefaultPeriodFilter())
+const availableYears = getAvailableYears()
 
 const pendingSearch = ref('')
 const pendingCurrentPage = ref(1)
@@ -447,14 +460,6 @@ const historySearch = ref('')
 const historyCurrentPage = ref(1)
 const historyPageSize = ref(10)
 const openHistoryIndex = ref(-1)
-
-function getMonthRange(monthValue) {
-  if (!monthValue) return { startDate: '', endDate: '' }
-  const [year, month] = monthValue.split('-').map(Number)
-  const startDate = `${year}-${String(month).padStart(2, '0')}-01`
-  const endDate = new Date(year, month, 0).toISOString().slice(0, 10)
-  return { startDate, endDate }
-}
 
 function formatLongDate(value) {
   if (!value) return '-'
@@ -487,6 +492,7 @@ function formatDateTimeShort(value) {
 const effectivePeriod = computed(() => {
   if (periodFilter.value.mode === 'all') return { startDate: '', endDate: '' }
   if (periodFilter.value.mode === 'month') return getMonthRange(periodFilter.value.month)
+  if (periodFilter.value.mode === 'year') return getYearRange(periodFilter.value.year)
   return {
     startDate: periodFilter.value.startDate || '',
     endDate: periodFilter.value.endDate || ''
@@ -496,6 +502,7 @@ const effectivePeriod = computed(() => {
 const activePeriodLabel = computed(() => {
   if (periodFilter.value.mode === 'all') return 'Semua Data'
   if (periodFilter.value.mode === 'month') return formatMonthLabel(periodFilter.value.month)
+  if (periodFilter.value.mode === 'year') return `Tahun ${periodFilter.value.year || currentYearValue()}`
   if (effectivePeriod.value.startDate && effectivePeriod.value.endDate) {
     return `${formatLongDate(effectivePeriod.value.startDate)} s/d ${formatLongDate(effectivePeriod.value.endDate)}`
   }
@@ -506,6 +513,8 @@ const slipFileName = computed(() => {
   let periodLabel = 'Semua_Data'
   if (periodFilter.value.mode === 'month') {
     periodLabel = toFileNamePart(periodFilter.value.month)
+  } else if (periodFilter.value.mode === 'year') {
+    periodLabel = toFileNamePart(periodFilter.value.year)
   } else if (periodFilter.value.mode === 'custom') {
     const { startDate, endDate } = effectivePeriod.value
     periodLabel = startDate && endDate && startDate !== endDate

@@ -84,9 +84,16 @@ export function registerExpenseHandlers() {
       FROM expenses e LEFT JOIN motors m ON e.motor_id = m.id WHERE 1=1
     `
     const params = []
-    if (filters.startDate) { query += ' AND e.date >= ?'; params.push(filters.startDate) }
-    if (filters.endDate) { query += ' AND e.date <= ?'; params.push(filters.endDate) }
-    if (filters.type) { query += ' AND e.type = ?'; params.push(filters.type) }
+    if (filters.startDate) { query += ' AND date(e.date) >= date(?)'; params.push(filters.startDate) }
+    if (filters.endDate) { query += ' AND date(e.date) <= date(?)'; params.push(filters.endDate) }
+    if (filters.type === 'motor') {
+      query += " AND e.type = 'motor'"
+    } else if (filters.type === 'umum') {
+      query += " AND (e.type IS NULL OR e.type != 'motor')"
+    } else if (filters.type) {
+      query += ' AND e.type = ?'
+      params.push(filters.type)
+    }
     if (filters.motorId) { query += ' AND e.motor_id = ?'; params.push(filters.motorId) }
     query += ' ORDER BY e.date DESC'
     return dbOps.all(query, params)

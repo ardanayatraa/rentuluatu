@@ -63,6 +63,7 @@
         <div class="flex flex-wrap items-center gap-2">
           <select v-model="motorPeriodFilter.mode" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
             <option value="month">Per Bulan</option>
+            <option value="year">Per Tahun</option>
             <option value="custom">Rentang Tanggal</option>
             <option value="all">Semua Data</option>
           </select>
@@ -72,6 +73,13 @@
             type="month"
             class="border border-slate-200 rounded-lg px-3 py-2 text-sm"
           />
+          <select
+            v-if="motorPeriodFilter.mode === 'year'"
+            v-model="motorPeriodFilter.year"
+            class="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+          >
+            <option v-for="year in availableYears" :key="year" :value="year">{{ year }}</option>
+          </select>
           <template v-if="motorPeriodFilter.mode === 'custom'">
             <input
               v-model="motorPeriodFilter.startDate"
@@ -195,6 +203,7 @@
         <div class="flex flex-wrap items-end gap-2">
           <select v-model="periodFilter.mode" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
             <option value="month">Per Bulan</option>
+            <option value="year">Per Tahun</option>
             <option value="custom">Rentang Tanggal</option>
             <option value="all">Semua Data</option>
           </select>
@@ -204,6 +213,13 @@
             type="month"
             class="border border-slate-200 rounded-lg px-3 py-2 text-sm"
           />
+          <select
+            v-if="periodFilter.mode === 'year'"
+            v-model="periodFilter.year"
+            class="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+          >
+            <option v-for="year in availableYears" :key="year" :value="year">{{ year }}</option>
+          </select>
           <template v-if="periodFilter.mode === 'custom'">
             <input v-model="periodFilter.startDate" type="date" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
             <input v-model="periodFilter.endDate" type="date" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
@@ -392,6 +408,7 @@
           <div class="flex flex-wrap items-end gap-2">
             <select v-model="motorDetailFilter.mode" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
               <option value="month">Per Bulan</option>
+              <option value="year">Per Tahun</option>
               <option value="custom">Rentang Tanggal</option>
               <option value="all">Semua Data</option>
             </select>
@@ -401,6 +418,13 @@
               type="month"
               class="border border-slate-200 rounded-lg px-3 py-2 text-sm"
             />
+            <select
+              v-if="motorDetailFilter.mode === 'year'"
+              v-model="motorDetailFilter.year"
+              class="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+            >
+              <option v-for="year in availableYears" :key="year" :value="year">{{ year }}</option>
+            </select>
             <template v-if="motorDetailFilter.mode === 'custom'">
               <input
                 v-model="motorDetailFilter.startDate"
@@ -594,6 +618,7 @@
           <select v-model="slipFilter.mode" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
             <option value="all">Semua Hak Mitra Sampai Hari Ini</option>
             <option value="month">Hak Mitra Per Bulan</option>
+            <option value="year">Hak Mitra Per Tahun</option>
             <option value="custom">Rentang Tanggal Kustom</option>
           </select>
         </div>
@@ -601,6 +626,13 @@
         <div v-if="slipFilter.mode === 'month'">
           <label class="block text-xs font-bold text-slate-500 mb-1">Pilih Bulan</label>
           <input v-model="slipFilter.month" type="month" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+        </div>
+
+        <div v-if="slipFilter.mode === 'year'">
+          <label class="block text-xs font-bold text-slate-500 mb-1">Pilih Tahun</label>
+          <select v-model="slipFilter.year" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+            <option v-for="year in availableYears" :key="year" :value="year">{{ year }}</option>
+          </select>
         </div>
 
         <div v-if="slipFilter.mode === 'custom'" class="grid grid-cols-2 gap-3">
@@ -643,12 +675,27 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { formatRp, formatDate, today } from '../utils/format'
+import { dateInputValue, formatRp, formatDate, today } from '../utils/format'
 import { buildOwnerCommissionHtml, previewReport } from '../utils/pdf'
 
 const route = useRoute()
 const router = useRouter()
 const ownerId = Number(route.params.id)
+
+function currentYearValue() {
+  return today().slice(0, 4)
+}
+
+function getAvailableYears() {
+  const currentYear = Number(currentYearValue())
+  const years = []
+  for (let year = currentYear + 2; year >= currentYear - 10; year -= 1) {
+    years.push(String(year))
+  }
+  return years
+}
+
+const availableYears = getAvailableYears()
 
 const owner = ref(null)
 const motors = ref([])
@@ -671,6 +718,7 @@ const slipMeta = ref({
 const slipFilter = ref({
   mode: 'all',
   month: today().slice(0, 7),
+  year: currentYearValue(),
   startDate: today(),
   endDate: today()
 })
@@ -681,6 +729,7 @@ const itemsPerPage = 10
 const motorPeriodFilter = ref({
   mode: 'month',
   month: today().slice(0, 7),
+  year: currentYearValue(),
   startDate: today(),
   endDate: today()
 })
@@ -695,6 +744,7 @@ const selectedMotor = ref(null)
 const motorDetailFilter = ref({
   mode: 'month',
   month: today().slice(0, 7),
+  year: currentYearValue(),
   startDate: today(),
   endDate: today()
 })
@@ -703,6 +753,7 @@ const motorExpenseRows = ref([])
 const periodFilter = ref({
   mode: 'all',
   month: today().slice(0, 7),
+  year: currentYearValue(),
   startDate: today(),
   endDate: today()
 })
@@ -794,7 +845,7 @@ function addDays(dateStr, days) {
   if (!dateStr) return null
   const dt = new Date(`${dateStr}T00:00:00`)
   dt.setDate(dt.getDate() + days)
-  return dt.toISOString().split('T')[0]
+  return dateInputValue(dt)
 }
 
 function getAutoSlipStartDate() {
@@ -815,6 +866,7 @@ const slipPeriodText = computed(() => {
     if (!year || !month) return '-'
     return new Date(Number(year), Number(month) - 1, 1).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
   }
+  if (slipFilter.value.mode === 'year') return `Tahun ${slipFilter.value.year || currentYearValue()}`
   return `${formatLongDate(slipFilter.value.startDate)} s/d ${formatLongDate(slipFilter.value.endDate)}`
 })
 
@@ -842,7 +894,7 @@ function toFileNamePart(value) {
 function getLastDayOfMonth(monthValue) {
   const [year, month] = (monthValue || '').split('-')
   if (!year || !month) return ''
-  return new Date(Number(year), Number(month), 0).toISOString().split('T')[0]
+  return dateInputValue(new Date(Number(year), Number(month), 0))
 }
 
 function getMonthRange(monthValue) {
@@ -853,6 +905,11 @@ function getMonthRange(monthValue) {
   }
 }
 
+function getYearRange(yearValue) {
+  const year = String(yearValue || currentYearValue())
+  return { startDate: `${year}-01-01`, endDate: `${year}-12-31` }
+}
+
 function getOwnerPeriodRange() {
   if (periodFilter.value.mode === 'month') {
     const monthValue = periodFilter.value.month || today().slice(0, 7)
@@ -860,6 +917,10 @@ function getOwnerPeriodRange() {
       startDate: `${monthValue}-01`,
       endDate: getLastDayOfMonth(monthValue)
     }
+  }
+
+  if (periodFilter.value.mode === 'year') {
+    return getYearRange(periodFilter.value.year)
   }
 
   if (periodFilter.value.mode === 'custom') {
@@ -879,6 +940,10 @@ function getMotorOwnerRange() {
       startDate: `${monthValue}-01`,
       endDate: getLastDayOfMonth(monthValue)
     }
+  }
+
+  if (motorPeriodFilter.value.mode === 'year') {
+    return getYearRange(motorPeriodFilter.value.year)
   }
 
   if (motorPeriodFilter.value.mode === 'custom') {
@@ -907,6 +972,10 @@ function getSlipRange() {
     }
   }
 
+  if (slipFilter.value.mode === 'year') {
+    return getYearRange(slipFilter.value.year)
+  }
+
   return {
     startDate: slipFilter.value.startDate,
     endDate: slipFilter.value.endDate
@@ -917,6 +986,7 @@ function getSlipFilePeriodLabel() {
   const { startDate, endDate } = getSlipRange()
   if (slipFilter.value.mode === 'all') return `${toFileNamePart(startDate || today())}_sd_${toFileNamePart(endDate || today())}`
   if (slipFilter.value.mode === 'month') return toFileNamePart(slipFilter.value.month)
+  if (slipFilter.value.mode === 'year') return toFileNamePart(slipFilter.value.year)
   if (startDate && endDate && startDate !== endDate) return `${toFileNamePart(startDate)}_sd_${toFileNamePart(endDate)}`
   return toFileNamePart(endDate || startDate || today())
 }
@@ -924,6 +994,10 @@ function getSlipFilePeriodLabel() {
 function getMotorDetailRange() {
   if (motorDetailFilter.value.mode === 'month') {
     return getMonthRange(motorDetailFilter.value.month)
+  }
+
+  if (motorDetailFilter.value.mode === 'year') {
+    return getYearRange(motorDetailFilter.value.year)
   }
 
   if (motorDetailFilter.value.mode === 'custom') {
@@ -972,6 +1046,7 @@ async function resetPeriodFilter() {
   periodFilter.value = {
     mode: 'all',
     month: today().slice(0, 7),
+    year: currentYearValue(),
     startDate: today(),
     endDate: today()
   }
@@ -992,6 +1067,7 @@ async function resetMotorPeriodFilter() {
   motorPeriodFilter.value = {
     mode: 'month',
     month: today().slice(0, 7),
+    year: currentYearValue(),
     startDate: today(),
     endDate: today()
   }
@@ -1001,8 +1077,9 @@ async function resetMotorPeriodFilter() {
 async function openMotorDetail(motor) {
   selectedMotor.value = motor
   motorDetailFilter.value = {
-    mode: motorPeriodFilter.value.mode === 'custom' ? 'custom' : motorPeriodFilter.value.mode === 'all' ? 'all' : 'month',
+    mode: motorPeriodFilter.value.mode === 'custom' ? 'custom' : motorPeriodFilter.value.mode === 'all' ? 'all' : motorPeriodFilter.value.mode === 'year' ? 'year' : 'month',
     month: (motorPeriodFilter.value.mode === 'month' ? motorPeriodFilter.value.month : today().slice(0, 7)) || today().slice(0, 7),
+    year: (motorPeriodFilter.value.mode === 'year' ? motorPeriodFilter.value.year : currentYearValue()) || currentYearValue(),
     startDate: motorPeriodFilter.value.startDate || today(),
     endDate: motorPeriodFilter.value.endDate || today()
   }

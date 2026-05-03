@@ -26,6 +26,27 @@
     </div>
 
     <div class="mb-4 flex items-center justify-between gap-4 flex-wrap">
+      <div class="flex items-center gap-2 flex-wrap">
+        <select v-model="periodFilter.mode" @change="syncOwnerPeriod" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+          <option value="month">Per Bulan</option>
+          <option value="year">Per Tahun</option>
+          <option value="custom">Rentang Tanggal</option>
+          <option value="all">Semua Data</option>
+        </select>
+        <input v-if="periodFilter.mode === 'month'" v-model="periodFilter.month" @change="syncOwnerPeriod" type="month" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+        <select v-else-if="periodFilter.mode === 'year'" v-model="periodFilter.year" @change="syncOwnerPeriod" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+          <option v-for="year in availableYears" :key="year" :value="year">{{ year }}</option>
+        </select>
+        <template v-else>
+          <input v-model="periodFilter.startDate" type="date" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+          <span class="text-slate-400">-</span>
+          <input v-model="periodFilter.endDate" type="date" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+        </template>
+        <button @click="loadData" class="btn-secondary text-sm py-2">
+          <span class="material-symbols-outlined text-sm">filter_list</span>
+          Filter
+        </button>
+      </div>
       <div class="relative">
         <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">search</span>
         <input
@@ -157,6 +178,7 @@ import { useRouter } from 'vue-router'
 import { formatRp } from '../utils/format'
 import { buildSimpleTableHtml, previewReport } from '../utils/pdf'
 import { saveOwnersExcel } from '../utils/excel'
+import { createPeriodFilter, formatPeriodLabel, getAvailableYears, periodFileLabel, syncPeriodRange } from '../utils/periodFilter'
 
 const router = useRouter()
 const owners = ref([])
@@ -171,6 +193,8 @@ const messageTitle = ref('Informasi')
 const messageText = ref('')
 const searchQuery = ref('')
 const exporting = ref('')
+const periodFilter = ref(createPeriodFilter('all'))
+const availableYears = getAvailableYears()
 
 const editId = ref(null)
 
@@ -204,12 +228,22 @@ function toFileNamePart(value) {
     .replace(/\s+/g, '_')
 }
 
-function todayValue() {
-  return new Date().toISOString().split('T')[0]
+function getExportFileLabel() {
+  return `${periodFileLabel(periodFilter.value)}_${toFileNamePart(searchQuery.value || 'Semua')}`
 }
 
-function getExportFileLabel() {
-  return `${todayValue()}_${toFileNamePart(searchQuery.value || 'Semua')}`
+function syncOwnerPeriod() {
+  return syncPeriodRange(periodFilter.value)
+}
+
+async function loadData() {
+  loading.value = true
+  try {
+    owners.value = await window.api.getOwners(syncOwnerPeriod())
+    currentPage.value = 1
+  } finally {
+    loading.value = false
+  }
 }
 
 async function withExporting(kind, work) {
@@ -242,7 +276,7 @@ async function exportPdf() {
     const html = buildSimpleTableHtml({
       title: 'Daftar Mitra / Pemilik Motor',
       subtitle: searchQuery.value ? `Pencarian: "${searchQuery.value}"` : 'Semua Mitra',
-      period: `Per ${todayValue()}`,
+      period: formatPeriodLabel(periodFilter.value),
       summary: [
         { label: 'Total Mitra', value: `${filtered.length} orang` },
         { label: 'Aktif', value: `${activeCount} orang` },
@@ -286,8 +320,7 @@ async function confirmImportExcel() {
     const result = await window.api.importVehiclesFromXlsx({})
     showImportConfirm.value = false
     if (result?.canceled) return
-    owners.value = await window.api.getOwners()
-    currentPage.value = 1
+    await loadData()
     const warn = (result.warnings || []).slice(0, 5)
     const warnText = warn.length ? `\n\nCatatan:\n- ${warn.join('\n- ')}` : ''
     openMessage(
@@ -326,8 +359,7 @@ async function submitOwner() {
     await window.api.createOwner({ ...form.value })
   }
   showModal.value = false
-  owners.value = await window.api.getOwners()
-  currentPage.value = 1
+  await loadData()
 }
 
 function openDetail(id) {
@@ -348,8 +380,7 @@ async function confirmDeleteOwner() {
     if (result.softDeleted) {
       openMessage('Mitra Dinonaktifkan', 'Mitra dinonaktifkan karena memiliki data terkait (motor/transaksi).')
     }
-    owners.value = await window.api.getOwners()
-    currentPage.value = 1
+    await loadData()
   } catch (err) {
     openMessage('Hapus Gagal', String(err?.message || err).replace("Error invoking remote method 'owner:delete': Error: ", ''))
   }
@@ -361,13 +392,5 @@ function openMessage(title, text) {
   showMessageModal.value = true
 }
 
-onMounted(async () => {
-  loading.value = true
-  try {
-    owners.value = await window.api.getOwners()
-    currentPage.value = 1
-  } finally {
-    loading.value = false
-  }
-})
+onMounted(loadData)
 </script>

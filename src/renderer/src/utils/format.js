@@ -13,11 +13,21 @@ export function formatDateTime(dateStr) {
   return new Date(dateStr).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
+export function dateInputValue(date = new Date()) {
+  const value = date instanceof Date ? date : new Date(date)
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const day = String(value.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 export function today() {
-  return new Date().toISOString().split('T')[0]
+  return dateInputValue(new Date())
 }
 
 export function nowDateTime() {
   const now = new Date()
-  return now.toISOString().slice(0, 16)
+  const hour = String(now.getHours()).padStart(2, '0')
+  const minute = String(now.getMinutes()).padStart(2, '0')
+  return `${dateInputValue(now)}T${hour}:${minute}`
 }

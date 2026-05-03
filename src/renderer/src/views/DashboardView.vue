@@ -301,6 +301,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { formatRp } from '../utils/format'
+import { getRecentRestorePeriod } from '../utils/periodFilter'
 import {
   Chart as ChartJS,
   CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend
@@ -559,6 +560,18 @@ function resetDateRange() {
   loadAll()
 }
 
+function applyRestoredBackupPeriod() {
+  const restored = getRecentRestorePeriod()
+  if (!restored) return false
+
+  period.value = 'custom'
+  selectedMonth.value = restored.month
+  selectedYear.value = restored.year
+  filterStartDate.value = restored.startDate
+  filterEndDate.value = restored.endDate
+  return true
+}
+
 function statusBadge(status) {
   return { active: 'badge-success', completed: 'badge-neutral', refunded: 'badge-error' }[status] || 'badge-neutral'
 }
@@ -724,7 +737,9 @@ async function loadAll() {
 onMounted(() => {
   selectedMonth.value = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
   selectedYear.value = String(new Date().getFullYear())
-  applyPeriodPreset()
+  if (!applyRestoredBackupPeriod()) {
+    applyPeriodPreset()
+  }
   loadAll()
 })
 </script>

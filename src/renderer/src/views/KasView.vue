@@ -69,7 +69,20 @@
             <option value="in">Pemasukan</option>
             <option value="out">Pengeluaran</option>
           </select>
-          <input v-model="filterDate" type="date" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+          <select v-model="periodFilter.mode" @change="syncCashPeriod" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+            <option value="month">Per Bulan</option>
+            <option value="year">Per Tahun</option>
+            <option value="custom">Rentang Tanggal</option>
+          </select>
+          <input v-if="periodFilter.mode === 'month'" v-model="periodFilter.month" @change="syncCashPeriod" type="month" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+          <select v-else-if="periodFilter.mode === 'year'" v-model="periodFilter.year" @change="syncCashPeriod" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+            <option v-for="year in availableYears" :key="year" :value="year">{{ year }}</option>
+          </select>
+          <template v-else>
+            <input v-model="periodFilter.startDate" type="date" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+            <span class="text-slate-400">-</span>
+            <input v-model="periodFilter.endDate" type="date" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+          </template>
           <select v-model.number="pageSize" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
             <option :value="10">10 / halaman</option>
             <option :value="25">25 / halaman</option>
@@ -199,6 +212,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { formatRp, formatDate } from '../utils/format'
 import { buildSimpleTableHtml, previewReport } from '../utils/pdf'
+import { createPeriodFilter, formatPeriodLabel, getAvailableYears, periodFileLabel, syncPeriodRange } from '../utils/periodFilter'
 
 const accounts = ref([])
 const total = ref(0)
@@ -207,7 +221,8 @@ const loading = ref(false)
 const showIncomeModal = ref(false)
 const filterAccount = ref('')
 const filterType = ref('')
-const filterDate = ref('')
+const periodFilter = ref(createPeriodFilter('month'))
+const availableYears = getAvailableYears()
 const currentPage = ref(1)
 const pageSize = ref(10)
 const exporting = ref(false)
@@ -291,7 +306,7 @@ const selectedTypeLabel = computed(() => {
   if (filterType.value === 'out') return 'Pengeluaran'
   return 'Semua Tipe'
 })
-const periodLabel = computed(() => filterDate.value ? formatDate(filterDate.value) : 'Semua Tanggal')
+const periodLabel = computed(() => formatPeriodLabel(periodFilter.value))
 
 function kasCardClass(type, bucket = 'pendapatan') {
   if (bucket === 'modal') return 'bg-amber-50 border border-amber-200'
@@ -380,10 +395,12 @@ async function submitIncome() {
 }
 
 async function loadTransactions() {
+  const range = syncCashPeriod()
   const filters = {}
   if (filterAccount.value) filters.accountId = filterAccount.value
   if (filterType.value) filters.type = filterType.value
-  if (filterDate.value) { filters.startDate = filterDate.value; filters.endDate = filterDate.value }
+  if (range.startDate) filters.startDate = range.startDate
+  if (range.endDate) filters.endDate = range.endDate
   loading.value = true
   try {
     transactions.value = await window.api.getCashTransactions(filters)
@@ -391,6 +408,10 @@ async function loadTransactions() {
   } finally {
     loading.value = false
   }
+}
+
+function syncCashPeriod() {
+  return syncPeriodRange(periodFilter.value)
 }
 
 async function reloadCash() {
@@ -402,8 +423,7 @@ async function reloadCash() {
 function getExportFileLabel() {
   const account = selectedAccountName.value.replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, '_')
   const type = selectedTypeLabel.value.replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, '_')
-  const date = filterDate.value ? filterDate.value : 'Semua_Tanggal'
-  return `${account}_${type}_${date}`
+  return `${account}_${type}_${periodFileLabel(periodFilter.value)}`
 }
 
 function transactionTypeLabel(item) {

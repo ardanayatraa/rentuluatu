@@ -259,8 +259,8 @@ export function registerRentalHandlers() {
       WHERE 1=1
     `
     const params = []
-    if (filters.startDate) { query += ' AND r.date_time >= ?'; params.push(filters.startDate) }
-    if (filters.endDate) { query += ' AND r.date_time <= ?'; params.push(filters.endDate) }
+    if (filters.startDate) { query += ' AND date(r.date_time) >= date(?)'; params.push(filters.startDate) }
+    if (filters.endDate) { query += ' AND date(r.date_time) <= date(?)'; params.push(filters.endDate) }
     if (filters.status) { query += ' AND r.status = ?'; params.push(filters.status) }
     query += ' ORDER BY r.date_time DESC'
     return dbOps.all(query, params)

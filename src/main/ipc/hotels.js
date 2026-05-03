@@ -3,6 +3,26 @@ import { dbOps, saveDb } from '../db'
 import { logActivity } from '../lib/activity-log'
 
 export function registerHotelHandlers() {
+  const hotelRelationFilter = (rentalAlias = 'r', hotelAlias = 'h') => `
+            (
+              ${rentalAlias}.hotel_id = ${hotelAlias}.id
+              OR (
+                TRIM(COALESCE(${rentalAlias}.hotel, '')) != ''
+                AND LOWER(TRIM(${rentalAlias}.hotel)) = LOWER(TRIM(${hotelAlias}.name))
+              )
+            )`
+  const hotelRelationParamFilter = (rentalAlias = 'r') => `
+            (
+              ${rentalAlias}.hotel_id = ?
+              OR (
+                TRIM(COALESCE(${rentalAlias}.hotel, '')) != ''
+                AND LOWER(TRIM(${rentalAlias}.hotel)) = LOWER(TRIM(?))
+              )
+            )`
+  const vendorFeeFilter = (rentalAlias = 'r') => `
+            AND LOWER(COALESCE(${rentalAlias}.status, 'completed')) != 'refunded'
+            AND COALESCE(${rentalAlias}.vendor_fee, 0) > 0
+            AND LOWER(COALESCE(NULLIF(TRIM(${rentalAlias}.relation_type), ''), 'rental')) IN ('rental', 'extend', 'swap_source')`
   const buildDateFilter = (column, startDate, endDate, params) => {
     if (startDate) {
       params.push(startDate)
@@ -19,24 +39,28 @@ export function registerHotelHandlers() {
     return ''
   }
 
-  ipcMain.handle('hotel:get-all', () => {
+  ipcMain.handle('hotel:get-all', (_, filters = {}) => {
+    const startDate = filters.startDate || null
+    const endDate = filters.endDate || null
+    const commissionParams = []
+    const unpaidParams = []
+    const commissionDateFilter = buildDateFilter('r.date_time', startDate, endDate, commissionParams)
+    const unpaidDateFilter = buildDateFilter('r.date_time', startDate, endDate, unpaidParams)
     return dbOps.all(`
       SELECT h.*, 
         (
           SELECT COALESCE(SUM(r.vendor_fee), 0)
           FROM rentals r
-          WHERE r.hotel_id = h.id
-            AND r.status != 'refunded'
-            AND r.vendor_fee > 0
-            AND COALESCE(r.relation_type, 'rental') IN ('rental', 'extend', 'swap_source')
+          WHERE ${hotelRelationFilter('r', 'h')}
+            ${vendorFeeFilter('r')}
+            ${commissionDateFilter}
         ) as total_commission,
         (
           SELECT COALESCE(SUM(r.vendor_fee), 0)
           FROM rentals r
-          WHERE r.hotel_id = h.id
-            AND r.status != 'refunded'
-            AND r.vendor_fee > 0
-            AND COALESCE(r.relation_type, 'rental') IN ('rental', 'extend', 'swap_source')
+          WHERE ${hotelRelationFilter('r', 'h')}
+            ${vendorFeeFilter('r')}
+            ${unpaidDateFilter}
             AND NOT EXISTS (
               SELECT 1
               FROM cash_transactions ct
@@ -45,7 +69,7 @@ export function registerHotelHandlers() {
             )
         ) as unpaid_commission
       FROM hotels h ORDER BY name ASC
-    `)
+    `, [...commissionParams, ...unpaidParams])
   })
 
   ipcMain.handle('hotel:get-by-id', (_, id) => {
@@ -136,15 +160,16 @@ export function registerHotelHandlers() {
   })
 
   ipcMain.handle('hotel:payout-preview', (_, { hotelId, startDate, endDate }) => {
-    const previewParams = [hotelId]
+    const hotel = dbOps.get('SELECT * FROM hotels WHERE id = ?', [hotelId])
+    const previewParams = [hotelId, hotel?.name || '']
     const rentalDateFilter = buildDateFilter('r.date_time', startDate, endDate, previewParams)
     const rentals = dbOps.all(`
       SELECT r.id, r.date_time, r.vendor_fee, r.total_price, r.period_days, r.customer_name,
              m.model, m.plate_number, m.id as motor_id
       FROM rentals r
       JOIN motors m ON r.motor_id = m.id
-      WHERE r.hotel_id = ? AND r.status != 'refunded' AND r.vendor_fee > 0
-        AND COALESCE(r.relation_type, 'rental') IN ('rental', 'extend', 'swap_source')
+      WHERE ${hotelRelationParamFilter('r')}
+        ${vendorFeeFilter('r')}
       ${rentalDateFilter}
       ORDER BY r.date_time DESC
     `, previewParams)

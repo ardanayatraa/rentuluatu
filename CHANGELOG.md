@@ -2,6 +2,37 @@
 
 Format: `MAJOR.MINOR.PATCH` (SemVer)
 
+## 1.0.39 (2026-05-03)
+- **Slip Mitra**:
+  - Ringkasan atas disesuaikan menjadi `Jumlah Transaksi`, `Pendapatan Transaksi`, `Total Pendapatan Rental`, `Pengeluaran Mitra`, dan `Pendapatan Bersih Mitra`.
+  - `Pendapatan Bersih Mitra` diberi warna pembeda dan nominal rupiah dikunci satu baris agar `Rp` tidak turun sendiri.
+  - Perhitungan jumlah transaksi dan total transaksi/extension dirapikan supaya seimbang dengan ganti motor dan extension.
+- **Slip Fee Partner**:
+  - Kop disamakan dengan slip mitra dan judul diganti menjadi `SLIP FEE PARTNER`.
+  - Status dokumen, rata-rata fee, dan istilah vendor pada rincian diganti sesuai draft partner.
+  - Rincian fee partner menampilkan total pendapatan di baris bawah.
+
+## 1.0.38 (2026-05-01)
+- **Backup/Restore**:
+  - Restore sekarang memulihkan semua tabel bisnis penting, termasuk vendor, payout, refund, ganti unit, pengeluaran, dan mutasi kas.
+  - Restore diverifikasi setelah database diganti supaya jumlah row dan total nominal aktif sama dengan isi backup.
+  - Sesi Google Drive yang tidak valid akan diminta hubungkan ulang, bukan membuat error teknis.
+  - Auto backup saat app ditutup dinonaktifkan; upload Google Drive tetap manual dari tombol Upload.
+- **Data Persisten**:
+  - Simpan database dibuat langsung ke file supaya pemasukan Daily Record, pengeluaran, mitra, dan vendor tidak hilang setelah app ditutup cepat.
+- **Laporan Mitra**:
+  - Slip laporan pendapatan mitra disesuaikan dengan draft: header lebih rapi, data mitra disederhanakan, tabel transaksi/extension/pengeluaran, dan ringkasan total.
+- **Daily Record & Dashboard**:
+  - Setelah restore, periode data dari backup dipakai untuk membantu Daily Record dan Dashboard menampilkan data backup yang baru dipulihkan.
+  - Halaman Pengeluaran punya opsi Semua Data dan otomatis membuka semua data jika bulan berjalan kosong tetapi database berisi pengeluaran.
+- **Vendor Hotel**:
+  - Filter periode vendor hotel diperbaiki agar akhir bulan tidak terpotong karena timezone dan data vendor lama yang hanya punya nama hotel tetap ikut masuk rekap/slip.
+- **Slip Mitra**:
+  - Rincian transaksi extension sekarang menampilkan baris Total Extension.
+  - Label ringkasan slip mitra `Total Hak Mitra` diganti menjadi `Total Pendapatan`.
+  - `Jumlah Transaksi` di ringkasan slip mitra sekarang menghitung transaksi sewa utama dan extension.
+  - Ringkasan atas slip mitra diatur ulang sesuai draft 2 kolom: `Jumlah Transaksi`, `Total Pendapatan`, `Total Pendapatan Mitra`, `Total Pendapatan Rental`, `Pengeluaran`, dan `Pendapatan Bersih`. `Total Pendapatan` memakai pendapatan bersih transaksi setelah fee vendor supaya konsisten dengan pembagian mitra dan rental.
+
 ## 1.0.28 (2026-04-29)
 - **Daily Record - Extend**:
   - Extend sekarang disimpan sebagai transaksi mandiri, bukan relasi dari rental lama.

@@ -114,7 +114,7 @@
 
           <div v-if="auditResult" class="grid grid-cols-2 gap-3 mb-4">
             <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-              <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Objek Dicek</p>
+              <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Semua Data Dicek</p>
               <p class="mt-2 text-sm font-black text-slate-700">
                 {{ auditCheckedLabel }}
               </p>
@@ -325,32 +325,28 @@
               </div>
               <div class="mt-3 pt-3 border-t border-slate-100">
                 <button
-                  @click="toggleAutoBackupOnClose"
-                  :disabled="backupLoading || !gdriveConfigured"
+                  :disabled="true"
                   type="button"
-                  class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-left transition hover:border-slate-300 hover:bg-slate-100 disabled:opacity-50"
+                  class="w-full cursor-not-allowed rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-left disabled:opacity-60"
                 >
                   <div class="flex items-center justify-between gap-3">
                     <div class="min-w-0">
-                      <p class="text-[11px] font-bold text-slate-700">Backup otomatis saat tutup app</p>
+                      <p class="text-[11px] font-bold text-slate-700">Backup otomatis saat tutup app dimatikan</p>
                       <p class="mt-1 text-[10px] text-slate-400 leading-relaxed">
-                        Simpan ke Google Drive saat aplikasi ditutup. Backup bulanan akan diperbarui tanpa menumpuk file dalam bulan yang sama.
+                        Upload ke Google Drive tetap manual dari tombol Upload agar saat app ditutup tidak mengubah file Drive.
                       </p>
                     </div>
                     <div class="flex items-center gap-2 shrink-0">
                       <span
-                        :class="autoBackupOnClose ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'"
-                        class="rounded-full px-2 py-1 text-[10px] font-bold"
+                        class="rounded-full bg-slate-200 px-2 py-1 text-[10px] font-bold text-slate-500"
                       >
-                        {{ autoBackupOnClose ? 'AKTIF' : 'NONAKTIF' }}
+                        NONAKTIF
                       </span>
                       <span
-                        :class="autoBackupOnClose ? 'bg-emerald-500 shadow-emerald-200' : 'bg-slate-300'"
-                        class="relative inline-flex h-7 w-12 items-center rounded-full transition-colors shadow-inner"
+                        class="relative inline-flex h-7 w-12 items-center rounded-full bg-slate-300 shadow-inner"
                       >
                         <span
-                          :class="autoBackupOnClose ? 'translate-x-6' : 'translate-x-1'"
-                          class="inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform"
+                          class="inline-block h-5 w-5 translate-x-1 rounded-full bg-white shadow-sm"
                         />
                       </span>
                     </div>
@@ -714,6 +710,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { useLicenseStore } from '../stores/license'
 import TablePagination from '../components/TablePagination.vue'
+import { rememberRestorePeriod } from '../utils/periodFilter'
 
 const auth = useAuthStore()
 const license = useLicenseStore()
@@ -897,7 +894,6 @@ const localBackups = ref([])
 const driveBackups = ref([])
 const showPassphraseForm = ref(false)
 const newPassphrase = ref('')
-const autoBackupOnClose = ref(true)
 const sandboxLoading = ref(false)
 const sandboxBenchmarkLoading = ref(false)
 const sandboxMessage = ref('')
@@ -961,11 +957,17 @@ function buildBackupSummaryLines(name, summary) {
     `Mitra/Owner: ${s.owners ?? 0}`,
     `Hotel/Vendor: ${s.hotels ?? 0}`,
     `Rental: ${s.rentals ?? 0}`,
+    `Ganti Unit: ${s.rentalSwaps ?? 0}`,
+    `Refund: ${s.refunds ?? 0}`,
+    `Payout Mitra: ${s.payouts ?? 0}`,
+    `Payout Vendor: ${s.hotelPayouts ?? 0}`,
     `Pengeluaran: ${s.expenses ?? 0}`,
     `Mutasi Kas: ${s.cashTransactions ?? 0}`,
     `Periode Rental: ${s.rentalsMinDate || '-'} s/d ${s.rentalsMaxDate || '-'}`,
     `Total Rental: ${formatBackupCurrency(s.rentalTotal)}`,
-    `Total Pengeluaran: ${formatBackupCurrency(s.expenseTotal)}`
+    `Total Pengeluaran: ${formatBackupCurrency(s.expenseTotal)}`,
+    `Total Payout Vendor: ${formatBackupCurrency(s.hotelPayoutTotal)}`,
+    `Total Payout Mitra: ${formatBackupCurrency(s.payoutTotal)}`
   ]
 }
 
@@ -1064,8 +1066,6 @@ async function checkGdriveStatus() {
   const status = await window.api.backupGdriveStatus()
   gdriveConnected.value = status.connected
   gdriveConfigured.value = status.configured
-  const autoStatus = await window.api.backupGetAutoCloseStatus()
-  autoBackupOnClose.value = autoStatus.enabled
 }
 
 async function loadBackupList() {
@@ -1076,7 +1076,13 @@ async function loadDriveBackups() {
   if (!gdriveConnected.value) return
   driveLoading.value = true
   try { driveBackups.value = await window.api.backupGdriveList() }
-  catch (e) { setMsg('Gagal memuat dari Drive: ' + e.message, false) }
+  catch (e) {
+    if (String(e.message || '').includes('Sesi Google Drive')) {
+      gdriveConnected.value = false
+      driveBackups.value = []
+    }
+    setMsg('Gagal memuat dari Drive: ' + e.message, false)
+  }
   finally { driveLoading.value = false }
 }
 
@@ -1124,19 +1130,6 @@ async function uploadToGdrive() {
   finally { backupLoading.value = false }
 }
 
-async function toggleAutoBackupOnClose() {
-  try {
-    const next = !autoBackupOnClose.value
-    const res = await window.api.backupSetAutoCloseStatus({ enabled: next })
-    autoBackupOnClose.value = res.enabled
-    setMsg(res.enabled
-      ? 'Backup otomatis saat tutup aplikasi diaktifkan.'
-      : 'Backup otomatis saat tutup aplikasi dimatikan.')
-  } catch (e) {
-    setMsg('Gagal mengubah pengaturan auto backup: ' + e.message, false)
-  }
-}
-
 async function restoreLocal(backup) {
   backupLoading.value = true
   try {
@@ -1144,8 +1137,10 @@ async function restoreLocal(backup) {
     const summaryText = buildBackupSummaryLines(backup.name, inspect?.summary).join('\n')
     if (!confirm(`${summaryText}\n\nRestore backup ini?\nData saat ini akan diganti, dan safety backup akan dibuat dulu.`)) return
     const result = await window.api.backupRestoreLocal({ path: backup.path })
+    rememberRestorePeriod(result?.summary)
     await refreshAfterRestore()
-    setMsg(`Restore berhasil. Safety backup: ${result.safetyBackupName || '-'}`)
+    setMsg(`Restore berhasil. Safety backup: ${result.safetyBackupName || '-'}. Aplikasi akan memuat ulang data.`)
+    scheduleReloadAfterRestore()
   }
   catch (e) { setMsg('Restore gagal: ' + e.message, false) }
   finally { backupLoading.value = false }
@@ -1178,8 +1173,10 @@ async function restoreDrive(backup) {
     const summaryText = buildBackupSummaryLines(backup.name, inspect?.summary).join('\n')
     if (!confirm(`${summaryText}\n\nRestore backup Drive ini?\nData saat ini akan diganti, dan safety backup akan dibuat dulu.`)) return
     const result = await window.api.backupGdriveRestore({ fileId: backup.id, fileName: backup.name })
+    rememberRestorePeriod(result?.summary)
     await refreshAfterRestore()
-    setMsg(`Restore berhasil. Safety backup: ${result.safetyBackupName || '-'}`)
+    setMsg(`Restore berhasil. Safety backup: ${result.safetyBackupName || '-'}. Aplikasi akan memuat ulang data.`)
+    scheduleReloadAfterRestore()
   }
   catch (e) { setMsg('Restore gagal: ' + e.message, false) }
   finally { backupLoading.value = false }
@@ -1208,6 +1205,10 @@ async function refreshAfterRestore() {
       // ignore
     }
   }
+}
+
+function scheduleReloadAfterRestore() {
+  setTimeout(() => window.location.reload(), 900)
 }
 
 async function deleteDriveBackup(backup) {

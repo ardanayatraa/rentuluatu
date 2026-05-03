@@ -3,6 +3,94 @@
 
 export const CHANGELOG = [
   {
+    version: '1.0.39',
+    date: '2026-05-03',
+    badge: { text: 'Slip Mitra & Partner', tone: 'emerald' },
+    intro: 'Rilis ini merapikan format slip mitra dan slip fee partner agar sesuai draft terbaru, termasuk ringkasan, total, dan tampilan nominal rupiah.',
+    items: [
+      {
+        title: 'Ringkasan Slip Mitra',
+        desc: 'Ringkasan atas slip mitra kini berisi Jumlah Transaksi, Pendapatan Transaksi, Total Pendapatan Rental, Pengeluaran Mitra, dan Pendapatan Bersih Mitra.'
+      },
+      {
+        title: 'Pendapatan Bersih Mitra Lebih Jelas',
+        desc: 'Pendapatan Bersih Mitra diberi warna pembeda non-hijau dan dibuat melebar agar mudah dibaca.'
+      },
+      {
+        title: 'Nominal Rupiah Tidak Pecah Baris',
+        desc: 'Format nominal PDF dikunci agar tulisan Rp dan angka tetap sejajar dalam satu baris.'
+      },
+      {
+        title: 'Slip Fee Partner',
+        desc: 'Kop slip fee partner disamakan dengan slip mitra, judul menjadi SLIP FEE PARTNER, status dokumen dan rata-rata fee dihapus, serta rincian menampilkan Total Pendapatan di baris bawah.'
+      },
+      {
+        title: 'Kalkulasi Slip Mitra',
+        desc: 'Perhitungan jumlah transaksi dan total transaksi/extension dirapikan agar tetap seimbang ketika ada extension atau ganti motor.'
+      }
+    ]
+  },
+  {
+    version: '1.0.38',
+    date: '2026-05-01',
+    badge: { text: 'Restore, Vendor & Slip Mitra', tone: 'emerald' },
+    intro: 'Rilis ini memperbaiki tampilan data setelah restore backup, membuat sesi Google Drive yang kedaluwarsa lebih mudah dipulihkan, merapikan slip mitra, dan memperbaiki filter periode vendor hotel.',
+    items: [
+      {
+        title: 'Daily Record Setelah Restore',
+        desc: 'Setelah restore lokal atau Google Drive, Daily Record dan Dashboard otomatis memakai rentang tanggal dari isi backup agar data lama langsung terlihat.'
+      },
+      {
+        title: 'Filter Tanggal Lebih Tahan Data Lama',
+        desc: 'Query transaksi rental kini membandingkan tanggal dengan date() sehingga format date_time lama tetap masuk filter periode.'
+      },
+      {
+        title: 'Sesi Google Drive Kedaluwarsa',
+        desc: 'Token Drive yang tidak valid otomatis dibersihkan dan aplikasi meminta user menghubungkan ulang Google Drive.'
+      },
+      {
+        title: 'Slip Mitra Laporan Pendapatan',
+        desc: 'Draft slip mitra diperbarui dengan header logo lebih besar, data pemilik tanpa label Data Mitra, ringkasan transaksi, serta rincian transaksi, extension, dan pengeluaran kendaraan.'
+      },
+      {
+        title: 'Restore Semua Tabel Bisnis',
+        desc: 'Restore backup kini memvalidasi tabel vendor, payout, refund, ganti unit, pengeluaran, dan mutasi kas, lalu memuat ulang aplikasi agar semua halaman membaca data hasil restore.'
+      },
+      {
+        title: 'Data Tetap Tersimpan Saat App Ditutup',
+        desc: 'Penyimpanan database dibuat langsung flush ke file dan app memaksa save saat proses close, agar pemasukan, pengeluaran, mitra, vendor, dan data lain tidak kembali kosong setelah app dibuka ulang.'
+      },
+      {
+        title: 'Auto Backup Close Dimatikan',
+        desc: 'Aplikasi tidak lagi upload backup Drive saat ditutup. Backup Drive tetap bisa dibuat manual dari tombol Upload.'
+      },
+      {
+        title: 'Pengeluaran Tidak Kosong Karena Filter Bulan',
+        desc: 'Halaman Pengeluaran sekarang punya opsi Semua Data dan otomatis pindah ke semua data saat bulan berjalan kosong tetapi database berisi pengeluaran.'
+      },
+      {
+        title: 'Filter Vendor Hotel Bulan Penuh',
+        desc: 'Rekap fee vendor dan slip fee vendor kini memakai batas tanggal lokal, sehingga transaksi akhir bulan seperti 30 April tidak terpotong. Data vendor lama yang tersimpan pakai nama hotel juga ikut dihitung.'
+      },
+      {
+        title: 'Total Extension di Slip Mitra',
+        desc: 'Rincian transaksi extension pada slip mitra sekarang menampilkan baris Total Extension untuk pendapatan, pendapatan rental, dan pendapatan mitra.'
+      },
+      {
+        title: 'Label Total Pendapatan',
+        desc: 'Ringkasan atas slip mitra sekarang memakai label Total Pendapatan, menggantikan Total Hak Mitra.'
+      },
+      {
+        title: 'Jumlah Transaksi Utama',
+        desc: 'Nilai Jumlah Transaksi di ringkasan slip mitra menghitung transaksi sewa utama dan extension. Extension tetap ditampilkan dan dijumlahkan di tabel extension.'
+      },
+      {
+        title: 'Global Pendapatan di Slip Mitra',
+        desc: 'Ringkasan atas slip mitra diatur ulang sesuai draft 2 kolom. Total Pendapatan memakai pendapatan bersih transaksi setelah fee vendor supaya konsisten dengan pembagian mitra dan rental.'
+      }
+    ]
+  },
+  {
     version: '1.0.28',
     date: '2026-04-29',
     badge: { text: 'Extend Standalone & Restore Safety', tone: 'emerald' },

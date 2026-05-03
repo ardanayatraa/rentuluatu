@@ -101,9 +101,20 @@
     </div>
 
     <div class="card mb-6 flex gap-4 items-center flex-wrap">
-      <input v-model="filters.startDate" type="date" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+      <select v-model="filters.periodMode" @change="syncRentalPeriod" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+        <option value="month">Per Bulan</option>
+        <option value="year">Per Tahun</option>
+        <option value="custom">Rentang Tanggal</option>
+      </select>
+      <input v-if="filters.periodMode === 'month'" v-model="filters.periodMonth" @change="syncRentalPeriod" type="month" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+      <select v-else-if="filters.periodMode === 'year'" v-model="filters.periodYear" @change="syncRentalPeriod" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+        <option v-for="year in availableYears" :key="year" :value="year">{{ year }}</option>
+      </select>
+      <template v-else>
+        <input v-model="filters.startDate" type="date" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
       <span class="text-slate-400">—</span>
-      <input v-model="filters.endDate" type="date" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+        <input v-model="filters.endDate" type="date" class="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+      </template>
       <input v-model="filters.keyword" type="text" placeholder="Cari nama atau plat..." class="border border-slate-200 rounded-lg px-3 py-2 text-sm min-w-[220px]" />
       <select v-model="filters.status" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
         <option value="">Semua Status</option>
@@ -725,20 +736,11 @@
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { formatRp, formatDate, nowDateTime } from '../utils/format'
 import { getOwnerPct, getSplitLabel, getWavyPct, getWavyPctLabel } from '../utils/motorType'
+import { createPeriodFilter, getAvailableYears, getRecentRestorePeriod, syncPeriodRange } from '../utils/periodFilter'
 
 function formatTime(dateStr) {
   if (!dateStr) return '-'
   return new Date(dateStr).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
-}
-
-function todayDate() {
-  return new Date().toISOString().slice(0, 10)
-}
-
-function monthStartDate(date = new Date()) {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  return `${year}-${month}-01`
 }
 
 const rentals = ref([])
@@ -777,8 +779,20 @@ const pageSize = ref(10)
 const sortOrder = ref('oldest')
 const highlightedRentalId = ref(null)
 
-const defaultFilters = Object.freeze({ startDate: monthStartDate(), endDate: todayDate(), status: '', keyword: '' })
-const filters = ref({ ...defaultFilters })
+const availableYears = getAvailableYears()
+function createDefaultFilters() {
+  const initialPeriodFilter = getRecentRestorePeriod() || createPeriodFilter('month')
+  return {
+    periodMode: initialPeriodFilter.mode,
+    periodMonth: initialPeriodFilter.month,
+    periodYear: initialPeriodFilter.year,
+    startDate: initialPeriodFilter.startDate,
+    endDate: initialPeriodFilter.endDate,
+    status: '',
+    keyword: ''
+  }
+}
+const filters = ref(createDefaultFilters())
 const form = ref({
   date_time: nowDateTime(),
   customer_name: '',
@@ -1347,10 +1361,38 @@ function calcRefundAmount() {
   return base * (refundForm.value.percentage / 100)
 }
 
+function getRentalPeriodFilter() {
+  return {
+    mode: filters.value.periodMode,
+    month: filters.value.periodMonth,
+    year: filters.value.periodYear,
+    startDate: filters.value.startDate,
+    endDate: filters.value.endDate
+  }
+}
+
+function syncRentalPeriod() {
+  const period = getRentalPeriodFilter()
+  const range = syncPeriodRange(period)
+  filters.value.periodMonth = period.month
+  filters.value.periodYear = period.year
+  filters.value.startDate = range.startDate
+  filters.value.endDate = range.endDate
+}
+
+function buildRentalQueryFilters() {
+  syncRentalPeriod()
+  return {
+    startDate: filters.value.startDate ? `${filters.value.startDate}T00:00:00` : '',
+    endDate: filters.value.endDate ? `${filters.value.endDate}T23:59:59` : '',
+    status: filters.value.status
+  }
+}
+
 async function loadRentals() {
   loading.value = true
   try {
-    rentals.value = await window.api.getRentals({ ...filters.value })
+    rentals.value = await window.api.getRentals(buildRentalQueryFilters())
     currentPage.value = 1
   } finally {
     loading.value = false
@@ -1358,7 +1400,7 @@ async function loadRentals() {
 }
 
 async function resetFilters() {
-  filters.value = { ...defaultFilters }
+  filters.value = createDefaultFilters()
   currentPage.value = 1
   await loadRentals()
 }

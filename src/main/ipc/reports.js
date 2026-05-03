@@ -192,9 +192,9 @@ export function registerReportHandlers() {
     const motorFilter = motorId ? ' AND m.id = ?' : ''
     const rentalParams = motorId ? [ownerId, startDate, endDate, motorId] : [ownerId, startDate, endDate]
 
-    const rentals = dbOps.all(`
+    const rawRentals = dbOps.all(`
       SELECT r.id, r.date_time, r.customer_name, r.period_days,
-             r.total_price, r.owner_gets, r.wavy_gets, r.sisa,
+             r.total_price, r.vendor_fee, r.owner_gets, r.wavy_gets, r.sisa,
              r.payment_method, r.payout_id, r.relation_type,
              m.id as motor_id, m.model, m.plate_number
       FROM rentals r
@@ -208,6 +208,17 @@ export function registerReportHandlers() {
     const expenseParams = motorId
       ? [ownerId, startDate.split('T')[0], endDate.split('T')[0], motorId]
       : [ownerId, startDate.split('T')[0], endDate.split('T')[0]]
+    const getRentalIncome = (rental) => {
+      const splitTotal = Number(rental.wavy_gets || 0) + Number(rental.owner_gets || 0)
+      if (Number(rental.sisa || 0) > 0) return Number(rental.sisa || 0)
+      if (splitTotal > 0) return splitTotal
+      return Number(rental.total_price || 0) - Number(rental.vendor_fee || 0)
+    }
+    const rentals = rawRentals.map((rental) => ({
+      ...rental,
+      rental_income: getRentalIncome(rental)
+    }))
+    const totalIncome = rentals.reduce((s, r) => s + Number(r.rental_income || 0), 0)
     const totalOwnerGets = rentals.reduce((s, r) => s + (r.owner_gets || 0), 0)
     const totalPaid = rentals.filter(r => r.payout_id).reduce((s, r) => s + (r.owner_gets || 0), 0)
     const totalUnpaid = rentals.filter(r => !r.payout_id).reduce((s, r) => s + (r.owner_gets || 0), 0)
@@ -294,7 +305,7 @@ export function registerReportHandlers() {
       ? [ownerId, startDate.split('T')[0], endDate.split('T')[0], motorId]
       : [ownerId, startDate.split('T')[0], endDate.split('T')[0]])
 
-    return { owner, motors, rentals, expenses, byMotor, payouts, totalOwnerGets, totalPaid, totalUnpaid, totalExpenses, totalNet }
+    return { owner, motors, rentals, expenses, byMotor, payouts, totalIncome, totalOwnerGets, totalPaid, totalUnpaid, totalExpenses, totalNet }
   })
 
   // Laporan per pemilik motor
