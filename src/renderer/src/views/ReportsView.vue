@@ -438,7 +438,8 @@
           <div class="px-6 pt-5 pb-3 border-b border-slate-100">
             <p class="text-xs text-slate-500">
               Kas Pendapatan: {{ formatRp(motorExpenseCashSummary.pendapatan) }} ·
-              Kas Modal: {{ formatRp(motorExpenseCashSummary.modal) }} ·
+              Kas Modal Tanam: {{ formatRp(motorExpenseCashSummary.modal) }} ·
+              Kas Ganti Rugi: {{ formatRp(motorExpenseCashSummary.ganti_rugi) }} ·
               Total Saldo Rekening: {{ formatRp(motorExpenseCashSummary.rekening) }}
             </p>
           </div>
@@ -516,7 +517,8 @@
               <p class="text-xs text-slate-400 mt-1">Semua transaksi sewa pada periode terpilih</p>
               <p class="text-xs text-slate-500 mt-1">
                 Kas Pendapatan: {{ formatRp(txRentalCashSummary.pendapatan) }} ·
-                Kas Modal: {{ formatRp(txRentalCashSummary.modal) }} ·
+                Kas Modal Tanam: {{ formatRp(txRentalCashSummary.modal) }} ·
+                Kas Ganti Rugi: {{ formatRp(txRentalCashSummary.ganti_rugi) }} ·
                 Total Saldo Rekening: {{ formatRp(txRentalCashSummary.rekening) }}
               </p>
             </div>
@@ -555,7 +557,8 @@
               <p class="text-xs text-slate-400 mt-1">Beban usaha dan operasional umum perusahaan</p>
               <p class="text-xs text-slate-500 mt-1">
                 Kas Pendapatan: {{ formatRp(txOperationalCashSummary.pendapatan) }} ·
-                Kas Modal: {{ formatRp(txOperationalCashSummary.modal) }} ·
+                Kas Modal Tanam: {{ formatRp(txOperationalCashSummary.modal) }} ·
+                Kas Ganti Rugi: {{ formatRp(txOperationalCashSummary.ganti_rugi) }} ·
                 Total Saldo Rekening: {{ formatRp(txOperationalCashSummary.rekening) }}
               </p>
             </div>
@@ -596,7 +599,8 @@
               <p class="text-xs text-slate-400 mt-1">Biaya terkait unit motor yang tercatat pada periode ini</p>
               <p class="text-xs text-slate-500 mt-1">
                 Kas Pendapatan: {{ formatRp(txMotorCashSummary.pendapatan) }} ·
-                Kas Modal: {{ formatRp(txMotorCashSummary.modal) }} ·
+                Kas Modal Tanam: {{ formatRp(txMotorCashSummary.modal) }} ·
+                Kas Ganti Rugi: {{ formatRp(txMotorCashSummary.ganti_rugi) }} ·
                 Total Saldo Rekening: {{ formatRp(txMotorCashSummary.rekening) }}
               </p>
             </div>
@@ -862,11 +866,17 @@ const netBalance = computed(() => {
 const rekeningMethods = ['transfer', 'qris', 'debit_card']
 
 function normalizeCashBucket(bucket) {
-  return String(bucket || 'pendapatan').trim().toLowerCase() === 'modal' ? 'modal' : 'pendapatan'
+  const value = String(bucket || 'pendapatan').trim().toLowerCase()
+  if (value === 'modal') return 'modal'
+  if (value === 'ganti_rugi') return 'ganti_rugi'
+  return 'pendapatan'
 }
 
 function cashBucketLabel(bucket) {
-  return normalizeCashBucket(bucket) === 'modal' ? 'Kas Modal' : 'Kas Pendapatan'
+  const normalizedBucket = normalizeCashBucket(bucket)
+  if (normalizedBucket === 'modal') return 'Kas Modal Tanam'
+  if (normalizedBucket === 'ganti_rugi') return 'Kas Ganti Rugi'
+  return 'Kas Pendapatan'
 }
 
 function isRekeningMethod(method) {
@@ -884,7 +894,10 @@ function paymentMethodLabel(method) {
 
 function paymentMethodGroupLabel(method, bucket) {
   if (normalizeCashBucket(bucket) === 'modal' && String(method || '').trim().toLowerCase() === 'tunai') {
-    return 'Modal'
+    return 'Modal Tanam'
+  }
+  if (normalizeCashBucket(bucket) === 'ganti_rugi' && String(method || '').trim().toLowerCase() === 'tunai') {
+    return 'Ganti Rugi'
   }
   return isRekeningMethod(method) ? 'Saldo Rekening' : paymentMethodLabel(method)
 }
@@ -900,7 +913,7 @@ function calculateCashSummary(rows, amountKey = 'amount') {
     summary[bucket] += amount
     if (isRekeningMethod(row?.payment_method)) summary.rekening += amount
     return summary
-  }, { pendapatan: 0, modal: 0, rekening: 0 })
+  }, { pendapatan: 0, modal: 0, ganti_rugi: 0, rekening: 0 })
 }
 
 const motorIncomeCashSummary = computed(() => calculateCashSummary(motorIncomeData.value, 'total_price'))

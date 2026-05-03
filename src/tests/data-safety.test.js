@@ -310,7 +310,7 @@ describe('data safety hardening', () => {
     const { dbModule } = await loadRuntime(userDataPath)
     const { dbOps, reloadDbFromBuffer } = dbModule
 
-    expect(dbOps.get('SELECT MAX(version) as v FROM schema_version').v).toBe(18)
+    expect(dbOps.get('SELECT MAX(version) as v FROM schema_version').v).toBe(19)
     expect(dbOps.get('SELECT COUNT(*) as c FROM cash_transactions').c).toBe(2)
 
     const modalTunai = dbOps.get(
@@ -331,6 +331,11 @@ describe('data safety hardening', () => {
         modalTunai.id
       ]).c
     ).toBe(2)
+    expect(
+      dbOps.get(
+        "SELECT COUNT(*) as c FROM cash_accounts WHERE type = 'tunai' AND COALESCE(bucket, 'pendapatan') = 'ganti_rugi' AND name = 'Kas Ganti Rugi'"
+      ).c
+    ).toBe(1)
 
     reloadDbFromBuffer(readFileSync(join(userDataPath, 'wavy.db')))
     expect(dbOps.get('SELECT COUNT(*) as c FROM cash_transactions').c).toBe(2)

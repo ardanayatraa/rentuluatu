@@ -58,7 +58,7 @@ function assertCompanyFundsAvailableForOperationalExpense(amount) {
 
 export function registerExpenseHandlers() {
   const allowedPaymentMethods = ['tunai', 'transfer', 'qris', 'debit_card']
-  const allowedCashBuckets = ['pendapatan', 'modal']
+  const allowedCashBuckets = ['pendapatan', 'modal', 'ganti_rugi']
   const normalizePaymentMethod = (method) => {
     const value = String(method || '').trim().toLowerCase()
     if (value === 'qriss') return 'qris'
@@ -76,7 +76,12 @@ export function registerExpenseHandlers() {
       [paymentMethod, normalizeCashBucket(cashBucket)]
     )
   }
-  const cashBucketLabel = (bucket) => normalizeCashBucket(bucket) === 'modal' ? 'Modal' : 'Pendapatan'
+  const cashBucketLabel = (bucket) => {
+    const normalizedBucket = normalizeCashBucket(bucket)
+    if (normalizedBucket === 'modal') return 'Modal Tanam'
+    if (normalizedBucket === 'ganti_rugi') return 'Ganti Rugi'
+    return 'Pendapatan'
+  }
 
   ipcMain.handle('expense:get-all', (_, filters = {}) => {
     let query = `

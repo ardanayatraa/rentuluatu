@@ -2,6 +2,13 @@
 
 Format: `MAJOR.MINOR.PATCH` (SemVer)
 
+## 1.0.40 (2026-05-04)
+- **Kas & Keuangan**:
+  - Tambah kas khusus **Ganti Rugi** untuk mencatat uang kompensasi dari pelanggan yang merusak.
+  - Uang ganti rugi masuk terpisah dari kas pendapatan dan bisa dipakai sebagai sumber pembayaran pengeluaran.
+  - **Modal Tanam** dan **Ganti Rugi** ditampilkan berdampingan agar saldo kas khusus lebih mudah dibaca.
+  - Mutasi, dashboard, laporan, export Excel/PDF, dan test data safety sudah mencakup Kas Ganti Rugi.
+
 ## 1.0.39 (2026-05-03)
 - **Slip Mitra**:
   - Ringkasan atas disesuaikan menjadi `Jumlah Transaksi`, `Pendapatan Transaksi`, `Total Pendapatan Rental`, `Pengeluaran Mitra`, dan `Pendapatan Bersih Mitra`.

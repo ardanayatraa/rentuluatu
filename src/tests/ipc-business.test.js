@@ -51,7 +51,7 @@ describe('IPC business logic', () => {
       if (sql.includes('SUM(owner_gets)')) return { total: 225_000 }
       if (sql.includes('COUNT(*) as total') && sql.includes("status != 'refunded'")) return { total: 2 }
       if (sql.includes('COUNT(*) as total') && sql.includes("status = 'refunded'")) return { total: 0 }
-      if (sql.includes("reference_type = 'manual_income'")) return { total: 5_000 }
+      if (sql.includes('manual_income')) return { total: 5_000 }
       if (sql.includes("reference_type = 'manual_expense'")) return { total: 10_000 }
       if (sql.includes('SELECT COALESCE(SUM(balance), 0) as total FROM cash_accounts')) return { total: 500_000 }
       return { total: 0 }
@@ -850,11 +850,11 @@ describe('IPC business logic', () => {
     expect(saveDb).toHaveBeenCalled()
   })
 
-  it('cash add-income modal tanam selalu diproses ke kas modal tunai', async () => {
+  it('cash add-income modal tanam selalu diproses ke kas modal tanam', async () => {
     dbOps.get.mockImplementation((sql, params) => {
       if (sql.includes('SELECT * FROM cash_accounts WHERE type = ?')) {
         expect(params[0]).toBe('tunai')
-        return { id: 2, type: params[0], name: 'Kas Modal Tunai' }
+        return { id: 2, type: params[0], name: 'Kas Modal Tanam' }
       }
       return null
     })
@@ -876,6 +876,35 @@ describe('IPC business logic', () => {
     expect(dbOps.run).toHaveBeenCalledWith(
       'UPDATE cash_accounts SET balance = balance + ? WHERE id = ?',
       [250_000, 2]
+    )
+  })
+
+  it('cash add-income ganti rugi selalu masuk ke kas ganti rugi', async () => {
+    dbOps.get.mockImplementation((sql, params) => {
+      if (sql.includes('SELECT * FROM cash_accounts WHERE type = ?')) {
+        expect(params).toEqual(['tunai', 'ganti_rugi'])
+        return { id: 9, type: params[0], bucket: params[1], name: 'Kas Ganti Rugi' }
+      }
+      return null
+    })
+
+    registerCashHandlers()
+    const result = handlers.get('cash:add-income')(null, {
+      entry_type: 'damage_compensation',
+      description: 'Ganti rugi body lecet',
+      amount: 150_000,
+      payment_method: 'transfer',
+      date: '2026-04-18'
+    })
+
+    expect(result).toEqual({ success: true })
+    expect(dbOps.run).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO cash_transactions'),
+      [9, 150_000, 'damage_compensation', 'Ganti rugi body lecet', '2026-04-18']
+    )
+    expect(dbOps.run).toHaveBeenCalledWith(
+      'UPDATE cash_accounts SET balance = balance + ? WHERE id = ?',
+      [150_000, 9]
     )
   })
 

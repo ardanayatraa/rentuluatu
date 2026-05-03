@@ -105,7 +105,7 @@ export function registerDashboardHandlers() {
 
     // Manual transactions
     const manualIncome = dbOps.get(
-      "SELECT COALESCE(SUM(amount), 0) as total FROM cash_transactions WHERE reference_type = 'manual_income' AND date BETWEEN ? AND ?",
+      "SELECT COALESCE(SUM(amount), 0) as total FROM cash_transactions WHERE reference_type IN ('manual_income', 'damage_compensation') AND date BETWEEN ? AND ?",
       [start, end]
     )
     const manualExpense = dbOps.get(
@@ -162,7 +162,7 @@ export function registerDashboardHandlers() {
     const manuals = dbOps.all(`
       SELECT date, COALESCE(SUM(amount), 0) as amount
       FROM cash_transactions 
-      WHERE reference_type = 'manual_income' AND date BETWEEN ? AND ?
+      WHERE reference_type IN ('manual_income', 'damage_compensation') AND date BETWEEN ? AND ?
       GROUP BY date
     `, [start, end])
 

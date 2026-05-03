@@ -329,10 +329,10 @@ export function registerOwnerHandlers() {
     const cashBucket = String(cashAccount?.bucket || 'pendapatan')
     const cashType = String(cashAccount?.type || '')
     if (serverNetAmount > 0 && !['pendapatan', 'modal'].includes(cashBucket)) {
-      throw new Error('Pembayaran hak mitra harus menggunakan kas pendapatan atau modal')
+      throw new Error('Pembayaran hak mitra harus menggunakan kas pendapatan atau modal tanam')
     }
     if (serverNetAmount > 0 && cashBucket === 'modal' && cashType !== 'tunai') {
-      throw new Error('Kas modal untuk pembayaran hak mitra harus bertipe tunai')
+      throw new Error('Kas modal tanam untuk pembayaran hak mitra harus bertipe tunai')
     }
 
     if (serverNetAmount > 0 && cashAccount.balance < serverNetAmount) {

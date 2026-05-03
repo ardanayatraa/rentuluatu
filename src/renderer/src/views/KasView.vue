@@ -8,34 +8,64 @@
       <div class="flex gap-3">
         <button @click="openIncome" class="btn-primary">
           <span class="material-symbols-outlined">add</span>
-          Tambah Pemasukan / Modal
+          Isi Kas
         </button>
       </div>
     </div>
 
     <!-- Kas Cards -->
     <div class="space-y-6 mb-8">
-      <div v-for="bucket in cashBuckets" :key="bucket.value">
+      <div>
         <div class="flex items-center justify-between mb-3">
-          <h3 class="text-sm font-bold text-slate-500 uppercase tracking-wider">{{ bucket.label }}</h3>
+          <h3 class="text-sm font-bold text-slate-500 uppercase tracking-wider">{{ primaryCashBucket.label }}</h3>
           <div class="text-right">
-            <p class="text-sm font-black text-slate-700 font-headline">{{ formatRp(totalByBucket(bucket.value)) }}</p>
-            <p class="text-[11px] font-semibold text-slate-500">Total Saldo Rekening: {{ formatRp(totalRekeningByBucket(bucket.value)) }}</p>
+            <p class="text-sm font-black text-slate-700 font-headline">{{ formatRp(totalByBucket(primaryCashBucket.value)) }}</p>
+            <p class="text-[11px] font-semibold text-slate-500">Total Saldo Rekening: {{ formatRp(totalRekeningByBucket(primaryCashBucket.value)) }}</p>
           </div>
         </div>
-        <div class="grid grid-cols-4 gap-4">
-          <div v-for="acc in accountsByBucket(bucket.value)" :key="acc.id"
-            :class="kasCardClass(acc.type, bucket.value)"
-            class="rounded-xl p-6 shadow-sm">
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div v-for="acc in accountsByBucket(primaryCashBucket.value)" :key="acc.id"
+            :class="kasCardClass(acc.type, primaryCashBucket.value)"
+            class="rounded-xl p-6 shadow-sm min-h-[114px]">
             <div class="flex items-center gap-2 mb-2">
-              <span :class="kasIconClass(acc.type, bucket.value)" class="material-symbols-outlined">
-                {{ kasIcon(acc.type, bucket.value) }}
+              <span :class="kasIconClass(acc.type, primaryCashBucket.value)" class="material-symbols-outlined">
+                {{ kasIcon(acc.type, primaryCashBucket.value) }}
               </span>
-              <span :class="kasLabelClass(acc.type, bucket.value)" class="text-xs font-bold uppercase tracking-wider">
-                {{ paymentMethodLabel(acc.type, bucket.value) }}
+              <span :class="kasLabelClass(acc.type, primaryCashBucket.value)" class="text-xs font-bold uppercase tracking-wider">
+                {{ paymentMethodLabel(acc.type, primaryCashBucket.value) }}
               </span>
             </div>
-            <p :class="kasBalanceClass(acc.type, bucket.value)" class="text-2xl font-black font-headline">{{ formatRp(acc.balance) }}</p>
+            <p :class="kasBalanceClass(acc.type, primaryCashBucket.value)" class="text-2xl font-black font-headline">{{ formatRp(acc.balance) }}</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <div v-for="bucket in secondaryCashBuckets" :key="bucket.value" class="min-w-0">
+          <div class="flex items-start justify-between gap-4 mb-3">
+            <div>
+              <h3 class="text-sm font-bold text-slate-500 uppercase tracking-wider">{{ bucket.label }}</h3>
+              <p v-if="bucket.description" class="mt-1 text-xs font-medium text-slate-400">{{ bucket.description }}</p>
+            </div>
+            <div class="text-right shrink-0">
+              <p class="text-sm font-black text-slate-700 font-headline">{{ formatRp(totalByBucket(bucket.value)) }}</p>
+              <p class="text-[11px] font-semibold text-slate-500">Total Saldo Rekening: {{ formatRp(totalRekeningByBucket(bucket.value)) }}</p>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 gap-4">
+            <div v-for="acc in accountsByBucket(bucket.value)" :key="acc.id"
+              :class="kasCardClass(acc.type, bucket.value)"
+              class="rounded-xl p-6 shadow-sm min-h-[114px]">
+              <div class="flex items-center gap-2 mb-2">
+                <span :class="kasIconClass(acc.type, bucket.value)" class="material-symbols-outlined">
+                  {{ kasIcon(acc.type, bucket.value) }}
+                </span>
+                <span :class="kasLabelClass(acc.type, bucket.value)" class="text-xs font-bold uppercase tracking-wider">
+                  {{ paymentMethodLabel(acc.type, bucket.value) }}
+                </span>
+              </div>
+              <p :class="kasBalanceClass(acc.type, bucket.value)" class="text-2xl font-black font-headline">{{ formatRp(acc.balance) }}</p>
+            </div>
           </div>
         </div>
       </div>
@@ -135,23 +165,27 @@
       </div>
     </div>
 
-    <!-- Tambah Pemasukan / Modal -->
-    <n-modal v-model:show="showIncomeModal" preset="card" title="Tambah Pemasukan / Modal" class="max-w-sm" :auto-focus="false" :trap-focus="false">
+    <!-- Tambah Kas -->
+    <n-modal v-model:show="showIncomeModal" preset="card" title="Isi Kas" class="max-w-md" :auto-focus="false" :trap-focus="false">
       <form @submit.prevent="submitIncome" class="space-y-4">
         <div>
           <label class="block text-xs font-bold text-slate-500 mb-1">Jenis Transaksi</label>
-          <div class="grid grid-cols-2 gap-2">
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <label class="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 cursor-pointer">
               <input type="radio" v-model="incomeForm.entry_type" value="manual_income" class="accent-primary" />
               <span class="text-sm font-medium">Pemasukan</span>
             </label>
             <label class="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 cursor-pointer">
               <input type="radio" v-model="incomeForm.entry_type" value="capital_injection" class="accent-primary" />
-              <span class="text-sm font-medium">Tambah Modal</span>
+              <span class="text-sm font-medium">Modal Tanam</span>
+            </label>
+            <label class="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 cursor-pointer">
+              <input type="radio" v-model="incomeForm.entry_type" value="damage_compensation" class="accent-primary" />
+              <span class="text-sm font-medium">Ganti Rugi</span>
             </label>
           </div>
           <p class="mt-1 text-[11px] text-slate-400">
-            Tambah modal masuk ke saldo kas, tapi tidak dihitung sebagai pendapatan.
+            Modal tanam dan ganti rugi disimpan di kas khusus, terpisah dari kas pendapatan.
           </p>
         </div>
         <div>
@@ -164,10 +198,14 @@
           <input v-model.number="incomeForm.amount" type="number" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" required />
         </div>
         <div>
-          <label class="block text-xs font-bold text-slate-500 mb-1">Metode Bayar</label>
+          <label class="block text-xs font-bold text-slate-500 mb-1">Akun Kas Tujuan</label>
           <div v-if="incomeForm.entry_type === 'capital_injection'" class="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2">
-            <p class="text-sm font-semibold text-emerald-700">Modal (otomatis)</p>
-            <p class="text-[11px] text-emerald-600 mt-0.5">Tambah modal selalu masuk ke saldo modal.</p>
+            <p class="text-sm font-semibold text-emerald-700">Modal Tanam (otomatis)</p>
+            <p class="text-[11px] text-emerald-600 mt-0.5">Uang modal tanam masuk ke Kas Modal Tanam.</p>
+          </div>
+          <div v-else-if="incomeForm.entry_type === 'damage_compensation'" class="rounded-lg border border-rose-100 bg-rose-50 px-3 py-2">
+            <p class="text-sm font-semibold text-rose-700">Ganti Rugi (otomatis)</p>
+            <p class="text-[11px] text-rose-600 mt-0.5">Uang kerusakan dari pelanggan masuk ke Kas Ganti Rugi.</p>
           </div>
           <div v-else class="flex gap-3">
             <label class="flex items-center gap-2 cursor-pointer">
@@ -230,11 +268,13 @@ const incomeError = ref('')
 const incomeSubmitting = ref(false)
 const bucketPaymentMethods = {
   pendapatan: ['tunai', 'transfer', 'qris', 'debit_card'],
-  modal: ['tunai']
+  modal: ['tunai'],
+  ganti_rugi: ['tunai']
 }
-const cashBuckets = [
-  { value: 'pendapatan', label: 'Kas Pendapatan' },
-  { value: 'modal', label: 'Modal' }
+const primaryCashBucket = { value: 'pendapatan', label: 'Kas Pendapatan' }
+const secondaryCashBuckets = [
+  { value: 'modal', label: 'Modal Tanam', description: 'Dana modal yang ditanam ke usaha' },
+  { value: 'ganti_rugi', label: 'Ganti Rugi', description: 'Hasil dari uang ganti rugi pelanggan' }
 ]
 
 const incomeForm = ref({
@@ -263,15 +303,22 @@ const totalCapitalInjection = computed(() =>
 )
 const totalIncome = computed(() =>
   transactions.value
-    .filter(t => t.type === 'in' && !['opening_balance', 'capital_injection'].includes(t.reference_type))
+    .filter(t => t.type === 'in' && !['opening_balance', 'capital_injection', 'damage_compensation'].includes(t.reference_type))
+    .reduce((sum, t) => sum + Number(t.amount || 0), 0)
+)
+const totalDamageCompensation = computed(() =>
+  transactions.value
+    .filter(t => t.reference_type === 'damage_compensation')
     .reduce((sum, t) => sum + Number(t.amount || 0), 0)
 )
 const totalExpense = computed(() => transactions.value.filter(t => t.type === 'out').reduce((sum, t) => sum + Number(t.amount || 0), 0))
-const netFlow = computed(() => totalIncome.value - totalExpense.value)
+const netFlow = computed(() => totalIncome.value + totalDamageCompensation.value - totalExpense.value)
 const incomeDescriptionPlaceholder = computed(() =>
   incomeForm.value.entry_type === 'capital_injection'
-    ? 'Contoh: Tambahan modal pemilik'
-    : 'Contoh: Penjualan aksesoris'
+    ? 'Contoh: Modal tanam pemilik'
+    : incomeForm.value.entry_type === 'damage_compensation'
+      ? 'Contoh: Ganti rugi kerusakan motor DK 1234 ABC'
+      : 'Contoh: Penjualan aksesoris'
 )
 const selectedAccountName = computed(() => {
   if (!filterAccount.value) return 'Semua Akun'
@@ -293,7 +340,8 @@ const totalRekeningByBucket = (bucket) => {
     .reduce((sum, acc) => sum + Number(acc.balance || 0), 0)
 }
 const paymentMethodLabel = (method, bucket = 'pendapatan') => {
-  if (bucket === 'modal' && String(method) === 'tunai') return 'Modal'
+  if (bucket === 'modal' && String(method) === 'tunai') return 'Modal Tanam'
+  if (bucket === 'ganti_rugi' && String(method) === 'tunai') return 'Ganti Rugi'
   return ({
   tunai: 'Tunai',
   transfer: 'Transfer',
@@ -310,6 +358,7 @@ const periodLabel = computed(() => formatPeriodLabel(periodFilter.value))
 
 function kasCardClass(type, bucket = 'pendapatan') {
   if (bucket === 'modal') return 'bg-amber-50 border border-amber-200'
+  if (bucket === 'ganti_rugi') return 'bg-rose-50 border border-rose-200'
   if (type === 'transfer') return 'bg-primary text-white'
   if (type === 'qris') return 'bg-gradient-to-br from-blue-500 to-purple-600 text-white'
   if (type === 'debit_card') return 'bg-gradient-to-br from-slate-700 to-slate-900 text-white'
@@ -317,6 +366,7 @@ function kasCardClass(type, bucket = 'pendapatan') {
 }
 function kasIconClass(type, bucket = 'pendapatan') {
   if (bucket === 'modal') return 'text-amber-600'
+  if (bucket === 'ganti_rugi') return 'text-rose-600'
   if (type === 'transfer') return 'text-blue-200'
   if (type === 'qris') return 'text-purple-200'
   if (type === 'debit_card') return 'text-slate-300'
@@ -324,6 +374,7 @@ function kasIconClass(type, bucket = 'pendapatan') {
 }
 function kasLabelClass(type, bucket = 'pendapatan') {
   if (bucket === 'modal') return 'text-amber-700'
+  if (bucket === 'ganti_rugi') return 'text-rose-700'
   if (type === 'transfer') return 'text-blue-200'
   if (type === 'qris') return 'text-purple-200'
   if (type === 'debit_card') return 'text-slate-300'
@@ -331,11 +382,13 @@ function kasLabelClass(type, bucket = 'pendapatan') {
 }
 function kasBalanceClass(type, bucket = 'pendapatan') {
   if (bucket === 'modal') return 'text-amber-700'
+  if (bucket === 'ganti_rugi') return 'text-rose-700'
   if (type === 'transfer' || type === 'qris' || type === 'debit_card') return 'text-white'
   return 'text-primary'
 }
 function kasIcon(type, bucket = 'pendapatan') {
   if (bucket === 'modal') return 'savings'
+  if (bucket === 'ganti_rugi') return 'car_crash'
   if (type === 'tunai') return 'payments'
   if (type === 'transfer') return 'account_balance'
   if (type === 'debit_card') return 'credit_card'
@@ -356,7 +409,7 @@ function openIncome() {
 }
 
 watch(() => incomeForm.value.entry_type, (entryType) => {
-  if (entryType === 'capital_injection') {
+  if (entryType === 'capital_injection' || entryType === 'damage_compensation') {
     incomeForm.value.payment_method = 'tunai'
   }
 })
@@ -364,7 +417,7 @@ watch(() => incomeForm.value.entry_type, (entryType) => {
 async function submitIncome() {
   incomeError.value = ''
   const description = String(incomeForm.value.description || '').trim()
-  const isCapitalInjection = incomeForm.value.entry_type === 'capital_injection'
+  const isCashOnlyEntry = ['capital_injection', 'damage_compensation'].includes(incomeForm.value.entry_type)
   if (!description) {
     incomeError.value = 'Catatan transaksi wajib diisi'
     return
@@ -373,7 +426,7 @@ async function submitIncome() {
     incomeError.value = 'Jumlah harus lebih dari 0'
     return
   }
-  if (!isCapitalInjection && !incomeForm.value.payment_method) {
+  if (!isCashOnlyEntry && !incomeForm.value.payment_method) {
     incomeError.value = 'Metode bayar wajib dipilih'
     return
   }
@@ -382,7 +435,7 @@ async function submitIncome() {
     await window.api.addCashIncome({
       ...incomeForm.value,
       description,
-      payment_method: isCapitalInjection ? 'tunai' : incomeForm.value.payment_method
+      payment_method: isCashOnlyEntry ? 'tunai' : incomeForm.value.payment_method
     })
     showIncomeModal.value = false
     await reloadCash()
@@ -428,7 +481,8 @@ function getExportFileLabel() {
 
 function transactionTypeLabel(item) {
   if (item.reference_type === 'opening_balance') return 'Modal Awal'
-  if (item.reference_type === 'capital_injection') return 'Tambah Modal'
+  if (item.reference_type === 'capital_injection') return 'Modal Tanam'
+  if (item.reference_type === 'damage_compensation') return 'Ganti Rugi'
   return item.type === 'in' ? 'Pemasukan' : 'Pengeluaran'
 }
 
@@ -441,7 +495,8 @@ async function exportPdf() {
       period: periodLabel.value,
       summary: [
         { label: 'Total Modal Awal', value: formatRp(totalOpeningBalance.value) },
-        { label: 'Total Tambah Modal', value: formatRp(totalCapitalInjection.value) },
+        { label: 'Total Modal Tanam', value: formatRp(totalCapitalInjection.value) },
+        { label: 'Total Ganti Rugi', value: formatRp(totalDamageCompensation.value) },
         { label: 'Total Pemasukan', value: formatRp(totalIncome.value) },
         { label: 'Total Pengeluaran', value: formatRp(totalExpense.value) },
         { label: 'Arus Kas Operasional', value: formatRp(netFlow.value) },
@@ -495,7 +550,7 @@ async function exportExcel() {
       description: `${transactions.value.length} mutasi`,
       account: '',
       type: '',
-      income: Number(totalIncome.value),
+      income: Number(totalIncome.value) + Number(totalDamageCompensation.value),
       expense: Number(totalExpense.value)
     }
     await window.api.saveExcel({

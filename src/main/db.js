@@ -16,7 +16,7 @@ const MODULE_DIRNAME = typeof __dirname !== 'undefined' ? __dirname : dirname(fi
 // Versi schema — naikkan angka ini setiap kali ada perubahan struktur database.
 // Sistem akan otomatis jalankan migrasi yang belum pernah dijalankan.
 // ─────────────────────────────────────────────────────────────────────────────
-const SCHEMA_VERSION = 18
+const SCHEMA_VERSION = 19
 
 export async function initDb() {
   const wasmPath = join(
@@ -451,7 +451,7 @@ function getOrCreateModalTunaiAccount() {
   )
   if (!modalTunaiAccount?.id) {
     db.run(
-      "INSERT INTO cash_accounts (name, type, bucket, balance) VALUES ('Kas Modal Tunai', 'tunai', 'modal', 0)"
+      "INSERT INTO cash_accounts (name, type, bucket, balance) VALUES ('Kas Modal Tanam', 'tunai', 'modal', 0)"
     )
     modalTunaiAccount = get(
       "SELECT id FROM cash_accounts WHERE type = 'tunai' AND COALESCE(bucket, 'pendapatan') = 'modal' ORDER BY id ASC LIMIT 1"
@@ -843,6 +843,22 @@ const migrations = [
       } catch (_) {}
     }
   },
+  // v19 - kas khusus ganti rugi kerusakan
+  {
+    version: 19,
+    up() {
+      const damageAccount = get(
+        "SELECT id FROM cash_accounts WHERE type = 'tunai' AND COALESCE(bucket, 'pendapatan') = 'ganti_rugi' ORDER BY id ASC LIMIT 1"
+      )
+      if (!damageAccount) {
+        db.run(
+          "INSERT INTO cash_accounts (name, type, bucket, balance) VALUES ('Kas Ganti Rugi', 'tunai', 'ganti_rugi', 0)"
+        )
+      } else {
+        db.run("UPDATE cash_accounts SET name = 'Kas Ganti Rugi' WHERE id = ?", [damageAccount.id])
+      }
+    }
+  },
   // Contoh untuk update fitur berikutnya:
   // {
   //   version: 7,
@@ -917,7 +933,8 @@ function seedDefaults() {
     { name: 'Kas Pendapatan Transfer', type: 'transfer', bucket: 'pendapatan' },
     { name: 'Kas Pendapatan QRIS', type: 'qris', bucket: 'pendapatan' },
     { name: 'Kas Pendapatan Debit Card', type: 'debit_card', bucket: 'pendapatan' },
-    { name: 'Kas Modal Tunai', type: 'tunai', bucket: 'modal' }
+    { name: 'Kas Modal Tanam', type: 'tunai', bucket: 'modal' },
+    { name: 'Kas Ganti Rugi', type: 'tunai', bucket: 'ganti_rugi' }
   ]
   for (const account of defaultAccounts) {
     const existsAccount = get(

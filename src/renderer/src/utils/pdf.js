@@ -25,21 +25,28 @@ const paymentLabel = (method) => ({
   qris: 'QRIS',
   debit_card: 'Debit Card'
 }[method] || method || '-')
-const cashBucketLabel = (bucket) => String(bucket || 'pendapatan').trim().toLowerCase() === 'modal' ? 'Kas Modal' : 'Kas Pendapatan'
+const cashBucketLabel = (bucket) => {
+  const normalizedBucket = String(bucket || 'pendapatan').trim().toLowerCase()
+  if (normalizedBucket === 'modal') return 'Kas Modal Tanam'
+  if (normalizedBucket === 'ganti_rugi') return 'Kas Ganti Rugi'
+  return 'Kas Pendapatan'
+}
 const isRekeningMethod = (method) => REKENING_METHODS.includes(String(method || '').trim().toLowerCase())
 const paymentGroupLabel = (method, bucket) => {
   const normalizedBucket = String(bucket || 'pendapatan').trim().toLowerCase()
   const normalizedMethod = String(method || '').trim().toLowerCase()
-  if (normalizedBucket === 'modal' && normalizedMethod === 'tunai') return 'Modal'
+  if (normalizedBucket === 'modal' && normalizedMethod === 'tunai') return 'Modal Tanam'
+  if (normalizedBucket === 'ganti_rugi' && normalizedMethod === 'tunai') return 'Ganti Rugi'
   return isRekeningMethod(method) ? 'Saldo Rekening' : paymentLabel(method)
 }
 const calculateCashSummary = (rows = [], amountKey = 'amount') => rows.reduce((summary, row) => {
   const amount = Number(row?.[amountKey] || 0)
-  const bucket = String(row?.cash_bucket || 'pendapatan').trim().toLowerCase() === 'modal' ? 'modal' : 'pendapatan'
+  const normalizedBucket = String(row?.cash_bucket || 'pendapatan').trim().toLowerCase()
+  const bucket = normalizedBucket === 'modal' || normalizedBucket === 'ganti_rugi' ? normalizedBucket : 'pendapatan'
   summary[bucket] += amount
   if (isRekeningMethod(row?.payment_method)) summary.rekening += amount
   return summary
-}, { pendapatan: 0, modal: 0, rekening: 0 })
+}, { pendapatan: 0, modal: 0, ganti_rugi: 0, rekening: 0 })
 
 const fmtDate = (d) => {
   if (!d) return '-'
@@ -433,7 +440,8 @@ export function buildMotorIncomeHtml({ rentals, period, motorName }) {
     <div class="summary-card"><div class="label">Wavy Gets</div><div class="value">${rp(totalWavy)}</div></div>
     <div class="summary-card"><div class="label">Bagian Mitra</div><div class="value">${rp(totalOwner)}</div></div>
     <div class="summary-card"><div class="label">Kas Pendapatan</div><div class="value">${rp(cashSummary.pendapatan)}</div></div>
-    <div class="summary-card"><div class="label">Kas Modal</div><div class="value">${rp(cashSummary.modal)}</div></div>
+    <div class="summary-card"><div class="label">Kas Modal Tanam</div><div class="value">${rp(cashSummary.modal)}</div></div>
+    <div class="summary-card"><div class="label">Kas Ganti Rugi</div><div class="value">${rp(cashSummary.ganti_rugi)}</div></div>
     <div class="summary-card"><div class="label">Total Saldo Rekening</div><div class="value">${rp(cashSummary.rekening)}</div></div>
   </div>
   <div class="section-title">Detail Transaksi Rental</div>
@@ -460,11 +468,12 @@ export function buildMotorExpensesHtml({ expenses, period, motorName }) {
     <td class="right" style="color:#dc2626;font-weight:700">${rp(e.amount)}</td>
   </tr>`).join('')
   return `${headerHtml('Laporan Pengeluaran per Motor', period, motorName || 'Semua Motor')}
-  <div class="summary-grid" style="grid-template-columns:repeat(5,1fr)">
+  <div class="summary-grid" style="grid-template-columns:repeat(6,1fr)">
     <div class="summary-card"><div class="label">Total Pengeluaran</div><div class="value">${rp(total)}</div></div>
     <div class="summary-card"><div class="label">Jumlah Transaksi</div><div class="value">${expenses.length}x</div></div>
     <div class="summary-card"><div class="label">Kas Pendapatan</div><div class="value">${rp(cashSummary.pendapatan)}</div></div>
-    <div class="summary-card"><div class="label">Kas Modal</div><div class="value">${rp(cashSummary.modal)}</div></div>
+    <div class="summary-card"><div class="label">Kas Modal Tanam</div><div class="value">${rp(cashSummary.modal)}</div></div>
+    <div class="summary-card"><div class="label">Kas Ganti Rugi</div><div class="value">${rp(cashSummary.ganti_rugi)}</div></div>
     <div class="summary-card"><div class="label">Total Saldo Rekening</div><div class="value">${rp(cashSummary.rekening)}</div></div>
   </div>
   <div class="section-title">Detail Pengeluaran</div>
@@ -520,18 +529,18 @@ export function buildTransactionsHtml({ rentals, operationalExpenses, motorExpen
     <div class="summary-card"><div class="label">Selisih</div><div class="value">${rp(totalIn - totalOut)}</div></div>
   </div>
   <div class="section-title">Pemasukan (Rental)</div>
-  <div style="font-size:10px;color:#555;margin-bottom:6px">Kas Pendapatan: ${rp(rentalCash.pendapatan)} · Kas Modal: ${rp(rentalCash.modal)} · Total Saldo Rekening: ${rp(rentalCash.rekening)}</div>
+  <div style="font-size:10px;color:#555;margin-bottom:6px">Kas Pendapatan: ${rp(rentalCash.pendapatan)} | Kas Modal Tanam: ${rp(rentalCash.modal)} | Kas Ganti Rugi: ${rp(rentalCash.ganti_rugi)} | Total Saldo Rekening: ${rp(rentalCash.rekening)}</div>
   <table><thead><tr><th>Tanggal</th><th>Tipe</th><th>Pelanggan</th><th>Motor</th><th>Sumber Kas</th><th>Pembayaran</th><th class="right">Jumlah</th><th>Status</th></tr></thead>
   <tbody>${rentalRows || '<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:16px">Tidak ada data</td></tr>'}</tbody></table>
   <div class="section-title">Jejak Ganti Unit</div>
   <table><thead><tr><th>Transaksi Awal</th><th>Riwayat</th></tr></thead>
   <tbody>${journeyRows || '<tr><td colspan="2" style="text-align:center;color:#94a3b8;padding:16px">Tidak ada data ganti unit</td></tr>'}</tbody></table>
   <div class="section-title">Pengeluaran Operasional</div>
-  <div style="font-size:10px;color:#555;margin-bottom:6px">Kas Pendapatan: ${rp(operationalCash.pendapatan)} · Kas Modal: ${rp(operationalCash.modal)} · Total Saldo Rekening: ${rp(operationalCash.rekening)}</div>
+  <div style="font-size:10px;color:#555;margin-bottom:6px">Kas Pendapatan: ${rp(operationalCash.pendapatan)} | Kas Modal Tanam: ${rp(operationalCash.modal)} | Kas Ganti Rugi: ${rp(operationalCash.ganti_rugi)} | Total Saldo Rekening: ${rp(operationalCash.rekening)}</div>
   <table><thead><tr><th>Tanggal</th><th>Tipe</th><th>Kategori</th><th>Motor</th><th>Sumber Kas</th><th>Pembayaran</th><th class="right">Jumlah</th><th>Status</th></tr></thead>
   <tbody>${operationalRows || '<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:16px">Tidak ada data</td></tr>'}</tbody></table>
   <div class="section-title">Pengeluaran Motor</div>
-  <div style="font-size:10px;color:#555;margin-bottom:6px">Kas Pendapatan: ${rp(motorCash.pendapatan)} · Kas Modal: ${rp(motorCash.modal)} · Total Saldo Rekening: ${rp(motorCash.rekening)}</div>
+  <div style="font-size:10px;color:#555;margin-bottom:6px">Kas Pendapatan: ${rp(motorCash.pendapatan)} | Kas Modal Tanam: ${rp(motorCash.modal)} | Kas Ganti Rugi: ${rp(motorCash.ganti_rugi)} | Total Saldo Rekening: ${rp(motorCash.rekening)}</div>
   <table><thead><tr><th>Tanggal</th><th>Tipe</th><th>Kategori</th><th>Motor</th><th>Sumber Kas</th><th>Pembayaran</th><th class="right">Jumlah</th><th>Status</th></tr></thead>
   <tbody>${motorRows || '<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:16px">Tidak ada data</td></tr>'}</tbody></table>
   ${footerHtml()}`

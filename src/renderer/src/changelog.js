@@ -3,6 +3,30 @@
 
 export const CHANGELOG = [
   {
+    version: '1.0.40',
+    date: '2026-05-04',
+    badge: { text: 'Kas Ganti Rugi', tone: 'emerald' },
+    intro: 'Rilis ini menambahkan kas khusus Ganti Rugi untuk mencatat uang kompensasi pelanggan dan merapikan tampilan Modal Tanam agar mudah dibaca berdampingan.',
+    items: [
+      {
+        title: 'Kas Ganti Rugi',
+        desc: 'Uang ganti rugi dari pelanggan yang merusak kini masuk ke Kas Ganti Rugi, terpisah dari kas pendapatan.'
+      },
+      {
+        title: 'Bisa Dipakai Pengeluaran',
+        desc: 'Kas Ganti Rugi bisa dipilih sebagai sumber pembayaran saat mencatat pengeluaran.'
+      },
+      {
+        title: 'Modal Tanam Berdampingan',
+        desc: 'Kartu Modal Tanam dan Ganti Rugi ditampilkan berdampingan dengan keterangan asal dana agar tidak membingungkan.'
+      },
+      {
+        title: 'Laporan dan Export Lengkap',
+        desc: 'Mutasi, dashboard, laporan, Excel, PDF, dan pemeriksaan data safety sudah mencakup Kas Ganti Rugi.'
+      }
+    ]
+  },
+  {
     version: '1.0.39',
     date: '2026-05-03',
     badge: { text: 'Slip Mitra & Partner', tone: 'emerald' },

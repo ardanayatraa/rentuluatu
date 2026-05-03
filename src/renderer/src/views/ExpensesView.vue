@@ -270,6 +270,7 @@
               <option value="qris" :disabled="isFundingMethodDisabled('qris')">{{ paymentMethodOptionLabel('qris') }}</option>
               <option value="debit_card" :disabled="isFundingMethodDisabled('debit_card')">{{ paymentMethodOptionLabel('debit_card') }}</option>
               <option value="modal_tanam" :disabled="isFundingMethodDisabled('modal_tanam')">{{ paymentMethodOptionLabel('modal_tanam') }}</option>
+              <option value="ganti_rugi" :disabled="isFundingMethodDisabled('ganti_rugi')">{{ paymentMethodOptionLabel('ganti_rugi') }}</option>
             </select>
           </div>
         </div>
@@ -338,7 +339,8 @@ const FUNDING_METHODS = {
   transfer: { label: 'Transfer', paymentMethod: 'transfer', cashBucket: 'pendapatan' },
   qris: { label: 'QRIS', paymentMethod: 'qris', cashBucket: 'pendapatan' },
   debit_card: { label: 'Debit Card', paymentMethod: 'debit_card', cashBucket: 'pendapatan' },
-  modal_tanam: { label: 'Modal', paymentMethod: 'tunai', cashBucket: 'modal' }
+  modal_tanam: { label: 'Modal Tanam', paymentMethod: 'tunai', cashBucket: 'modal' },
+  ganti_rugi: { label: 'Ganti Rugi', paymentMethod: 'tunai', cashBucket: 'ganti_rugi' }
 }
 const FUNDING_METHOD_KEYS = Object.keys(FUNDING_METHODS)
 
@@ -446,11 +448,13 @@ function paymentMethodLabel(method) {
 
 function paymentMethodBadge(method, cashBucket = 'pendapatan') {
   if (String(cashBucket) === 'modal' && String(method) === 'tunai') return 'badge-warning'
+  if (String(cashBucket) === 'ganti_rugi' && String(method) === 'tunai') return 'badge-error'
   return method === 'tunai' ? 'badge-neutral' : 'badge-success'
 }
 
 function paymentMethodDisplay(method, cashBucket = 'pendapatan') {
-  if (String(cashBucket) === 'modal' && String(method) === 'tunai') return 'Modal'
+  if (String(cashBucket) === 'modal' && String(method) === 'tunai') return 'Modal Tanam'
+  if (String(cashBucket) === 'ganti_rugi' && String(method) === 'tunai') return 'Ganti Rugi'
   return paymentMethodLabel(method)
 }
 

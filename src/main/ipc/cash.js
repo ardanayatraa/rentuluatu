@@ -2,8 +2,9 @@ import { ipcMain } from 'electron'
 import { dbOps } from '../db'
 import { logActivity } from '../lib/activity-log'
 
-const ALLOWED_CASH_BUCKETS = ['pendapatan', 'modal']
+const ALLOWED_CASH_BUCKETS = ['pendapatan', 'modal', 'ganti_rugi']
 const CAPITAL_ENTRY_TYPE = 'capital_injection'
+const DAMAGE_COMPENSATION_ENTRY_TYPE = 'damage_compensation'
 const CASH_ONLY_METHOD = 'tunai'
 
 function normalizeCashBucket(value, fallback = 'pendapatan') {
@@ -19,7 +20,10 @@ function getCashAccountByTypeAndBucket(type, bucket = 'pendapatan') {
 }
 
 function cashBucketLabel(bucket) {
-  return normalizeCashBucket(bucket) === 'modal' ? 'Modal' : 'Pendapatan'
+  const normalizedBucket = normalizeCashBucket(bucket)
+  if (normalizedBucket === 'modal') return 'Modal Tanam'
+  if (normalizedBucket === 'ganti_rugi') return 'Ganti Rugi'
+  return 'Pendapatan'
 }
 
 function getReservedOwnerFunds() {
@@ -90,17 +94,21 @@ function assertValidManualCashInput(data = {}, mode = 'income') {
   const entryType = mode === 'income'
     ? String(data.entry_type || 'manual_income').trim().toLowerCase()
     : 'manual_expense'
-  const paymentMethod = mode === 'income' && entryType === CAPITAL_ENTRY_TYPE
+  const paymentMethod = mode === 'income' && [CAPITAL_ENTRY_TYPE, DAMAGE_COMPENSATION_ENTRY_TYPE].includes(entryType)
     ? CASH_ONLY_METHOD
     : String(data.payment_method || '').trim().toLowerCase()
   if (!paymentMethod) {
     throw new Error('Metode bayar wajib dipilih')
   }
   const cashBucket = mode === 'income'
-    ? (entryType === CAPITAL_ENTRY_TYPE ? 'modal' : 'pendapatan')
+    ? (entryType === CAPITAL_ENTRY_TYPE
+        ? 'modal'
+        : entryType === DAMAGE_COMPENSATION_ENTRY_TYPE
+          ? 'ganti_rugi'
+          : 'pendapatan')
     : normalizeCashBucket(data.cash_bucket, 'pendapatan')
 
-  if (mode === 'income' && !['manual_income', CAPITAL_ENTRY_TYPE].includes(entryType)) {
+  if (mode === 'income' && !['manual_income', CAPITAL_ENTRY_TYPE, DAMAGE_COMPENSATION_ENTRY_TYPE].includes(entryType)) {
     throw new Error('Jenis pemasukan tidak valid')
   }
 
@@ -158,7 +166,7 @@ export function registerCashHandlers() {
     return { accounts: accountsWithBalance, total }
   })
 
-  // Tambah pemasukan operasional atau tambahan modal.
+  // Tambah pemasukan operasional, modal tanam, atau ganti rugi.
   ipcMain.handle('cash:add-income', (_, data) => {
     const payload = assertValidManualCashInput(data, 'income')
     const account = getCashAccountByTypeAndBucket(payload.paymentMethod, payload.cashBucket)

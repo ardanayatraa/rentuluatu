@@ -592,7 +592,7 @@
             </option>
           </select>
           <p v-if="!payoutCashAccounts.length" class="mt-1 text-[11px] text-red-500">
-            Tidak ada akun kas pendapatan/modal yang valid untuk payout hak mitra.
+            Tidak ada akun kas pendapatan/modal tanam yang valid untuk payout hak mitra.
           </p>
         </div>
 
@@ -833,7 +833,7 @@ const totalUnpaid = computed(() =>
 )
 
 function payoutMethodLabel(method, bucket = 'pendapatan') {
-  if (String(bucket || 'pendapatan') === 'modal') return 'Modal'
+  if (String(bucket || 'pendapatan') === 'modal') return 'Modal Tanam'
   if (method === 'tunai') return 'Tunai'
   if (method === 'transfer') return 'Transfer'
   if (method === 'qris') return 'QRIS'

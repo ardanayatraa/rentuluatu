@@ -10,11 +10,17 @@ const paymentLabel = (method) => ({
   qris: 'QRIS',
   debit_card: 'Debit Card'
 }[method] || method || '-')
-const cashBucketLabel = (bucket) => String(bucket || 'pendapatan').trim().toLowerCase() === 'modal' ? 'Kas Modal' : 'Kas Pendapatan'
+const cashBucketLabel = (bucket) => {
+  const normalizedBucket = String(bucket || 'pendapatan').trim().toLowerCase()
+  if (normalizedBucket === 'modal') return 'Kas Modal Tanam'
+  if (normalizedBucket === 'ganti_rugi') return 'Kas Ganti Rugi'
+  return 'Kas Pendapatan'
+}
 const paymentGroupLabel = (method, bucket) => {
   const normalizedBucket = String(bucket || 'pendapatan').trim().toLowerCase()
   const normalizedMethod = String(method || '').trim().toLowerCase()
-  if (normalizedBucket === 'modal' && normalizedMethod === 'tunai') return 'Modal'
+  if (normalizedBucket === 'modal' && normalizedMethod === 'tunai') return 'Modal Tanam'
+  if (normalizedBucket === 'ganti_rugi' && normalizedMethod === 'tunai') return 'Ganti Rugi'
   return REKENING_METHODS.includes(normalizedMethod) ? 'Saldo Rekening' : paymentLabel(method)
 }
 
